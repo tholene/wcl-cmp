@@ -18,6 +18,21 @@ const resolveReportCodeParam = (value: string | string[] | undefined): string =>
   return Array.isArray(value) ? value[0] : value
 }
 
+const resolveEncounterId = (value: string | string[] | undefined): number | null => {
+  if (!value) {
+    return null
+  }
+
+  const idValue = Array.isArray(value) ? value[0] : value
+  const encounterId = Number(idValue)
+
+  if (!Number.isFinite(encounterId) || encounterId <= 0) {
+    return null
+  }
+
+  return encounterId
+}
+
 app.get('/api/health', (_req: Request, res: Response) => {
   res.status(200).json({ ok: true })
 })
@@ -75,6 +90,47 @@ app.get('/api/reports/:code', async (req: Request, res: Response) => {
     res.status(500).json({
       error: message,
       hint: 'Verify report code and WCL credentials.',
+    })
+  }
+})
+
+app.get('/api/bosses/recent', async (_req: Request, res: Response) => {
+  try {
+    const config = getWclConfig()
+    const responsePayload = await WclService.listRecentBosses(config)
+
+    res.status(200).json(responsePayload)
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unknown error while fetching recent bosses.'
+
+    res.status(500).json({
+      error: message,
+      hint: 'Verify WCL credentials and guild configuration.',
+    })
+  }
+})
+
+app.get('/api/bosses/:encounterId/recent-fights', async (req: Request, res: Response) => {
+  try {
+    const encounterId = resolveEncounterId(req.params.encounterId)
+
+    if (!encounterId) {
+      res.status(400).json({
+        error: 'Invalid encounterId. Expected a positive number.',
+      })
+      return
+    }
+
+    const config = getWclConfig()
+    const responsePayload = await WclService.listRecentBossFights(config, encounterId)
+
+    res.status(200).json(responsePayload)
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unknown error while fetching recent boss fights.'
+
+    res.status(500).json({
+      error: message,
+      hint: 'Verify WCL credentials and encounter ID.',
     })
   }
 })

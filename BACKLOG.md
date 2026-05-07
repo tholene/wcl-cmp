@@ -108,10 +108,11 @@ Important user requirement:
 
 ## §1 Boss Overview Index
 
-- **Status:** 🔴 Not done
+- **Status:** ✅ Done
 - **Priority:** P0
 - **Suggested PR:** PR01
 - **Feature type:** Product navigation / data aggregation
+- **Notes:** 2026-05-07 — PR01 added boss-first navigation via `/bosses` and `/bosses/:encounterId`, plus backend aggregation endpoints `/api/bosses/recent` and `/api/bosses/:encounterId/recent-fights`. Data is aggregated from the recent-report window without persistence. Follow-up trend/death/player analysis remains in later backlog items.
 
 ### Problem
 

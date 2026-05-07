@@ -37,3 +37,55 @@ export type WclReportDetails = {
   fights: WclFightSummary[]
   url: string
 }
+
+export type WclBossSummary = {
+  encounterId: number
+  encounterName: string
+  pullCount: number
+  killCount: number
+  wipeCount: number
+  lastSeenAt: number
+  difficulties: number[]
+  recentReports: Array<{
+    code: string
+    title: string
+    startTime: number
+  }>
+}
+
+export type WclRecentBossesResponse = {
+  generatedAt: number
+  source: {
+    reportCount: number
+    note: string
+  }
+  bosses: WclBossSummary[]
+}
+
+export type WclBossFightListItem = {
+  reportCode: string
+  reportTitle: string
+  reportStartTime: number
+  fightId: number
+  encounterId: number
+  encounterName: string
+  kill: boolean
+  difficulty: number
+  startTime: number
+  endTime: number
+  durationMs: number
+  url: string
+}
+
+export type WclRecentBossFightsResponse = {
+  generatedAt: number
+  source: {
+    reportCount: number
+    note: string
+  }
+  boss: {
+    encounterId: number
+    encounterName: string
+  }
+  fights: WclBossFightListItem[]
+}
