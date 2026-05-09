@@ -2,7 +2,7 @@ import type { FC } from 'react'
 import { Link } from 'react-router-dom'
 import { ExternalLink } from 'lucide-react'
 import { StatusPill } from '@/components/ui/status-pill'
-import { PATHS } from '@/lib/routes'
+import { getFightReviewPath, PATHS } from '@/lib/routes'
 import { ReportsMapper } from '../mappers/reports.mapper'
 import type { ReportDetails } from '../types/report-details'
 
@@ -62,6 +62,7 @@ export const ReportDetailsPanel: FC<ReportDetailsPanelProps> = ({ report }) => (
             <th className="px-3 py-2 text-left font-medium text-slate-300">Result</th>
             <th className="px-3 py-2 text-left font-medium text-slate-300">Difficulty</th>
             <th className="px-3 py-2 text-left font-medium text-slate-300">Duration</th>
+            <th className="px-3 py-2 text-left font-medium text-slate-300">Actions</th>
           </tr>
         </thead>
         <tbody className="divide-y divide-slate-800 bg-slate-950/30">
@@ -73,6 +74,14 @@ export const ReportDetailsPanel: FC<ReportDetailsPanelProps> = ({ report }) => (
               </td>
               <td className="px-3 py-2 text-slate-300">{fight.difficulty}</td>
               <td className="px-3 py-2 text-slate-300">{ReportsMapper.formatFightDuration(fight)}</td>
+              <td className="px-3 py-2">
+                <Link
+                  to={getFightReviewPath(report.code, fight.id)}
+                  className="inline-flex rounded-md border border-violet-500/40 px-2.5 py-1 text-xs text-violet-200 hover:bg-violet-500/10"
+                >
+                  Review
+                </Link>
+              </td>
             </tr>
           ))}
         </tbody>

@@ -2,7 +2,7 @@ import type { FC } from 'react'
 import { ExternalLink } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { StatusPill } from '@/components/ui/status-pill'
-import { getReportDetailsPath } from '@/lib/routes'
+import { getFightReviewPath, getReportDetailsPath } from '@/lib/routes'
 import { BossesMapper } from '../mappers/bosses.mapper'
 import type { BossFightListItem } from '../types/boss-fight-list-item'
 
@@ -42,6 +42,12 @@ export const BossFightsTable: FC<BossFightsTableProps> = ({ fights }) => (
                   className="inline-flex rounded-md border border-violet-500/40 px-2.5 py-1 text-xs text-violet-200 hover:bg-violet-500/10"
                 >
                   View report
+                </Link>
+                <Link
+                  to={getFightReviewPath(fight.reportCode, fight.fightId)}
+                  className="inline-flex rounded-md border border-emerald-500/40 px-2.5 py-1 text-xs text-emerald-200 hover:bg-emerald-500/10"
+                >
+                  Review
                 </Link>
                 <a
                   href={fight.url}

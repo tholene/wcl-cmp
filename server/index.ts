@@ -33,6 +33,21 @@ const resolveEncounterId = (value: string | string[] | undefined): number | null
   return encounterId
 }
 
+const resolveFightId = (value: string | string[] | undefined): number | null => {
+  if (!value) {
+    return null
+  }
+
+  const idValue = Array.isArray(value) ? value[0] : value
+  const fightId = Number(idValue)
+
+  if (!Number.isFinite(fightId) || fightId <= 0) {
+    return null
+  }
+
+  return fightId
+}
+
 app.get('/api/health', (_req: Request, res: Response) => {
   res.status(200).json({ ok: true })
 })
@@ -65,6 +80,61 @@ app.get('/api/reports/recent', async (_req: Request, res: Response) => {
     res.status(500).json({
       error: message,
       hint: 'Verify WCL_CLIENT_ID, WCL_CLIENT_SECRET, and WCL_GUILD_ID in your .env file.',
+    })
+  }
+})
+
+app.get('/api/reports/:code/fights/:fightId/review', async (req: Request, res: Response) => {
+  const reportCode = resolveReportCodeParam(req.params.code)
+  const fightId = resolveFightId(req.params.fightId)
+
+  if (!reportCode) {
+    res.status(400).json({
+      error: 'Missing report code.',
+    })
+    return
+  }
+
+  if (!fightId) {
+    res.status(400).json({
+      error: 'Invalid fightId. Expected a positive number.',
+    })
+    return
+  }
+
+  try {
+    const config = getWclConfig()
+    const fightReview = await WclService.getFightReview(config, reportCode, fightId)
+
+    res.status(200).json(fightReview)
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unknown error while fetching fight review.'
+
+    if (message.includes('Invalid fight ID')) {
+      res.status(400).json({
+        error: 'Invalid fightId. Expected a positive number.',
+      })
+      return
+    }
+
+    if (message.includes('No report found') || message.includes('was not found')) {
+      res.status(404).json({
+        error: 'Report or fight was not found.',
+      })
+      return
+    }
+
+    if (message.includes('Warcraft Logs')) {
+      res.status(502).json({
+        error: 'Could not load fight review data from upstream source.',
+        hint: 'Verify Warcraft Logs credentials and try again shortly.',
+      })
+      return
+    }
+
+    res.status(500).json({
+      error: 'Failed to load fight review.',
+      hint: 'Try again. If the problem persists, verify server configuration and report code.',
     })
   }
 })

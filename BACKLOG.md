@@ -108,11 +108,10 @@ Important user requirement:
 
 ## §1 Boss Overview Index
 
-- **Status:** ✅ Done
+- **Status:** 🔴 Not done
 - **Priority:** P0
 - **Suggested PR:** PR01
 - **Feature type:** Product navigation / data aggregation
-- **Notes:** 2026-05-07 — PR01 added boss-first navigation via `/bosses` and `/bosses/:encounterId`, plus backend aggregation endpoints `/api/bosses/recent` and `/api/bosses/:encounterId/recent-fights`. Data is aggregated from the recent-report window without persistence. Follow-up trend/death/player analysis remains in later backlog items.
 
 ### Problem
 
@@ -262,10 +261,11 @@ npm test
 
 ## §2 Fight Review Snapshot
 
-- **Status:** 🔴 Not done
+- **Status:** ✅ Done
 - **Priority:** P0
 - **Suggested PR:** PR02
 - **Feature type:** Core review workflow
+- **Notes:** 2026-05-07 — PR02 added fight review route `/reports/:code/fights/:fightId` and backend endpoint `GET /api/reports/:code/fights/:fightId/review`, including pull summary, participants, death timeline, recent damage evidence, and review shortlist. Player-specific review, AI prompts, persistence, and deeper death-pattern analysis remain in later backlog items.
 
 ### Problem
 
@@ -529,18 +529,60 @@ Add mapper/helper tests for finding generation if feasible.
 - **Priority:** P1
 - **Suggested PR:** PR04
 - **Feature type:** AI-assisted review without direct AI integration
+- **Notes:** 2026-05-07 — Product intent refined: the AI workflow is prompt generation for manual copy/paste into ChatGPT or another assistant, not direct LLM/API integration. Prompts must be evidence-rich, compact, and explicit about uncertainty. Future reference-log comparison belongs to later benchmarking/spec-module work, not the MVP.
 
 ### Problem
 
 AI can help turn log evidence into coaching language, but only if grounded in structured data. Raw event dumps encourage hallucinated or misleading advice.
 
+The app should not ask an AI to browse Warcraft Logs, infer missing context, or guess from vague summaries. Instead, the app should gather WCL-derived evidence itself, summarize that evidence clearly, and produce prompts that are useful when pasted manually into ChatGPT or another AI assistant.
+
+### Product intent / PO note
+
+The intended AI workflow is **prompt generation**, not direct LLM/API integration.
+
+Users should be able to click actions such as:
+
+- **Generate AI prompt**
+- **Copy player analysis prompt**
+- **Copy fight insight prompt**
+- **Copy officer review prompt**
+- **Copy player feedback prompt**
+
+The app should gather the relevant Warcraft Logs evidence, convert it into a structured and compact prompt, and let the user paste that prompt into ChatGPT or another AI assistant manually.
+
+This keeps the product local-first and avoids storing, managing, or transmitting OpenAI/LLM API keys in the app. A ChatGPT Pro subscription or similar consumer AI product can be used manually through copy/paste, but should not be treated as backend API access.
+
+The long-term goal is for generated prompts to be evidence-rich enough to support meaningful player coaching, for example:
+
+- how a selected player performed on a selected fight;
+- what deaths, avoidable damage, missed cooldowns, consumable gaps, opener issues, or utility gaps are visible;
+- what the player should prioritize improving next;
+- what uncertainty remains because the app does not yet have boss/spec-specific context.
+
+Generated prompts should include all necessary context and data so the AI does not need to browse Warcraft Logs or guess. Raw event dumps should be avoided where possible; summarized, timestamped evidence is preferred.
+
 ### WCL data needed
 
-No new WCL data beyond §2 and §3 review payloads.
+No new WCL data beyond §2 and §3 review payloads for the MVP.
+
+The prompt builder should consume already-derived review data such as:
+
+- fight metadata;
+- participant/player identity;
+- death summaries;
+- recent damage before death;
+- deterministic findings;
+- cooldown, defensive, consumable, opener, and utility summaries when available;
+- known limitations from the analyzer.
+
+Future comparative prompts may depend on §13 Similar Log Benchmarking and §14 Spec/Boss Modules.
 
 ### Generic or boss/spec-specific?
 
-Generic.
+Generic for the MVP.
+
+Prompt templates should include a clear limitations section when boss/spec-specific context is not available. Later versions can enrich prompts with spec/boss modules and reference-log comparisons.
 
 ### MVP implementation approach
 
@@ -551,17 +593,24 @@ On the Player Fight Review page, add copy actions:
 - **Copy structured JSON**
 - **Copy Discord summary**
 
+If PR04 also has access to a fight-level review payload, it may add a fight-level action:
+
+- **Copy fight insight prompt**
+
 The generated prompt should include:
 
 - Encounter.
 - Difficulty.
 - Fight duration.
 - Result.
-- Player/class/spec.
+- Report/fight identifiers.
+- Player/class/spec where relevant.
 - Death evidence.
 - Cooldown/defensive/consumable findings.
-- Opener summary.
-- Known limitations.
+- Opener summary where available.
+- Utility evidence where available.
+- Deterministic top findings from the app.
+- Known limitations and uncertainty.
 - Tone instruction.
 
 Prompt must explicitly instruct the AI to:
@@ -571,6 +620,29 @@ Prompt must explicitly instruct the AI to:
 - Mention uncertainty.
 - Prioritize 2–3 improvements.
 - Reference evidence/timestamps.
+- Separate evidence from interpretation.
+- Avoid inventing boss strategy, spec rules, or blame not present in the provided data.
+
+### Future comparative analysis direction
+
+A later version can improve prompt quality by adding reference-log benchmarking **before** prompt generation.
+
+For a selected player/fight, the app could discover comparable high-performing logs for the same boss, difficulty, class/spec, patch, and similar fight length/item-level bracket where available. It could then extract normalized comparison metrics such as:
+
+- casts per minute;
+- major cooldown first-use timing and total uses;
+- buff/debuff uptime;
+- opener sequence;
+- potion/consumable usage;
+- defensive usage before dangerous events;
+- avoidable damage taken;
+- deaths and death causes;
+- active time/downtime;
+- utility usage such as interrupts or dispels.
+
+The AI prompt would then compare the selected player against summarized reference medians/ranges rather than asking the AI to infer from raw logs.
+
+This is explicitly **out of scope for the §4 MVP** and may depend on §13 Similar Log Benchmarking and §14 Spec/Boss Modules.
 
 ### UI presentation
 
@@ -578,18 +650,37 @@ Add an **AI Review Export** card on player review page.
 
 Use copy buttons with success toasts.
 
+Suggested UI sections inside the card:
+
+- Officer prompt.
+- Player-friendly prompt.
+- Structured JSON.
+- Discord summary.
+- Known limitations included in prompt.
+
+The UI should make it clear that the app is copying a prompt for manual use, not sending data to an AI service.
+
 ### Pitfalls / misleading interpretations
 
 - AI must not infer boss strategy that is not present in the structured data.
 - Officer-facing and player-facing language should be separate.
 - Do not include secrets, tokens, or unnecessary raw data.
+- Do not include large raw event dumps when summarized evidence is enough.
+- Do not imply that ChatGPT Pro or another consumer subscription provides API access to this local app.
+- Do not present future reference-log comparisons as if they exist in the MVP.
 
 ### Acceptance criteria
 
 - User can copy an officer prompt.
 - User can copy a player-friendly prompt.
 - User can copy raw structured JSON.
-- Prompt includes evidence and limitations.
+- User can copy a short Discord-friendly summary if the source review data is available.
+- Generated prompts include enough structured WCL-derived data to be useful when pasted into ChatGPT manually.
+- Prompt generation does not require, store, or call any OpenAI/LLM API key.
+- Prompt text clearly distinguishes evidence, interpretation, and uncertainty.
+- Prompt text includes known analyzer limitations.
+- Prompt text instructs the AI not to invent missing boss/spec context.
+- Future reference-log comparison is documented as a later enhancement, not part of the MVP.
 - No direct API keys or LLM integration are introduced.
 
 ### Verification expected from Codex
@@ -600,11 +691,17 @@ npm run lint
 npm run build
 ```
 
+If prompt-building helpers are introduced, add unit tests if a test framework exists by then. If no test framework exists, manually verify generated prompt output and include representative non-sensitive prompt excerpts in the handoff.
+
 ### Out of scope
 
 - Direct OpenAI/LLM API integration.
+- Storing or managing OpenAI/LLM API keys.
+- Treating ChatGPT Pro or another consumer subscription as API access.
 - Saving generated AI responses.
 - Discord bot integration.
+- Public/reference-log comparison in the §4 MVP.
+- Similar-log discovery or benchmarking unless already delivered by §13.
 
 ---
 
@@ -1647,3 +1744,5 @@ Codex final handoff should include:
 
 - **2026-05-07** — Created initial product backlog for Warcraft Logs Guild Analyzer.
 - **2026-05-07** — Added boss-first workflow as P0 based on officer need to review specific bosses across logs.
+- **2026-05-07** — Refined §4 Structured AI Review Export: prompt-generation-first workflow, no direct LLM/API integration, evidence-rich manual ChatGPT prompts, and future reference-log benchmarking documented as later work.
+- **2026-05-07** — §2 Fight Review Snapshot: added fight-level pull review instructions / implementation follow-up.

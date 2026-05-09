@@ -9,3 +9,8 @@ export const bossesQueryKeys = {
   recent: () => [...bossesQueryKeys.all, 'recent'] as const,
   recentFights: (encounterId: number) => [...bossesQueryKeys.all, 'recentFights', encounterId] as const,
 }
+
+export const fightsQueryKeys = {
+  all: ['fights'] as const,
+  review: (code: string, fightId: number) => [...fightsQueryKeys.all, 'review', code, fightId] as const,
+}

@@ -89,3 +89,50 @@ export type WclRecentBossFightsResponse = {
   }
   fights: WclBossFightListItem[]
 }
+
+
+export type WclFightParticipant = {
+  id: number
+  name: string
+  type?: string | null
+  className?: string | null
+  icon?: string | null
+}
+
+export type WclFightDamageEvent = {
+  timestampRelativeMs: number
+  abilityId?: number | null
+  abilityName: string
+  sourceName?: string | null
+  amount?: number | null
+}
+
+export type WclFightDeathSummary = {
+  playerId: number
+  playerName: string
+  className?: string | null
+  deathTime: number
+  deathTimestampRelativeMs: number
+  finalDamageEvent?: WclFightDamageEvent
+  recentDamageEvents: WclFightDamageEvent[]
+}
+
+export type WclFightReview = {
+  reportCode: string
+  reportTitle: string
+  reportUrl: string
+  fightId: number
+  encounterId: number
+  encounterName: string
+  kill: boolean
+  difficulty: number
+  startTime: number
+  endTime: number
+  durationMs: number
+  participants: WclFightParticipant[]
+  deaths: WclFightDeathSummary[]
+  source: {
+    note: string
+    partial: boolean
+  }
+}
