@@ -108,10 +108,11 @@ Important user requirement:
 
 ## §1 Boss Overview Index
 
-- **Status:** 🔴 Not done
+- **Status:** ✅ Done
 - **Priority:** P0
 - **Suggested PR:** PR01
 - **Feature type:** Product navigation / data aggregation
+- **Notes:** 2026-05-07 — PR01 added boss-first navigation routes `/bosses` and `/bosses/:encounterId`, plus backend endpoints `GET /api/bosses/recent` and `GET /api/bosses/:encounterId/recent-fights`, with recent-report aggregation window messaging and drilldown links into report/fight review flows.
 
 ### Problem
 
@@ -1746,3 +1747,4 @@ Codex final handoff should include:
 - **2026-05-07** — Added boss-first workflow as P0 based on officer need to review specific bosses across logs.
 - **2026-05-07** — Refined §4 Structured AI Review Export: prompt-generation-first workflow, no direct LLM/API integration, evidence-rich manual ChatGPT prompts, and future reference-log benchmarking documented as later work.
 - **2026-05-07** — §2 Fight Review Snapshot: added fight-level pull review instructions / implementation follow-up.
+- **2026-05-09** — Docs sync: marked §1 Boss Overview Index as done with PR01 implementation note to match merged repo state.

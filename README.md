@@ -53,6 +53,11 @@ npm run dev
 - `GET /api/config/status`
 - `GET /api/reports/recent`
 - `GET /api/reports/:code`
+- `GET /api/bosses/recent`
+- `GET /api/bosses/:encounterId/recent-fights`
+- `GET /api/reports/:code/fights/:fightId/review`
+
+Warcraft Logs API access remains server-side only via the local Express backend.
 
 ## Troubleshooting
 
@@ -80,11 +85,20 @@ curl http://localhost:5781/api/config/status
 
 ## Current POC Features
 
-- Dashboard with recent guild reports
-- Links to open reports in Warcraft Logs
-- Report details screen with encounter list
-- Kill/Wipe status + fight duration display
+- Recent Reports Dashboard
+- Report Details View with encounter list and fight metadata
+- Boss Overview Index (`/bosses`)
+- Boss Recent Pulls / Boss Detail View (`/bosses/:encounterId`)
+- Fight Review Snapshot (`/reports/:code/fights/:fightId`)
+- Links to open source reports in Warcraft Logs
 - Loading/error/empty states
+
+Not yet implemented (future backlog items):
+
+- Player-specific fight review
+- Structured AI review export (copy-paste prompt workflow)
+- Local persistence/SQLite caching and review state
+- Player profiles/trends and progression analytics
 
 ## Scripts
 
