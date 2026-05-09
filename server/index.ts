@@ -48,6 +48,21 @@ const resolveFightId = (value: string | string[] | undefined): number | null => 
   return fightId
 }
 
+const resolvePlayerId = (value: string | string[] | undefined): number | null => {
+  if (!value) {
+    return null
+  }
+
+  const idValue = Array.isArray(value) ? value[0] : value
+  const playerId = Number(idValue)
+
+  if (!Number.isFinite(playerId) || playerId <= 0) {
+    return null
+  }
+
+  return playerId
+}
+
 app.get('/api/health', (_req: Request, res: Response) => {
   res.status(200).json({ ok: true })
 })
@@ -135,6 +150,76 @@ app.get('/api/reports/:code/fights/:fightId/review', async (req: Request, res: R
     res.status(500).json({
       error: 'Failed to load fight review.',
       hint: 'Try again. If the problem persists, verify server configuration and report code.',
+    })
+  }
+})
+
+app.get('/api/reports/:code/fights/:fightId/players/:playerId/review', async (req: Request, res: Response) => {
+  const reportCode = resolveReportCodeParam(req.params.code)
+  const fightId = resolveFightId(req.params.fightId)
+  const playerId = resolvePlayerId(req.params.playerId)
+
+  if (!reportCode) {
+    res.status(400).json({
+      error: 'Missing report code.',
+    })
+    return
+  }
+
+  if (!fightId) {
+    res.status(400).json({
+      error: 'Invalid fightId. Expected a positive number.',
+    })
+    return
+  }
+
+  if (!playerId) {
+    res.status(400).json({
+      error: 'Invalid playerId. Expected a positive number.',
+    })
+    return
+  }
+
+  try {
+    const config = getWclConfig()
+    const playerReview = await WclService.getPlayerFightReview(config, reportCode, fightId, playerId)
+
+    res.status(200).json(playerReview)
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unknown error while fetching player fight review.'
+
+    if (message.includes('Invalid fight ID')) {
+      res.status(400).json({
+        error: 'Invalid fightId. Expected a positive number.',
+      })
+      return
+    }
+
+    if (message.includes('Invalid player ID')) {
+      res.status(400).json({
+        error: 'Invalid playerId. Expected a positive number.',
+      })
+      return
+    }
+
+    if (message.includes('No report found') || message.includes('was not found')) {
+      res.status(404).json({
+        error: 'Report, fight, or player was not found.',
+      })
+      return
+    }
+
+    if (message.includes('Warcraft Logs')) {
+      res.status(502).json({
+        error: 'Could not load player fight review data from upstream source.',
+        hint: 'Verify Warcraft Logs credentials and try again shortly.',
+      })
+      return
+    }
+
+    res.status(500).json({
+      error: 'Failed to load player fight review.',
+      hint: 'Try again. If the problem persists, verify server configuration and report/fight/player identifiers.',
     })
   }
 })

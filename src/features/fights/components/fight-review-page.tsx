@@ -2,7 +2,7 @@ import type { FC } from 'react'
 import { ExternalLink } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { StatusPill } from '@/components/ui/status-pill'
-import { getBossDetailsPath, getReportDetailsPath } from '@/lib/routes'
+import { getBossDetailsPath, getPlayerFightReviewPath, getReportDetailsPath } from '@/lib/routes'
 import { FightsMapper } from '../mappers/fights.mapper'
 import type { FightReview } from '../types/fight-review'
 
@@ -138,6 +138,17 @@ export const FightReviewPage: FC<FightReviewPageProps> = ({ review }) => {
                   </span>
                 </p>
 
+                {death.playerId > 0 ? (
+                  <div className="mt-2">
+                    <Link
+                      to={getPlayerFightReviewPath(review.reportCode, review.fightId, death.playerId)}
+                      className="inline-flex rounded-md border border-violet-500/40 px-2.5 py-1 text-xs text-violet-200 hover:bg-violet-500/10"
+                    >
+                      Review player
+                    </Link>
+                  </div>
+                ) : null}
+
                 <p className="mt-2 text-xs uppercase tracking-wide text-slate-400">Contributing damage in previous 10s</p>
                 {!death.recentDamageEvents.length ? (
                   <p className="mt-1 text-sm text-slate-400">No recent damage events were available for this death window.</p>
@@ -177,7 +188,18 @@ export const FightReviewPage: FC<FightReviewPageProps> = ({ review }) => {
                     <td className="px-3 py-2 text-slate-100">{participant.name}</td>
                     <td className="px-3 py-2 text-slate-300">{participant.className ?? participant.type ?? 'Unknown'}</td>
                     <td className="px-3 py-2 text-slate-400">Not available</td>
-                    <td className="px-3 py-2 text-slate-400">Player review coming later</td>
+                    <td className="px-3 py-2">
+                      {participant.id > 0 ? (
+                        <Link
+                          to={getPlayerFightReviewPath(review.reportCode, review.fightId, participant.id)}
+                          className="inline-flex rounded-md border border-violet-500/40 px-2.5 py-1 text-xs text-violet-200 hover:bg-violet-500/10"
+                        >
+                          Review player
+                        </Link>
+                      ) : (
+                        <span className="text-slate-400">Player ID unavailable</span>
+                      )}
+                    </td>
                   </tr>
                 ))}
               </tbody>

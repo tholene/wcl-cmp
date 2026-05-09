@@ -416,10 +416,11 @@ Add unit tests for mappers/helpers if feasible.
 
 ## §3 Player Fight Review
 
-- **Status:** 🔴 Not done
+- **Status:** ✅ Done
 - **Priority:** P0
 - **Suggested PR:** PR03
 - **Feature type:** Raider self-review / officer drilldown
+- **Notes:** 2026-05-10 — PR03 added player fight review route `/reports/:code/fights/:fightId/players/:playerId` and backend endpoint `GET /api/reports/:code/fights/:fightId/players/:playerId/review`, with assignment-context placeholder (`Unknown`), evidence categories aligned to §11 (context/output/execution/survivability/utility/consistency placeholder/confidence), deterministic findings with cautious wording, opener/casts activity, survivability/death evidence, recognized consumable/defensive/utility events where detectable, and confidence/limitations metadata for future §4 structured export and §11 evidence-pack consumption.
 
 ### Product owner note: evidence pack foundation
 

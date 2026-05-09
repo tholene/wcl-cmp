@@ -4,6 +4,7 @@ export const PATHS = {
   BOSS_DETAILS: '/bosses/:encounterId',
   REPORT_DETAILS: '/reports/:code',
   FIGHT_REVIEW: '/reports/:code/fights/:fightId',
+  PLAYER_FIGHT_REVIEW: '/reports/:code/fights/:fightId/players/:playerId',
 } as const
 
 export const getReportDetailsPath = (code: string): string =>
@@ -14,3 +15,8 @@ export const getBossDetailsPath = (encounterId: number): string =>
 
 export const getFightReviewPath = (code: string, fightId: number): string =>
   PATHS.FIGHT_REVIEW.replace(':code', code).replace(':fightId', String(fightId))
+
+export const getPlayerFightReviewPath = (code: string, fightId: number, playerId: number): string =>
+  PATHS.PLAYER_FIGHT_REVIEW.replace(':code', code)
+    .replace(':fightId', String(fightId))
+    .replace(':playerId', String(playerId))

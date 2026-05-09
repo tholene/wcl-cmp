@@ -6,6 +6,9 @@ import type {
   WclFightDamageEvent,
   WclFightDeathSummary,
   WclFightParticipant,
+  WclPlayerFightReview,
+  WclPlayerReviewEvent,
+  WclPlayerReviewFinding,
   WclFightReview,
   WclFightSummary,
   WclRecentBossFightsResponse,
@@ -109,6 +112,35 @@ type FightReviewQueryResponse = {
       } | null
       deaths?: WclEventsResponse | null
       damageTaken?: WclEventsResponse | null
+    } | null
+  }
+}
+
+type PlayerReviewQueryResponse = {
+  reportData?: {
+    report?: {
+      code: string
+      title: string
+      startTime: number
+      fights?: Array<{
+        id: number
+        encounterID: number
+        name?: string | null
+        kill: boolean
+        difficulty: number
+        startTime: number
+        endTime: number
+      }>
+      masterData?: {
+        actors?: WclActor[]
+      } | null
+      casts?: WclEventsResponse | null
+      damageDone?: WclEventsResponse | null
+      damageTaken?: WclEventsResponse | null
+      deaths?: WclEventsResponse | null
+      buffs?: WclEventsResponse | null
+      interrupts?: WclEventsResponse | null
+      dispels?: WclEventsResponse | null
     } | null
   }
 }
@@ -251,6 +283,86 @@ const FIGHT_REVIEW_QUERY = `
   }
 `
 
+const PLAYER_REVIEW_QUERY = `
+  query PlayerFightReview(
+    $code: String!
+    $fightId: Int!
+    $startTime: Float!
+    $endTime: Float!
+  ) {
+    reportData {
+      report(code: $code) {
+        code
+        title
+        startTime
+        fights(fightIDs: [$fightId]) {
+          id
+          encounterID
+          name
+          kill
+          difficulty
+          startTime
+          endTime
+        }
+        masterData(translate: true) {
+          actors {
+            id
+            name
+            type
+            subType
+            icon
+          }
+        }
+        casts: events(
+          startTime: $startTime
+          endTime: $endTime
+          fightIDs: [$fightId]
+          dataType: Casts
+        ) {
+          data
+          nextPageTimestamp
+        }
+        damageDone: events(
+          startTime: $startTime
+          endTime: $endTime
+          fightIDs: [$fightId]
+          dataType: DamageDone
+        ) {
+          data
+          nextPageTimestamp
+        }
+        damageTaken: events(
+          startTime: $startTime
+          endTime: $endTime
+          fightIDs: [$fightId]
+          dataType: DamageTaken
+        ) {
+          data
+          nextPageTimestamp
+        }
+        deaths: events(
+          startTime: $startTime
+          endTime: $endTime
+          fightIDs: [$fightId]
+          dataType: Deaths
+        ) {
+          data
+          nextPageTimestamp
+        }
+        buffs: events(
+          startTime: $startTime
+          endTime: $endTime
+          fightIDs: [$fightId]
+          dataType: Buffs
+        ) {
+          data
+          nextPageTimestamp
+        }
+      }
+    }
+  }
+`
+
 const mapFights = (
   fights: Array<{
     id: number
@@ -287,6 +399,22 @@ const buildAggregationNote = (params: { reportCount: number; failedReportCount: 
 }
 
 const DAMAGE_WINDOW_MS = 10_000
+const OPENER_WINDOW_MS = 45_000
+const LONG_NO_CAST_GAP_MS = 10_000
+
+const CONSUMABLE_ABILITY_NAMES = ['potion', 'healthstone']
+const DEFENSIVE_ABILITY_NAMES = [
+  'barkskin',
+  'shield wall',
+  'ice block',
+  'survival instincts',
+  'astral shift',
+  'blur',
+  'fortifying brew',
+  'divine protection',
+]
+const INTERRUPT_ABILITY_NAMES = ['interrupt', 'counterspell', 'rebuke', 'kick', 'pummel', 'spell lock', 'wind shear']
+const DISPEL_ABILITY_NAMES = ['dispel', 'purify', 'cleanse', 'remove corruption']
 
 const toPositiveNumber = (value: unknown): number | null => {
   if (typeof value !== 'number' || !Number.isFinite(value)) {
@@ -297,6 +425,11 @@ const toPositiveNumber = (value: unknown): number | null => {
 }
 
 const toAbilityName = (event: WclRawEvent): string => event.ability?.name ?? 'Unknown ability'
+
+const includesKnownToken = (abilityName: string, tokens: string[]): boolean => {
+  const normalized = abilityName.toLowerCase()
+  return tokens.some((token) => normalized.includes(token))
+}
 
 const mapDamageEvent = (event: WclRawEvent, fightStartTime: number, sourceName?: string | null): WclFightDamageEvent => {
   const eventTimestamp = toPositiveNumber(event.timestamp) ?? fightStartTime
@@ -309,6 +442,32 @@ const mapDamageEvent = (event: WclRawEvent, fightStartTime: number, sourceName?:
     amount: toPositiveNumber(event.amount),
   }
 }
+
+const mapPlayerReviewEvent = (params: {
+  event: WclRawEvent
+  fightStartTime: number
+  eventType: string
+  actorById: Map<number, WclActor>
+}): WclPlayerReviewEvent => {
+  const eventTimestamp = toPositiveNumber(params.event.timestamp) ?? params.fightStartTime
+  const sourceName = params.actorById.get(params.event.sourceID ?? -1)?.name ?? null
+  const targetName = params.actorById.get(params.event.targetID ?? -1)?.name ?? null
+
+  return {
+    timestampRelativeMs: Math.max(Math.floor(eventTimestamp - params.fightStartTime), 0),
+    eventType: params.eventType,
+    abilityId: params.event.ability?.gameID ?? null,
+    abilityName: toAbilityName(params.event),
+    sourceName,
+    targetName,
+    amount: toPositiveNumber(params.event.amount),
+  }
+}
+
+const sortEventsByTimestamp = (events: WclRawEvent[]): WclRawEvent[] =>
+  [...events]
+    .filter((event) => typeof event.timestamp === 'number')
+    .sort((left, right) => (left.timestamp ?? 0) - (right.timestamp ?? 0))
 
 const mapParticipants = (actors: WclActor[] = []): WclFightParticipant[] =>
   actors
@@ -405,6 +564,180 @@ const mapFightDeaths = (params: {
       recentDamageEvents,
     }
   })
+}
+
+const filterEventsByPlayer = (params: {
+  events: WclRawEvent[]
+  playerId: number
+  mode: 'source' | 'target' | 'either'
+}): WclRawEvent[] => {
+  if (params.mode === 'source') {
+    return params.events.filter((event) => event.sourceID === params.playerId)
+  }
+
+  if (params.mode === 'target') {
+    return params.events.filter((event) => event.targetID === params.playerId)
+  }
+
+  return params.events.filter((event) => event.sourceID === params.playerId || event.targetID === params.playerId)
+}
+
+const mapPlayerEvents = (params: {
+  events: WclRawEvent[]
+  fightStartTime: number
+  eventType: string
+  actorById: Map<number, WclActor>
+}): WclPlayerReviewEvent[] =>
+  sortEventsByTimestamp(params.events).map((event) =>
+    mapPlayerReviewEvent({
+      event,
+      fightStartTime: params.fightStartTime,
+      eventType: params.eventType,
+      actorById: params.actorById,
+    })
+  )
+
+const calculateLongNoCastGaps = (casts: WclPlayerReviewEvent[]): number[] => {
+  if (casts.length < 2) {
+    return []
+  }
+
+  const gaps: number[] = []
+
+  for (let index = 1; index < casts.length; index += 1) {
+    const gap = casts[index].timestampRelativeMs - casts[index - 1].timestampRelativeMs
+    if (gap >= LONG_NO_CAST_GAP_MS) {
+      gaps.push(gap)
+    }
+  }
+
+  return gaps
+}
+
+const buildPlayerReviewSourceNote = (limitations: string[]): string => {
+  if (!limitations.length) {
+    return 'Player review includes evidence from available fight events with cautious interpretation.'
+  }
+
+  return `Data may be partial. ${limitations.join(' ')}`
+}
+
+const buildPlayerReviewFindings = (params: {
+  deaths: WclFightDeathSummary[]
+  openerCasts: WclPlayerReviewEvent[]
+  longNoCastGapsMs: number[]
+  consumableEvents: WclPlayerReviewEvent[]
+  defensiveEvents: WclPlayerReviewEvent[]
+  interruptEvents: WclPlayerReviewEvent[]
+  dispelEvents: WclPlayerReviewEvent[]
+  limitations: string[]
+}): WclPlayerReviewFinding[] => {
+  const findings: WclPlayerReviewFinding[] = []
+
+  if (params.deaths.length) {
+    findings.push({
+      id: 'survivability-death-evidence',
+      category: 'survivability',
+      severity: params.deaths.length > 1 ? 'critical' : 'warning',
+      confidence: 'medium',
+      title: params.deaths.length > 1 ? 'Multiple deaths detected' : 'Death detected',
+      summary:
+        params.deaths.length > 1
+          ? `Multiple deaths were recorded for this player in the pull. Review final lethal events and the previous ${DAMAGE_WINDOW_MS / 1000}s damage windows.`
+          : `A death was recorded for this player in the pull. Review final lethal event and the previous ${DAMAGE_WINDOW_MS / 1000}s damage window.`,
+      evidence: params.deaths.flatMap((death) => [
+        {
+          timestampRelativeMs: death.deathTimestampRelativeMs,
+          eventType: 'death',
+          abilityId: death.finalDamageEvent?.abilityId ?? null,
+          abilityName: death.finalDamageEvent?.abilityName ?? 'Unknown ability',
+          sourceName: death.finalDamageEvent?.sourceName ?? null,
+          amount: death.finalDamageEvent?.amount ?? null,
+        },
+      ]),
+    })
+  }
+
+  if (!params.openerCasts.length) {
+    findings.push({
+      id: 'execution-empty-opener',
+      category: 'execution',
+      severity: 'warning',
+      confidence: 'medium',
+      title: 'No opener casts detected',
+      summary:
+        'No player casts were detected in the first 45 seconds from available events. This may be affected by source event completeness.',
+      evidence: [],
+      limitation: 'Movement, downtime, or missing event pages can affect this signal.',
+    })
+  }
+
+  if (params.longNoCastGapsMs.length) {
+    findings.push({
+      id: 'execution-long-gaps',
+      category: 'execution',
+      severity: 'warning',
+      confidence: 'medium',
+      title: 'Long no-cast gaps detected',
+      summary: `Detected ${params.longNoCastGapsMs.length} gap(s) of ${LONG_NO_CAST_GAP_MS / 1000}s or longer between casts. Review movement, assignments, and fight downtime context.`,
+      evidence: [],
+      limitation: 'Long gaps are evidence for review, not definitive mistakes.',
+    })
+  }
+
+  if (!params.consumableEvents.length) {
+    findings.push({
+      id: 'survivability-no-consumable-detected',
+      category: 'survivability',
+      severity: 'info',
+      confidence: 'low',
+      title: 'No recognized consumable event detected',
+      summary: 'No recognized potion or healthstone event was detected from available fight events.',
+      evidence: [],
+      limitation: 'Consumable detection is generic and may miss some event patterns.',
+    })
+  }
+
+  if (params.deaths.length && !params.defensiveEvents.length) {
+    findings.push({
+      id: 'survivability-no-defensive-detected',
+      category: 'survivability',
+      severity: 'warning',
+      confidence: 'low',
+      title: 'No recognized defensive event detected',
+      summary:
+        'No recognized defensive event was detected for this player from available events. Review manually alongside incoming damage windows.',
+      evidence: [],
+      limitation: 'Defensive detection is based on a small generic ability-name list.',
+    })
+  }
+
+  if (params.interruptEvents.length || params.dispelEvents.length) {
+    findings.push({
+      id: 'utility-events-detected',
+      category: 'utility',
+      severity: 'info',
+      confidence: 'medium',
+      title: 'Utility events detected',
+      summary: `Detected ${params.interruptEvents.length} recognized interrupt event(s) and ${params.dispelEvents.length} recognized dispel event(s).`,
+      evidence: [...params.interruptEvents.slice(0, 3), ...params.dispelEvents.slice(0, 3)],
+    })
+  }
+
+  if (params.limitations.length) {
+    findings.push({
+      id: 'confidence-partial-source',
+      category: 'confidence',
+      severity: 'info',
+      confidence: 'high',
+      title: 'Source limitations detected',
+      summary: 'One or more evidence categories may be partial based on available source events.',
+      evidence: [],
+      limitation: params.limitations.join(' '),
+    })
+  }
+
+  return findings
 }
 
 const toBossFightContext = (report: WclReportDetails): AggregatedFightContext[] =>
@@ -614,6 +947,260 @@ export const WclService = {
           deathsPartial,
         }),
         partial: participantPartial || deathsPartial,
+      },
+    }
+  },
+
+  getPlayerFightReview: async (
+    config: WclConfig,
+    code: string,
+    fightId: number,
+    playerId: number
+  ): Promise<WclPlayerFightReview> => {
+    if (!Number.isFinite(fightId) || fightId <= 0) {
+      throw createWclServiceError('Invalid fight ID. Expected a positive number.', 'BAD_REQUEST')
+    }
+
+    if (!Number.isFinite(playerId) || playerId <= 0) {
+      throw createWclServiceError('Invalid player ID. Expected a positive number.', 'BAD_REQUEST')
+    }
+
+    const reportDetails = await WclService.getReportDetails(config, code).catch((error: unknown) => {
+      const message = error instanceof Error ? error.message : 'Failed to load report details.'
+
+      if (isNotFoundMessage(message)) {
+        throw createWclServiceError(`No report found for code: ${code}`, 'NOT_FOUND')
+      }
+
+      throw createWclServiceError('Failed to load report details from Warcraft Logs.', 'UPSTREAM')
+    })
+
+    const fight = reportDetails.fights.find((fightItem) => fightItem.id === fightId)
+
+    if (!fight) {
+      throw createWclServiceError(`Fight ${fightId} was not found for report ${code}.`, 'NOT_FOUND')
+    }
+
+    const queryResponse = await queryWclGraphQl<PlayerReviewQueryResponse>({
+      config,
+      query: PLAYER_REVIEW_QUERY,
+      variables: {
+        code,
+        fightId,
+        startTime: fight.startTime,
+        endTime: fight.endTime,
+      },
+    }).catch(() => {
+      throw createWclServiceError('Failed to load player fight review evidence from Warcraft Logs.', 'UPSTREAM')
+    })
+
+    const report = queryResponse.reportData?.report
+
+    if (!report) {
+      throw createWclServiceError(`No report found for code: ${code}`, 'NOT_FOUND')
+    }
+
+    const selectedFight = report.fights?.find((fightItem) => fightItem.id === fightId)
+
+    if (!selectedFight) {
+      throw createWclServiceError(`Fight ${fightId} was not found for report ${code}.`, 'NOT_FOUND')
+    }
+
+    const actorById = toActorMap(report.masterData?.actors ?? [])
+    const selectedPlayer = actorById.get(playerId)
+
+    if (!selectedPlayer || selectedPlayer.type !== 'Player') {
+      throw createWclServiceError(`Player ${playerId} was not found in fight ${fightId}.`, 'NOT_FOUND')
+    }
+
+    const fightDurationMs = Math.max(selectedFight.endTime - selectedFight.startTime, 0)
+    const absoluteStartTime = report.startTime + selectedFight.startTime
+    const absoluteEndTime = report.startTime + selectedFight.endTime
+
+    const castsRaw = report.casts?.data ?? []
+    const damageDoneRaw = report.damageDone?.data ?? []
+    const damageTakenRaw = report.damageTaken?.data ?? []
+    const deathsRaw = report.deaths?.data ?? []
+    const buffsRaw = report.buffs?.data ?? []
+
+    const playerCastEvents = mapPlayerEvents({
+      events: filterEventsByPlayer({ events: castsRaw, playerId, mode: 'source' }),
+      fightStartTime: selectedFight.startTime,
+      eventType: 'cast',
+      actorById,
+    })
+
+    const playerDamageDoneEvents = mapPlayerEvents({
+      events: filterEventsByPlayer({ events: damageDoneRaw, playerId, mode: 'source' }),
+      fightStartTime: selectedFight.startTime,
+      eventType: 'damageDone',
+      actorById,
+    })
+
+    const playerDamageTakenEvents = mapPlayerEvents({
+      events: filterEventsByPlayer({ events: damageTakenRaw, playerId, mode: 'target' }),
+      fightStartTime: selectedFight.startTime,
+      eventType: 'damageTaken',
+      actorById,
+    })
+
+    const playerBuffEvents = mapPlayerEvents({
+      events: filterEventsByPlayer({ events: buffsRaw, playerId, mode: 'either' }),
+      fightStartTime: selectedFight.startTime,
+      eventType: 'buff',
+      actorById,
+    })
+
+    const playerDeaths = mapFightDeaths({
+      deaths: filterEventsByPlayer({ events: deathsRaw, playerId, mode: 'target' }),
+      damageTaken: filterEventsByPlayer({ events: damageTakenRaw, playerId, mode: 'target' }),
+      actorById,
+      fightStartTime: selectedFight.startTime,
+      reportStartTime: report.startTime,
+    })
+
+    const openerEvents = playerCastEvents.filter((event) => event.timestampRelativeMs <= OPENER_WINDOW_MS)
+    const longNoCastGapsMs = calculateLongNoCastGaps(playerCastEvents)
+
+    const consumableEvents = playerBuffEvents.filter((event) => includesKnownToken(event.abilityName, CONSUMABLE_ABILITY_NAMES))
+    const defensiveEvents = playerBuffEvents.filter((event) => includesKnownToken(event.abilityName, DEFENSIVE_ABILITY_NAMES))
+    const interruptEvents = playerCastEvents.filter((event) => includesKnownToken(event.abilityName, INTERRUPT_ABILITY_NAMES))
+    const dispelEvents = playerCastEvents.filter((event) => includesKnownToken(event.abilityName, DISPEL_ABILITY_NAMES))
+
+    const totalDamageDone = playerDamageDoneEvents.reduce((sum, event) => sum + (event.amount ?? 0), 0)
+    const castCount = playerCastEvents.length
+    const castsPerMinute = fightDurationMs > 0 ? Number(((castCount * 60_000) / fightDurationMs).toFixed(2)) : 0
+
+    const limitations: string[] = []
+
+    if (report.casts?.nextPageTimestamp) {
+      limitations.push('Cast events may be partial because event pagination returned additional pages.')
+    }
+
+    if (report.damageDone?.nextPageTimestamp) {
+      limitations.push('Damage done events may be partial because event pagination returned additional pages.')
+    }
+
+    if (report.damageTaken?.nextPageTimestamp) {
+      limitations.push('Damage taken events may be partial because event pagination returned additional pages.')
+    }
+
+    if (report.deaths?.nextPageTimestamp) {
+      limitations.push('Death events may be partial because event pagination returned additional pages.')
+    }
+
+    if (report.buffs?.nextPageTimestamp) {
+      limitations.push('Buff/consumable/defensive evidence may be partial because event pagination returned additional pages.')
+    }
+
+    limitations.push('Assignment context is unknown in PR03 and may change interpretation of activity and utility events.')
+
+    const findings = buildPlayerReviewFindings({
+      deaths: playerDeaths,
+      openerCasts: openerEvents,
+      longNoCastGapsMs,
+      consumableEvents,
+      defensiveEvents,
+      interruptEvents,
+      dispelEvents,
+      limitations,
+    })
+
+    const sourceNote = buildPlayerReviewSourceNote(limitations)
+
+    return {
+      reportCode: report.code,
+      reportTitle: report.title,
+      reportUrl: `https://www.warcraftlogs.com/reports/${report.code}`,
+      fight: {
+        id: selectedFight.id,
+        encounterId: selectedFight.encounterID,
+        encounterName: selectedFight.name ?? `Unknown encounter ${selectedFight.encounterID}`,
+        kill: selectedFight.kill,
+        difficulty: selectedFight.difficulty,
+        startTime: absoluteStartTime,
+        endTime: absoluteEndTime,
+        durationMs: fightDurationMs,
+      },
+      player: {
+        id: selectedPlayer.id,
+        name: selectedPlayer.name ?? `Unknown player ${selectedPlayer.id}`,
+        type: selectedPlayer.type ?? null,
+        className: selectedPlayer.subType ?? null,
+        icon: selectedPlayer.icon ?? null,
+      },
+      assignmentContext: {
+        status: 'Unknown',
+        note: 'Assignment context is unknown in PR03. Interpretation may change when assignment tagging exists.',
+      },
+      evidence: {
+        context: {
+          summary: 'Assignment and mechanic responsibility context is not available in PR03.',
+          confidence: 'low',
+          limitations: ['Assignment tags are not implemented yet.'],
+        },
+        output: {
+          summary: `Detected ${playerDamageDoneEvents.length} damage-done evidence events from available data.`,
+          confidence: report.damageDone?.nextPageTimestamp ? 'low' : 'medium',
+          limitations: report.damageDone?.nextPageTimestamp
+            ? ['Damage done events may be partial due to pagination.']
+            : [],
+          damageDoneEvents: playerDamageDoneEvents.slice(0, 25),
+          totalDamageDone,
+        },
+        execution: {
+          summary: `Detected ${castCount} cast events with ${longNoCastGapsMs.length} long no-cast gap(s).`,
+          confidence: report.casts?.nextPageTimestamp ? 'low' : 'medium',
+          limitations: report.casts?.nextPageTimestamp
+            ? ['Cast events may be partial due to pagination.']
+            : ['Long no-cast gaps can be caused by movement, downtime, or assignments.'],
+          openerEvents,
+          casts: playerCastEvents.slice(0, 120),
+          castCount,
+          castsPerMinute,
+          longNoCastGapsMs,
+        },
+        survivability: {
+          summary: `Detected ${playerDeaths.length} death event(s), ${playerDamageTakenEvents.length} damage-taken event(s), and ${defensiveEvents.length} recognized defensive event(s).`,
+          confidence: report.damageTaken?.nextPageTimestamp || report.deaths?.nextPageTimestamp ? 'low' : 'medium',
+          limitations:
+            report.damageTaken?.nextPageTimestamp || report.deaths?.nextPageTimestamp
+              ? ['Damage taken and/or death windows may be partial due to pagination.']
+              : ['Defensive and consumable detection uses generic ability-name matching.'],
+          deaths: playerDeaths,
+          damageTakenEvents: playerDamageTakenEvents.slice(0, 80),
+          defensiveEvents: defensiveEvents.slice(0, 30),
+          consumableEvents: consumableEvents.slice(0, 30),
+        },
+        utility: {
+          summary: `Detected ${interruptEvents.length} recognized interrupt event(s) and ${dispelEvents.length} recognized dispel event(s) from available events.`,
+          confidence: 'low',
+          limitations: ['Utility detection is generic and based on recognizable cast names in available events.'],
+          interrupts: interruptEvents,
+          dispels: dispelEvents,
+        },
+        consistency: {
+          summary: 'Consistency/trend evidence is a placeholder in PR03 and requires multi-pull historical context.',
+          confidence: 'low',
+          limitations: ['Cross-pull trend analysis is out of scope for PR03.'],
+        },
+        confidence: {
+          summary: sourceNote,
+          confidence: limitations.length ? 'low' : 'medium',
+          limitations,
+        },
+      },
+      topFindings: findings,
+      source: {
+        note: sourceNote,
+        partial: Boolean(
+          report.casts?.nextPageTimestamp ||
+            report.damageDone?.nextPageTimestamp ||
+            report.damageTaken?.nextPageTimestamp ||
+            report.deaths?.nextPageTimestamp ||
+            report.buffs?.nextPageTimestamp
+        ),
+        limitations,
       },
     }
   },
