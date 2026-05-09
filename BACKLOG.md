@@ -4,7 +4,7 @@ Product owner: ChatGPT
 Project: Local Warcraft Logs Guild Analyzer
 Audience: Saves The Day guild log reviewer / raid officer
 Status: Initial product backlog
-Last updated: 2026-05-07
+Last updated: 2026-05-09
 
 ---
 
@@ -48,6 +48,8 @@ Important user requirement:
 4. **Avoid misleading rankings.**
    - Do not reduce players to raw DPS/HPS or parse.
    - Separate throughput, survivability, mechanics, utility, consistency, and confidence.
+   - Keep assignment context visible: free-DPS expectations differ from raid-leading and mechanic-assigned responsibilities.
+   - Separate evidence, interpretation, and uncertainty in review output.
 
 5. **Local-first and private.**
    - WCL credentials stay server-side.
@@ -58,6 +60,10 @@ Important user requirement:
 6. **Small, reviewable PRs.**
    - Each PR should have a clear scope, acceptance criteria, and actual verification output.
    - Side findings should become backlog items or GitHub issues, not hidden unrelated fixes.
+
+7. **Success matrix before trusted scoring.**
+   - Do not ship trusted raid-readiness/scoring recommendations before a shared success matrix exists.
+   - Scoring must consume context-aware evidence categories, not raw parse/DPS/HPS alone.
 
 ---
 
@@ -95,10 +101,11 @@ Important user requirement:
 8. **§8 Cooldown and Opener Analyzer v1** — spec-configurable cooldown tracking and opener timeline.
 9. **§9 Death and Wipe Pattern Analysis v1** — death clusters, repeated lethal events, contributing damage.
 10. **§10 Review Workflow UX** — notes, reviewed flags, action items, Discord export.
-11. **§11 Guild Player Index / Raid Readiness** — transparent role-aware scoring.
-12. **§12 Raid Team Builder** — boss-specific roster assistance.
-13. **§13 Similar Log Benchmarking** — compare to self, guild peers, then public similar logs.
-14. **§14 Spec/Boss Modules** — modular rules for specific specs and encounters.
+11. **§11 Player Success Matrix and Evidence Packs** — context-aware evidence framework for player evaluation.
+12. **§12 Guild Player Index / Raid Readiness** — transparent role-aware scoring that depends on §11.
+13. **§13 Raid Team Builder** — boss-specific roster assistance.
+14. **§14 Similar Log Benchmarking** — compare to self, guild peers, then public similar logs.
+15. **§15 Spec/Boss Modules** — modular rules for specific specs and encounters.
 
 ---
 
@@ -108,10 +115,11 @@ Important user requirement:
 
 ## §1 Boss Overview Index
 
-- **Status:** 🔴 Not done
+- **Status:** ✅ Done
 - **Priority:** P0
 - **Suggested PR:** PR01
 - **Feature type:** Product navigation / data aggregation
+- **Notes:** 2026-05-07 — PR01 added boss-first navigation routes `/bosses` and `/bosses/:encounterId`, plus backend endpoints `GET /api/bosses/recent` and `GET /api/bosses/:encounterId/recent-fights`, with recent-report aggregation window messaging and drilldown links into report/fight review flows.
 
 ### Problem
 
@@ -413,6 +421,27 @@ Add unit tests for mappers/helpers if feasible.
 - **Suggested PR:** PR03
 - **Feature type:** Raider self-review / officer drilldown
 
+### Product owner note: evidence pack foundation
+
+PR03 should preserve structured evidence so Player Fight Review becomes the first source for future evidence packs and the §11 success matrix.
+
+Structured data should be preserved for:
+
+- Output context.
+- Cast execution.
+- Cancelled casts / no-cast gaps if available.
+- Cooldown usage.
+- Survivability.
+- Utility.
+- Assignment context placeholder.
+- Confidence / limitations.
+
+MVP guidance:
+
+- Assignment context may be `Unknown` in PR03.
+- Manual assignment tagging belongs to a later PR.
+- PR03 should not fake spec-specific advice before §15 Spec/Boss Modules exists.
+
 ### Problem
 
 Raiders and officers need to click a player in a fight and get a concise, evidence-based review.
@@ -576,7 +605,7 @@ The prompt builder should consume already-derived review data such as:
 - cooldown, defensive, consumable, opener, and utility summaries when available;
 - known limitations from the analyzer.
 
-Future comparative prompts may depend on §13 Similar Log Benchmarking and §14 Spec/Boss Modules.
+Future comparative prompts may depend on §14 Similar Log Benchmarking and §15 Spec/Boss Modules.
 
 ### Generic or boss/spec-specific?
 
@@ -642,7 +671,7 @@ For a selected player/fight, the app could discover comparable high-performing l
 
 The AI prompt would then compare the selected player against summarized reference medians/ranges rather than asking the AI to infer from raw logs.
 
-This is explicitly **out of scope for the §4 MVP** and may depend on §13 Similar Log Benchmarking and §14 Spec/Boss Modules.
+This is explicitly **out of scope for the §4 MVP** and may depend on §14 Similar Log Benchmarking and §15 Spec/Boss Modules.
 
 ### UI presentation
 
@@ -701,7 +730,7 @@ If prompt-building helpers are introduced, add unit tests if a test framework ex
 - Saving generated AI responses.
 - Discord bot integration.
 - Public/reference-log comparison in the §4 MVP.
-- Similar-log discovery or benchmarking unless already delivered by §13.
+- Similar-log discovery or benchmarking unless already delivered by §14.
 
 ---
 
@@ -1208,12 +1237,148 @@ If DB schema changes, migration/init verification is required.
 
 ---
 
-## §11 Guild Player Index / Raid Readiness
+## §11 Player Success Matrix and Evidence Packs
+
+- **Status:** 🔴 Not done
+- **Priority:** P1
+- **Suggested PR:** PR11+
+- **Feature type:** Officer decision support / player evaluation framework
+
+### Problem
+
+Officers need a consistent way to evaluate players without taking raw DPS/HPS/parse numbers at face value.
+
+The app should help answer:
+
+- What evidence supports this player feedback?
+- Was the player assigned special mechanics or free to maximize damage?
+- Is the issue throughput, execution, survivability, utility, consistency, or context?
+- Is the finding repeated or based on one pull?
+- How confident are we?
+
+### Product intent
+
+Define a shared success matrix with visible categories:
+
+1. Context
+2. Output
+3. Execution
+4. Survivability
+5. Utility / assignments
+6. Consistency / trend
+7. Confidence
+
+The MVP should not produce a single opaque score. It should keep evidence, interpretation, and uncertainty explicit.
+
+### WCL data needed
+
+- Fight metadata.
+- Player identity, class/spec, role if available.
+- Cast events.
+- Cancelled/interrupted cast events if available.
+- Damage done by target.
+- Damage taken.
+- Death summaries.
+- Buff/debuff events.
+- Interrupts/dispels.
+- Cooldown casts.
+- Potion/healthstone/defensive casts.
+- Fight participants for guild peer comparison.
+
+### Manual/local data needed later
+
+- Assignment tags.
+- Raid leader / shotcaller tags.
+- Officer notes.
+- Review action items.
+
+### Generic or boss/spec-specific?
+
+Generic framework first. Later enrichment can come from §14 Similar Log Benchmarking and §15 Spec/Boss Modules.
+
+### MVP implementation approach
+
+- Extend player/fight review payloads to keep matrix-ready evidence categories explicit.
+- Use cautious labels and confidence markers rather than hidden weighted scoring.
+- Keep assignment context as explicit `Unknown` when no assignment data exists.
+- Ensure downstream scoring/readiness work consumes this matrix instead of bypassing it.
+
+### Example use case: Frost Mage review
+
+Use this as a product direction example, not immediate implementation scope.
+
+Potential evidence dimensions:
+
+- Cancelled casts per minute.
+- Active time / downtime.
+- Longest no-cast gaps.
+- Opener sequence.
+- Major cooldown timing.
+- Defensive usage such as Mirror Image before predictable damage.
+- Boss vs add/padding damage split.
+- Comparison against guild frost mage cohort.
+
+Mirror Image should be treated cautiously. It can be a defensive planning signal, but low severity unless tied to deaths, dangerous damage windows, or repeated missed defensive opportunities.
+
+### UI presentation
+
+Player/fight review should present matrix categories side-by-side with evidence snippets and confidence labels.
+
+Suggested pattern:
+
+```txt
+Category      Evidence summary                     Confidence
+Context       Assignment unknown; RL tag missing   Low
+Execution     3 long no-cast gaps; 7 cancels       Medium
+Survivability Died twice after avoidable damage    Medium
+```
+
+### Pitfalls / misleading interpretations
+
+- Raw DPS/HPS can be misleading.
+- Padding may be acceptable or expected for unassigned DPS players depending on strategy.
+- Assigned players, raid leaders, and mechanic handlers need context-aware evaluation.
+- Cancelled casts may indicate poor movement planning, but can also be caused by mechanics.
+- Defensive usage can be minor unless tied to actual damage events.
+- Do not infer assignment responsibility without explicit data or officer tags.
+
+### Acceptance criteria
+
+- Backlog defines a shared success matrix with explicit categories.
+- Matrix framing clearly states raw parse/DPS/HPS is insufficient for officer decisions.
+- Evidence, interpretation, and uncertainty are explicitly separated.
+- Assignment context is represented and can remain `Unknown` in MVP.
+- Guild peer comparison can be incorporated without reducing review to one opaque number.
+
+### Verification expected from Codex
+
+```bash
+npm run typecheck
+npm run lint
+npm run build
+git diff --check
+```
+
+### Out of scope
+
+- Implementing success matrix UI.
+- Implementing cancelled-cast analyzers.
+- Frost mage-specific module logic.
+- Mirror Image scoring logic.
+- Direct scoring algorithm changes in this docs-only PR.
+
+---
+
+## §12 Guild Player Index / Raid Readiness
 
 - **Status:** 🔴 Not done
 - **Priority:** P3
-- **Suggested PR:** PR11
+- **Suggested PR:** PR12
 - **Feature type:** Roster support / scoring
+
+### Dependency note
+
+This item must consume §11 Player Success Matrix and Evidence Packs as its input model. It must not score players solely from raw DPS/HPS/parse and should remain transparent and role-aware.
 
 ### Problem
 
@@ -1301,11 +1466,11 @@ npm run build
 
 ---
 
-## §12 Raid Team Builder
+## §13 Raid Team Builder
 
 - **Status:** 🔴 Not done
 - **Priority:** P3
-- **Suggested PR:** PR12
+- **Suggested PR:** PR13
 - **Feature type:** Raid planning
 
 ### Problem
@@ -1395,12 +1560,16 @@ npm run build
 
 ---
 
-## §13 Similar Log Benchmarking
+## §14 Similar Log Benchmarking
 
 - **Status:** 🔴 Not done
 - **Priority:** P4
-- **Suggested PR:** PR13+
+- **Suggested PR:** PR14+
 - **Feature type:** Advanced comparison
+
+### Dependency note
+
+Benchmarking outputs should feed matrix categories in §11 (context, output, execution, survivability, utility, consistency, confidence) rather than becoming parse-only ranking shortcuts.
 
 ### Problem
 
@@ -1476,12 +1645,16 @@ npm run build
 
 ---
 
-## §14 Spec/Boss Modules
+## §15 Spec/Boss Modules
 
 - **Status:** 🔴 Not done
 - **Priority:** P4
-- **Suggested PR:** PR14+
+- **Suggested PR:** PR15+
 - **Feature type:** Expert rules / analyzer plugins
+
+### Dependency note
+
+Spec/boss modules should enrich success-matrix evidence quality and confidence, not bypass matrix categories with opaque judgments.
 
 ### Problem
 
@@ -1746,3 +1919,4 @@ Codex final handoff should include:
 - **2026-05-07** — Added boss-first workflow as P0 based on officer need to review specific bosses across logs.
 - **2026-05-07** — Refined §4 Structured AI Review Export: prompt-generation-first workflow, no direct LLM/API integration, evidence-rich manual ChatGPT prompts, and future reference-log benchmarking documented as later work.
 - **2026-05-07** — §2 Fight Review Snapshot: added fight-level pull review instructions / implementation follow-up.
+- **2026-05-09** — Added Player Success Matrix and Evidence Packs backlog item based on officer feedback about context-aware player evaluation.
