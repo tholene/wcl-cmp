@@ -21,20 +21,33 @@ function formatFinding(finding: PlayerReviewFinding): string {
   return `  [${finding.severity.toUpperCase()}] ${finding.title} (${finding.category}, confidence: ${finding.confidence})\n  ${finding.summary}${limitation}`
 }
 
-const OFFICER_GUARDRAILS = `INSTRUCTIONS:
-- Use ONLY the evidence provided above — do not invent boss mechanics, spec rotations, or assignment information.
-- Acknowledge uncertainty explicitly when confidence is low or data is partial.
-- Separate observable evidence from interpretation.
-- Do not assign blame. Focus on constructive, actionable improvements.
-- Prioritize 2–3 specific improvements the player can act on next pull.
+const OFFICER_GUARDRAILS = `RESPONSE FORMAT — use exactly these five sections in order:
+1. Visible signals — what this data clearly shows (be specific, cite timestamps and values)
+2. Potential concerns — what warrants officer follow-up (distinguish evidence from inference)
+3. Analyzer limitations — what the system could not detect (2–3 bullets maximum; do not open the response with this section)
+4. Manual checks in WCL — specific log views the officer should pull up
+5. Suggested player-facing feedback — include ONLY if sections 1 or 2 contain sufficient evidence; otherwise omit this section
+
+GROUND RULES:
+- Do not open with caveats or apologies. Lead with what you can see.
+- Distinguish "the analyzer could not detect X" from "the player failed at X." Never conflate them.
+- Do not judge performance as good or bad unless the evidence above is strong and unambiguous.
+- Do not invent boss mechanics, spec rotations, or assignment context that are not in the data.
 - If assignment context is Unknown, do not infer what the player should have been doing.`
 
-const PLAYER_GUARDRAILS = `INSTRUCTIONS:
-- Use ONLY the evidence provided above — do not invent boss mechanics, spec rotations, or assignment information.
-- Acknowledge uncertainty explicitly when confidence is low or data is partial.
+const PLAYER_GUARDRAILS = `RESPONSE FORMAT — use exactly these five sections in order:
+1. What went well — observable positives from this data
+2. Areas to look at — things worth the player reviewing (distinguish evidence from inference)
+3. Data gaps — what the analyzer could not see (2–3 bullets maximum)
+4. Suggested checks — specific things to review in the WCL log
+5. One or two actionable suggestions — only if sections 1 or 2 support them
+
+GROUND RULES:
+- Do not open with caveats or disclaimers. Lead with something concrete.
 - Write in a supportive, non-shaming tone. Avoid blame language.
-- Separate observable evidence from interpretation.
-- Prioritize 2–3 specific, actionable improvements phrased as suggestions, not criticisms.
+- Distinguish "the analyzer could not detect X" from "you made a mistake." Never conflate them.
+- Do not judge overall performance as good or bad unless the evidence is unambiguous.
+- Do not invent boss mechanics, spec rotations, or assignment context that are not in the data.
 - If assignment context is Unknown, do not infer what the player should have been doing.`
 
 function buildEvidenceBlock(review: PlayerFightReview, noDeathsLabel: string): string[] {

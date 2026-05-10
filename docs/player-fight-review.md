@@ -71,10 +71,12 @@ PR03 does **not** implement scoring, readiness ranking, or final success-matrix 
 ## Known limitations
 
 - Event pagination may leave categories partial on some pulls.
-- Assignment context remains `Unknown` in PR03.
+- Assignment context remains `Unknown`.
 - Utility/consumable/defensive detection is generic and based on recognizable event names.
 - Interrupt/dispels are surfaced only where detectable from available events.
-- Cross-pull consistency/trend remains placeholder-only in this PR.
+- Cross-pull consistency/trend remains placeholder-only.
+- Death timeline is filtered to real player actors only (`type === 'Player'` or has a WoW class/`subType`). Pets and NPC guardians are excluded.
+- WCL occasionally produces cast events with no ability name; these are excluded from the opener timeline and cast count, and a limitation note is surfaced when events are dropped. This is a WCL data quality issue, not a mapping bug. No spec-specific spell database is in scope.
 
 ## Out of scope in PR03
 

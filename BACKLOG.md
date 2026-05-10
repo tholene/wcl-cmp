@@ -95,6 +95,7 @@ Important user requirement:
 2. **§2 Fight Review Snapshot** — deaths, wipe signals, player drilldown from one fight.
 3. **§3 Player Fight Review** — click player and see personal review with opener/cooldowns/survivability.
 4. ✅ **§4 Structured AI Review Export** — copy-pasteable officer/player feedback prompts grounded in app metrics. (PR04)
+4b. ✅ **§PR05 Player Review UX and Prompt Quality Polish** — player search in fight review, death-list actor filtering, AI prompt structure improvements. (PR05)
 5. **§5 Local Persistence Foundation** — SQLite cache and reviewed state.
 6. **§6 Player Profiles and Trends** — player history, improvement/regression, action items.
 7. **§7 Boss Progression Dashboard** — boss-specific history, best pulls, recurring wipe causes.
@@ -736,11 +737,38 @@ If prompt-building helpers are introduced, add unit tests if a test framework ex
 
 ---
 
+## §PR05 Player Review UX and Prompt Quality Polish
+
+- **Status:** ✅ Done — PR05
+- **Priority:** P1
+- **Feature type:** UX polish and AI prompt quality
+
+### Delivered
+
+- **Death timeline filtering** — `getFightReview` now pre-filters raw death events to player actors only (`type === 'Player'` or `subType != null`). Pets, NPC guardians, and other non-player actors no longer appear in the death timeline.
+- **Participant filter strengthened** — participant list uses the same dual heuristic (type or className) for robustness.
+- **Player search in fight review** — search input added to the Participants section on the Fight Review page. Filters the participant table by name in real time. No new routes or API endpoints.
+- **Ability name filtering** — cast events with no ability name from WCL (`Unknown ability`) are now excluded from the opener timeline and cast count. A limitation note is surfaced when events are dropped.
+- **`getPlayerFightReview` validation** — secondary guard uses `type === 'Player' || subType != null` to tolerate edge-case actor types.
+- **Officer prompt restructured** — `buildOfficerReviewPrompt` now requests a 5-section structured response: Visible signals → Potential concerns → Analyzer limitations → Manual WCL checks → Suggested player-facing feedback. Guardrails explicitly tell the AI not to lead with caveats and not to conflate "system gap" with "player mistake."
+- **Player feedback prompt updated** — same 5-section format with softer tone preserved.
+
+### Out of scope (deferred to later PRs)
+- Local persistence / SQLite
+- Player profiles and trends
+- Raid readiness scoring
+- Similar-log benchmarking
+- Spec-specific rotation analysis
+- Boss-specific mechanic judgment
+- Direct LLM/OpenAI API integration
+
+---
+
 ## §5 Local Persistence Foundation
 
 - **Status:** 🔴 Not done
 - **Priority:** P1
-- **Suggested PR:** PR05
+- **Suggested PR:** PR06
 - **Feature type:** Infrastructure / product memory
 
 ### Problem

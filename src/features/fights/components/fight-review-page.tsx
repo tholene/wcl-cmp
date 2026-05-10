@@ -1,4 +1,4 @@
-import type { FC } from 'react'
+import { type FC, useState } from 'react'
 import { ExternalLink } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { StatusPill } from '@/components/ui/status-pill'
@@ -11,6 +11,8 @@ type FightReviewPageProps = {
 }
 
 export const FightReviewPage: FC<FightReviewPageProps> = ({ review }) => {
+  const [playerSearch, setPlayerSearch] = useState('')
+
   const firstDeath = review.deaths[0]
 
   const deathCountsByPlayer = review.deaths.reduce<Record<string, number>>((accumulator, death) => {
@@ -22,6 +24,10 @@ export const FightReviewPage: FC<FightReviewPageProps> = ({ review }) => {
   const repeatedEvidencePlayers = Object.entries(deathCountsByPlayer)
     .filter(([, count]) => count > 1)
     .map(([name]) => name)
+
+  const visibleParticipants = playerSearch
+    ? review.participants.filter((p) => p.name.toLowerCase().includes(playerSearch.toLowerCase()))
+    : review.participants
 
   return (
     <section className="space-y-4">
@@ -168,9 +174,22 @@ export const FightReviewPage: FC<FightReviewPageProps> = ({ review }) => {
       </section>
 
       <section className="rounded-xl border border-slate-800 bg-slate-900/70 p-4">
-        <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-300">Participants</h3>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-300">Participants</h3>
+          {review.participants.length > 0 ? (
+            <input
+              type="search"
+              value={playerSearch}
+              onChange={(e) => setPlayerSearch(e.target.value)}
+              placeholder="Search players..."
+              className="rounded-md border border-slate-700 bg-slate-950 px-2.5 py-1 text-sm text-slate-200 placeholder-slate-500 focus:border-violet-500 focus:outline-none"
+            />
+          ) : null}
+        </div>
         {!review.participants.length ? (
           <p className="mt-2 text-sm text-slate-300">No participant list was available from source data.</p>
+        ) : visibleParticipants.length === 0 ? (
+          <p className="mt-2 text-sm text-slate-400">No players match &ldquo;{playerSearch}&rdquo;.</p>
         ) : (
           <div className="mt-3 overflow-hidden rounded-lg border border-slate-800">
             <table className="min-w-full divide-y divide-slate-800 text-sm">
@@ -183,7 +202,7 @@ export const FightReviewPage: FC<FightReviewPageProps> = ({ review }) => {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-800 bg-slate-950/20">
-                {review.participants.map((participant) => (
+                {visibleParticipants.map((participant) => (
                   <tr key={participant.id}>
                     <td className="px-3 py-2 text-slate-100">{participant.name}</td>
                     <td className="px-3 py-2 text-slate-300">{participant.className ?? participant.type ?? 'Unknown'}</td>

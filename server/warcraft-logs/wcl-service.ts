@@ -907,10 +907,14 @@ export const WclService = {
 
     const actorById = toActorMap(report.masterData?.actors ?? [])
     const participants = mapParticipants(report.masterData?.actors ?? []).filter(
-      (participant) => participant.type === 'Player'
+      (participant) => participant.type === 'Player' || participant.className != null
     )
 
-    const deaths = report.deaths?.data ?? []
+    const playerActorIds = new Set(participants.map((p) => p.id))
+
+    const deaths = (report.deaths?.data ?? []).filter(
+      (event) => typeof event.targetID === 'number' && playerActorIds.has(event.targetID)
+    )
     const damageTaken = report.damageTaken?.data ?? []
 
     const mappedDeaths = mapFightDeaths({
@@ -1009,7 +1013,7 @@ export const WclService = {
     const actorById = toActorMap(report.masterData?.actors ?? [])
     const selectedPlayer = actorById.get(playerId)
 
-    if (!selectedPlayer || selectedPlayer.type !== 'Player') {
+    if (!selectedPlayer || (selectedPlayer.type !== 'Player' && !selectedPlayer.subType)) {
       throw createWclServiceError(`Player ${playerId} was not found in fight ${fightId}.`, 'NOT_FOUND')
     }
 
@@ -1059,16 +1063,19 @@ export const WclService = {
       reportStartTime: report.startTime,
     })
 
-    const openerEvents = playerCastEvents.filter((event) => event.timestampRelativeMs <= OPENER_WINDOW_MS)
-    const longNoCastGapsMs = calculateLongNoCastGaps(playerCastEvents)
+    const knownCastEvents = playerCastEvents.filter((event) => event.abilityName !== 'Unknown ability')
+    const unknownAbilityCount = playerCastEvents.length - knownCastEvents.length
+
+    const openerEvents = knownCastEvents.filter((event) => event.timestampRelativeMs <= OPENER_WINDOW_MS)
+    const longNoCastGapsMs = calculateLongNoCastGaps(knownCastEvents)
 
     const consumableEvents = playerBuffEvents.filter((event) => includesKnownToken(event.abilityName, CONSUMABLE_ABILITY_NAMES))
     const defensiveEvents = playerBuffEvents.filter((event) => includesKnownToken(event.abilityName, DEFENSIVE_ABILITY_NAMES))
-    const interruptEvents = playerCastEvents.filter((event) => includesKnownToken(event.abilityName, INTERRUPT_ABILITY_NAMES))
-    const dispelEvents = playerCastEvents.filter((event) => includesKnownToken(event.abilityName, DISPEL_ABILITY_NAMES))
+    const interruptEvents = knownCastEvents.filter((event) => includesKnownToken(event.abilityName, INTERRUPT_ABILITY_NAMES))
+    const dispelEvents = knownCastEvents.filter((event) => includesKnownToken(event.abilityName, DISPEL_ABILITY_NAMES))
 
     const totalDamageDone = playerDamageDoneEvents.reduce((sum, event) => sum + (event.amount ?? 0), 0)
-    const castCount = playerCastEvents.length
+    const castCount = knownCastEvents.length
     const castsPerMinute = fightDurationMs > 0 ? Number(((castCount * 60_000) / fightDurationMs).toFixed(2)) : 0
 
     const limitations: string[] = []
@@ -1093,7 +1100,13 @@ export const WclService = {
       limitations.push('Buff/consumable/defensive evidence may be partial because event pagination returned additional pages.')
     }
 
-    limitations.push('Assignment context is unknown in PR03 and may change interpretation of activity and utility events.')
+    if (unknownAbilityCount > 0) {
+      limitations.push(
+        `${unknownAbilityCount} cast event(s) had no ability name from WCL and were excluded from the cast timeline.`
+      )
+    }
+
+    limitations.push('Assignment context is unknown and may change interpretation of activity and utility events.')
 
     const findings = buildPlayerReviewFindings({
       deaths: playerDeaths,
@@ -1155,7 +1168,7 @@ export const WclService = {
             ? ['Cast events may be partial due to pagination.']
             : ['Long no-cast gaps can be caused by movement, downtime, or assignments.'],
           openerEvents,
-          casts: playerCastEvents.slice(0, 120),
+          casts: knownCastEvents.slice(0, 120),
           castCount,
           castsPerMinute,
           longNoCastGapsMs,
