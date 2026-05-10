@@ -94,7 +94,7 @@ Important user requirement:
 1. **§1 Boss Overview Index** — boss-first navigation across recent reports/logs.
 2. **§2 Fight Review Snapshot** — deaths, wipe signals, player drilldown from one fight.
 3. **§3 Player Fight Review** — click player and see personal review with opener/cooldowns/survivability.
-4. **§4 Structured AI Review Export** — copy-pasteable officer/player feedback prompts grounded in app metrics.
+4. ✅ **§4 Structured AI Review Export** — copy-pasteable officer/player feedback prompts grounded in app metrics. (PR04)
 5. **§5 Local Persistence Foundation** — SQLite cache and reviewed state.
 6. **§6 Player Profiles and Trends** — player history, improvement/regression, action items.
 7. **§7 Boss Progression Dashboard** — boss-specific history, best pulls, recurring wipe causes.
@@ -555,11 +555,12 @@ Add mapper/helper tests for finding generation if feasible.
 
 ## §4 Structured AI Review Export
 
-- **Status:** 🔴 Not done
+- **Status:** ✅ Done — PR04
 - **Priority:** P1
 - **Suggested PR:** PR04
 - **Feature type:** AI-assisted review without direct AI integration
 - **Notes:** 2026-05-07 — Product intent refined: the AI workflow is prompt generation for manual copy/paste into ChatGPT or another assistant, not direct LLM/API integration. Prompts must be evidence-rich, compact, and explicit about uncertainty. Future reference-log comparison belongs to later benchmarking/spec-module work, not the MVP.
+- **Delivered:** 2026-05-10 — Frontend-only. Added `player-ai-review-export.ts` (pure prompt builders), `player-ai-review-export-card.tsx` (copy UX), wired into Player Fight Review page after header. Three exports: officer prompt, player feedback prompt, structured JSON.
 
 ### Problem
 

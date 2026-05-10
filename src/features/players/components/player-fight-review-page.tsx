@@ -5,6 +5,7 @@ import { StatusPill } from '@/components/ui/status-pill'
 import { getFightReviewPath, getReportDetailsPath } from '@/lib/routes'
 import { PlayersMapper } from '../mappers/players.mapper'
 import type { PlayerFightReview } from '../types/player-fight-review'
+import { PlayerAiReviewExportCard } from './player-ai-review-export-card'
 
 type PlayerFightReviewPageProps = {
   review: PlayerFightReview
@@ -73,6 +74,8 @@ export const PlayerFightReviewPage: FC<PlayerFightReviewPageProps> = ({ review }
         </div>
       </div>
     </header>
+
+    <PlayerAiReviewExportCard review={review} />
 
     <section className="rounded-xl border border-slate-800 bg-slate-900/70 p-4">
       <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-300">Assignment context</h3>
