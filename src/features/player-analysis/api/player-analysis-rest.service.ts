@@ -5,7 +5,7 @@ import type {
   PlayerAnalysisExportRequest,
   PlayerAnalysisExportStartResponse,
   PlayerBenchmarkCandidatesRequest,
-  PlayerBenchmarkCandidate,
+  BenchmarkCandidatesResponse,
 } from '../types/player-analysis.types'
 
 async function safeParseResponse<T>(response: Response): Promise<T> {
@@ -55,14 +55,12 @@ export const PlayerAnalysisRestService = {
     return safeParseResponse<PlayerAnalysisExportJob>(response)
   },
 
-  getBenchmarkCandidates: async (
-    request: PlayerBenchmarkCandidatesRequest
-  ): Promise<{ candidates: PlayerBenchmarkCandidate[]; warnings: string[] }> => {
+  getBenchmarkCandidates: async (request: PlayerBenchmarkCandidatesRequest): Promise<BenchmarkCandidatesResponse> => {
     const response = await fetch('/api/player-analysis/benchmark-candidates', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(request),
     })
-    return safeParseResponse<{ candidates: PlayerBenchmarkCandidate[]; warnings: string[] }>(response)
+    return safeParseResponse<BenchmarkCandidatesResponse>(response)
   },
 }

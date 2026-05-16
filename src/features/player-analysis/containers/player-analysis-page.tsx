@@ -6,15 +6,23 @@ import { PlayerAnalysisExportResults } from '../components/player-analysis-expor
 import { PlayerAnalysisPreviewPanel } from '../components/player-analysis-preview-panel'
 import { PlayerAnalysisScopeForm } from '../components/player-analysis-scope-form'
 import { PlayerAnalysisViewsForm } from '../components/player-analysis-views-form'
+import { useBenchmarkCandidates } from '../hooks/use-benchmark-candidates'
 import { usePlayerAnalysisExportJob } from '../hooks/use-player-analysis-export-job'
 import { usePlayerAnalysisPreview } from '../hooks/use-player-analysis-preview'
 import { useRecentPlayers } from '../hooks/use-recent-players'
 import { STABLE_EXPORT_VIEWS, type PlayerAnalysisExportView, type PlayerAnalysisTimeframePreset } from '../types/player-analysis.types'
 
-type BenchmarkConfig = {
+type ManualBenchmarkConfig = {
   reportCode: string
   fightId: string
   playerName: string
+}
+
+type AutoBenchmarkConfig = {
+  targetPercentile: 50 | 75 | 90
+  metric: string
+  itemLevelWindow: number
+  durationWindowPercent: number
 }
 
 export const PlayerAnalysisPage: FC = () => {
@@ -22,6 +30,7 @@ export const PlayerAnalysisPage: FC = () => {
   const recentReportsQuery = useRecentReports()
   const previewMutation = usePlayerAnalysisPreview()
   const exportJob = usePlayerAnalysisExportJob()
+  const benchmarkCandidatesMutation = useBenchmarkCandidates()
 
   const [playerName, setPlayerName] = useState('')
   const [timeframePreset, setTimeframePreset] = useState<PlayerAnalysisTimeframePreset>('last7Days')
@@ -31,8 +40,19 @@ export const PlayerAnalysisPage: FC = () => {
   const [includeTrash, setIncludeTrash] = useState(false)
   const [onlyPlayerPresent, setOnlyPlayerPresent] = useState(true)
   const [selectedViews, setSelectedViews] = useState<PlayerAnalysisExportView[]>([...STABLE_EXPORT_VIEWS])
-  const [includeBenchmark, setIncludeBenchmark] = useState(false)
-  const [benchmarkConfig, setBenchmarkConfig] = useState<BenchmarkConfig>({ reportCode: '', fightId: '', playerName: '' })
+
+  const [benchmarkMode, setBenchmarkMode] = useState<'none' | 'manual' | 'auto'>('none')
+  const [manualBenchmarkConfig, setManualBenchmarkConfig] = useState<ManualBenchmarkConfig>({
+    reportCode: '',
+    fightId: '',
+    playerName: '',
+  })
+  const [autoBenchmarkConfig, setAutoBenchmarkConfig] = useState<AutoBenchmarkConfig>({
+    targetPercentile: 75,
+    metric: 'dps',
+    itemLevelWindow: 10,
+    durationWindowPercent: 35,
+  })
 
   const preview = previewMutation.data ?? null
   const job = exportJob.jobStatus
@@ -46,17 +66,37 @@ export const PlayerAnalysisPage: FC = () => {
     includeTrash,
     onlyPlayerPresent,
     views: selectedViews,
-    ...(includeBenchmark && benchmarkConfig.reportCode && benchmarkConfig.fightId && benchmarkConfig.playerName
+    ...(benchmarkMode !== 'none'
       ? {
           includeBenchmark: true,
           benchmark: {
-            targetPercentile: 75 as const,
+            targetPercentile: autoBenchmarkConfig.targetPercentile,
             requireSameClassSpec: true as const,
-            manualTarget: {
-              reportCode: benchmarkConfig.reportCode,
-              fightId: Number(benchmarkConfig.fightId),
-              playerName: benchmarkConfig.playerName,
-            },
+            itemLevelWindow: autoBenchmarkConfig.itemLevelWindow,
+            killDurationWindowPct: autoBenchmarkConfig.durationWindowPercent,
+            ...(benchmarkMode === 'manual' &&
+            manualBenchmarkConfig.reportCode &&
+            manualBenchmarkConfig.fightId &&
+            manualBenchmarkConfig.playerName
+              ? {
+                  manualTarget: {
+                    reportCode: manualBenchmarkConfig.reportCode,
+                    fightId: Number(manualBenchmarkConfig.fightId),
+                    playerName: manualBenchmarkConfig.playerName,
+                  },
+                }
+              : {}),
+            ...(benchmarkMode === 'auto'
+              ? {
+                  autoConfig: {
+                    mode: 'auto' as const,
+                    targetPercentile: autoBenchmarkConfig.targetPercentile,
+                    metric: autoBenchmarkConfig.metric,
+                    itemLevelWindow: autoBenchmarkConfig.itemLevelWindow,
+                    durationWindowPercent: autoBenchmarkConfig.durationWindowPercent,
+                  },
+                }
+              : {}),
           },
         }
       : {}),
@@ -70,6 +110,33 @@ export const PlayerAnalysisPage: FC = () => {
     if (selectedViews.length === 0) return
     await exportJob.startExport(buildRequest())
   }
+
+  const handleFindCandidates = () => {
+    if (!preview) return
+    const firstFight = preview.includedReports[0]?.includedFights[0]
+    if (!firstFight || !preview.detectedPlayer) return
+    benchmarkCandidatesMutation.mutate({
+      playerName: preview.detectedPlayer.characterName,
+      encounterId: firstFight.encounterId ?? 0,
+      encounterName: firstFight.encounterName,
+      difficulty: firstFight.difficulty,
+      className: preview.detectedPlayer.className,
+      specName: preview.detectedPlayer.specName,
+      itemLevel: preview.detectedPlayer.itemLevel,
+      durationMs: firstFight.durationMs,
+      targetPercentile: autoBenchmarkConfig.targetPercentile,
+      metric: autoBenchmarkConfig.metric,
+      itemLevelWindow: autoBenchmarkConfig.itemLevelWindow,
+      killDurationWindowPct: autoBenchmarkConfig.durationWindowPercent,
+    })
+  }
+
+  const canFindCandidates =
+    !!preview &&
+    (preview.includedReports[0]?.includedFights.length ?? 0) > 0 &&
+    !!preview.detectedPlayer &&
+    preview.detectedPlayer.className !== 'unknown' &&
+    preview.detectedPlayer.specName !== 'unknown'
 
   const showProgress = exportJob.isStarting || job !== null
   const showResults = job?.status === 'complete' || job?.status === 'partial'
@@ -111,10 +178,16 @@ export const PlayerAnalysisPage: FC = () => {
             onSelectedViewsChange={setSelectedViews}
           />
           <PlayerAnalysisBenchmarkForm
-            includeBenchmark={includeBenchmark}
-            benchmarkConfig={benchmarkConfig}
-            onIncludeBenchmarkChange={setIncludeBenchmark}
-            onBenchmarkConfigChange={setBenchmarkConfig}
+            benchmarkMode={benchmarkMode}
+            benchmarkConfig={manualBenchmarkConfig}
+            autoConfig={autoBenchmarkConfig}
+            candidatesResult={benchmarkCandidatesMutation.data ?? null}
+            isFindingCandidates={benchmarkCandidatesMutation.isPending}
+            canFindCandidates={canFindCandidates}
+            onBenchmarkModeChange={setBenchmarkMode}
+            onBenchmarkConfigChange={setManualBenchmarkConfig}
+            onAutoConfigChange={setAutoBenchmarkConfig}
+            onFindCandidates={handleFindCandidates}
           />
         </div>
 

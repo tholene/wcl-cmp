@@ -50,6 +50,8 @@ import type {
   PlayerAnalysisExportView,
   PlayerAnalysisTimeframePreset,
   PlayerDetectedContext,
+  NormalizedBenchmarkCandidate,
+  PlayerBenchmarkCandidatesRequest,
 } from './player-analysis.types'
 
 // ---------------------------------------------------------------------------
@@ -625,7 +627,13 @@ export function startExportJob(config: WclConfig, request: PlayerAnalysisExportR
     30
   )
   const viewCount = request.views.length
-  const benchmarkSteps = request.includeBenchmark && request.benchmark?.manualTarget ? viewCount + 2 : 0
+  const benchmarkSteps = request.includeBenchmark
+    ? request.benchmark?.manualTarget
+      ? viewCount + 2
+      : request.benchmark?.autoConfig
+        ? viewCount + 3
+        : 0
+    : 0
   const totalSteps = 2 + estimatedFights * viewCount + benchmarkSteps + 3 // scan + fights + benchmark + write/zip
 
   JobStore.create(exportId, totalSteps)
@@ -880,10 +888,17 @@ async function runExportJob(
     }
   }
 
-  // Benchmark (manual fallback)
+  // Benchmark
   let benchmarkEnabled = false
   let benchmarkWarnings: string[] = []
   let benchmarkCandidate: Record<string, unknown> | null = null
+  const benchmarkCandidatesPerFight: Array<{
+    encounterId: number
+    difficulty: number
+    candidates: NormalizedBenchmarkCandidate[]
+    selected?: NormalizedBenchmarkCandidate
+    warnings: string[]
+  }> = []
 
   if (request.includeBenchmark && request.benchmark?.manualTarget) {
     const { PlayerAnalysisBenchmarkService } = await import('./player-analysis-benchmark.service')
@@ -963,6 +978,181 @@ async function runExportJob(
 
       benchmarkEnabled = true
     }
+  } else if (request.includeBenchmark && request.benchmark?.autoConfig) {
+    const { PlayerAnalysisBenchmarkService } = await import('./player-analysis-benchmark.service')
+    const autoConfig = request.benchmark.autoConfig
+    const playerClassName = preview.detectedPlayer?.className
+    const playerSpecName = preview.detectedPlayer?.specName
+
+    if (!playerClassName || playerClassName === 'unknown' || !playerSpecName || playerSpecName === 'unknown') {
+      allWarnings.push(
+        'Automated benchmark discovery skipped — player class/spec could not be detected. Use manual benchmark mode or ensure the player appears in at least one CombatantInfo event.'
+      )
+    } else {
+      // Collect unique encounter+difficulty combos from included fights
+      const seenEncounterKeys = new Set<string>()
+      const fightContextsForBenchmark: Array<{
+        encounterId: number
+        difficulty: number
+        durationMs: number
+        encounterName: string
+      }> = []
+      for (const reportPreview of preview.includedReports) {
+        for (const f of reportPreview.includedFights) {
+          const key = `${f.encounterId ?? 0}:${f.difficulty}`
+          if (!seenEncounterKeys.has(key) && (f.encounterId ?? 0) > 0) {
+            seenEncounterKeys.add(key)
+            fightContextsForBenchmark.push({
+              encounterId: f.encounterId ?? 0,
+              difficulty: f.difficulty,
+              durationMs: f.durationMs,
+              encounterName: f.encounterName,
+            })
+          }
+        }
+      }
+
+      JobStore.setStep(exportId, 'Discovering benchmark candidates...')
+
+      let apiSupportedOverall = true
+      for (const fightCtx of fightContextsForBenchmark) {
+        const candidateRequest: PlayerBenchmarkCandidatesRequest = {
+          playerName,
+          encounterId: fightCtx.encounterId,
+          encounterName: fightCtx.encounterName,
+          difficulty: fightCtx.difficulty,
+          className: playerClassName,
+          specName: playerSpecName,
+          itemLevel: null,
+          durationMs: fightCtx.durationMs,
+          targetPercentile: autoConfig.targetPercentile,
+          metric: autoConfig.metric,
+          maxCandidates: autoConfig.maxCandidates ?? 10,
+          itemLevelWindow: autoConfig.itemLevelWindow,
+          killDurationWindowPct: autoConfig.durationWindowPercent,
+        }
+
+        const candidateResult = await PlayerAnalysisBenchmarkService.findBenchmarkCandidates(config, candidateRequest)
+
+        benchmarkCandidatesPerFight.push({
+          encounterId: fightCtx.encounterId,
+          difficulty: fightCtx.difficulty,
+          candidates: candidateResult.candidates,
+          selected: candidateResult.selectedCandidate,
+          warnings: candidateResult.warnings,
+        })
+
+        if (!candidateResult.apiSupported) {
+          allWarnings.push(`WCL characterRankings API not supported for encounter ${fightCtx.encounterId} — auto benchmark disabled.`)
+          apiSupportedOverall = false
+          break
+        }
+      }
+
+      if (apiSupportedOverall) {
+        // Select the first encounter that has a usable candidate
+        const usableEntry = benchmarkCandidatesPerFight.find((e) => e.selected?.validation.hasUsableExportTarget)
+        const selectedCandidate = usableEntry?.selected
+
+        if (selectedCandidate?.reportCode && typeof selectedCandidate.fightId === 'number') {
+          const benchReportCode = selectedCandidate.reportCode
+          const benchFightId = selectedCandidate.fightId
+
+          const benchReportDetails = await WclService.getReportDetails(config, benchReportCode).catch(() => null)
+          if (!benchReportDetails) {
+            allWarnings.push(`Could not load benchmark report ${benchReportCode} — benchmark data will not be included.`)
+          } else {
+            const benchFightDetails = benchReportDetails.fights.find((f) => f.id === benchFightId)
+            if (!benchFightDetails) {
+              allWarnings.push(`Fight ${benchFightId} not found in benchmark report ${benchReportCode} — benchmark data will not be included.`)
+            } else {
+              // Find the benchmark player actor by character name
+              const benchActorMap = await getActorMap(config, benchReportCode)
+              const benchActors = await queryWclGraphQl<ReportPlayersQueryResponse>({
+                config,
+                query: REPORT_PLAYERS_QUERY,
+                variables: { code: benchReportCode },
+              }).catch(() => null)
+
+              const actors = benchActors?.reportData?.report?.masterData?.actors ?? []
+              const benchActor = actors.find(
+                (a) => a.type === 'Player' && a.name?.toLowerCase() === selectedCandidate.characterName.toLowerCase()
+              )
+
+              if (!benchActor) {
+                allWarnings.push(`Could not find player "${selectedCandidate.characterName}" in benchmark report ${benchReportCode} — benchmark data will not be included.`)
+              } else {
+                const benchSourceId = benchActor.id
+                const benchDurationMs = Math.max(benchFightDetails.endTime - benchFightDetails.startTime, 0)
+
+                const benchCtx: FightContext = {
+                  exportId,
+                  subjectType: 'benchmark',
+                  reportCode: benchReportCode,
+                  reportTitle: benchReportDetails.title ?? benchReportCode,
+                  fightId: benchFightId,
+                  encounterId: benchFightDetails.encounterId,
+                  encounterName: benchFightDetails.encounterName,
+                  difficulty: benchFightDetails.difficulty,
+                  kill: benchFightDetails.kill,
+                  fightDurationMs: benchDurationMs,
+                  fightStartTime: benchFightDetails.startTime,
+                }
+
+                for (const view of request.views) {
+                  if (view === 'fightMetadata' || view === 'combatantInfo') continue
+
+                  JobStore.setStep(exportId, `Fetching benchmark — ${VIEW_LABELS[view]}...`, { view })
+
+                  const fetchParams = {
+                    config,
+                    code: benchReportCode,
+                    fightId: benchFightId,
+                    startTime: benchFightDetails.startTime,
+                    endTime: benchFightDetails.endTime,
+                    sourceId: benchSourceId,
+                    targetId: benchSourceId,
+                    maxEvents: limits.maxEventsPerFightPerView,
+                  }
+
+                  let result = { events: [] as RawEvent[], truncated: false, warnings: [] as string[] }
+
+                  if (view === 'damageDone') result = await fetchDamageDoneEvents(fetchParams)
+                  else if (view === 'damageTaken') result = await fetchDamageTakenEvents({ ...fetchParams, sourceId: undefined })
+                  else if (view === 'casts') result = await fetchCastEvents({ ...fetchParams, targetId: undefined })
+                  else if (view === 'buffs') result = await fetchBuffEvents({ ...fetchParams, targetId: undefined })
+                  else if (view === 'healing') result = await fetchHealingEvents({ ...fetchParams, targetId: undefined })
+                  else if (view === 'deaths') {
+                    const allDeaths = await fetchDeathEvents({ ...fetchParams, sourceId: undefined, targetId: undefined })
+                    result = { ...allDeaths, events: allDeaths.events.filter((e) => e.targetID === benchSourceId) }
+                  }
+
+                  allWarnings.push(...result.warnings)
+
+                  for (const event of result.events) {
+                    const base = buildEventBaseRow(benchCtx, event, benchActorMap as Map<number, { name?: string | null }>)
+                    benchmarkRows[view].push({
+                      ...base,
+                      amount: event.amount ?? '',
+                      absorbed: event.absorbed ?? '',
+                      overkill: event.overkill ?? '',
+                      overheal: event.overheal ?? '',
+                    })
+                  }
+
+                  JobStore.advance(exportId)
+                }
+
+                benchmarkEnabled = true
+                benchmarkWarnings = allWarnings.filter((w) => w.toLowerCase().includes('benchmark'))
+              }
+            }
+          }
+        } else {
+          allWarnings.push('No usable benchmark candidate found with a valid report code and fight ID — benchmark data will not be included.')
+        }
+      }
+    }
   }
 
   // Write CSV files
@@ -1016,10 +1206,20 @@ async function runExportJob(
     }
   }
 
-  // comparison-summary.csv
+  // comparison-summary.csv + benchmark metadata file
   if (benchmarkEnabled) {
-    writeExportJsonFile(exportId, 'benchmark-candidate.json', benchmarkCandidate)
-    writtenFiles.push({ filename: 'benchmark-candidate.json', kind: 'benchmarkJson', sizeBytes: getExportFileSize(exportId, 'benchmark-candidate.json'), downloadUrl: `/api/player-analysis/exports/${exportId}/benchmark-candidate.json` })
+    if (request.benchmark?.autoConfig) {
+      writeExportJsonFile(exportId, 'benchmark-candidates.json', {
+        mode: 'automatic',
+        targetPercentile: request.benchmark.autoConfig.targetPercentile,
+        metric: request.benchmark.autoConfig.metric,
+        fightContexts: benchmarkCandidatesPerFight,
+      })
+      writtenFiles.push({ filename: 'benchmark-candidates.json', kind: 'benchmarkJson', sizeBytes: getExportFileSize(exportId, 'benchmark-candidates.json'), downloadUrl: `/api/player-analysis/exports/${exportId}/benchmark-candidates.json` })
+    } else {
+      writeExportJsonFile(exportId, 'benchmark-candidate.json', benchmarkCandidate)
+      writtenFiles.push({ filename: 'benchmark-candidate.json', kind: 'benchmarkJson', sizeBytes: getExportFileSize(exportId, 'benchmark-candidate.json'), downloadUrl: `/api/player-analysis/exports/${exportId}/benchmark-candidate.json` })
+    }
 
     const comparisonRows = buildComparisonSummary(playerRows, benchmarkRows, request.views)
     const compContent = buildCsvFile(COMPARISON_SUMMARY_CSV_HEADERS, comparisonRows)
@@ -1039,7 +1239,7 @@ async function runExportJob(
     detectedContext: preview.detectedPlayer?.detectedContext ?? null,
     userContext: request.playerContext ?? null,
     benchmarkEnabled,
-    benchmarkMode: benchmarkEnabled ? 'manual' : 'none',
+    benchmarkMode: benchmarkEnabled ? (request.benchmark?.autoConfig ? 'automatic' : 'manual') : 'none',
     warnings: allWarnings,
     files: writtenFiles.map((f) => f.filename),
   }
@@ -1060,7 +1260,7 @@ async function runExportJob(
     scope: preview.scope,
     views: request.views,
     benchmarkEnabled,
-    benchmarkMode: benchmarkEnabled ? 'manual' : 'none',
+    benchmarkMode: benchmarkEnabled ? (request.benchmark?.autoConfig ? 'automatic' : 'manual') : 'none',
     benchmarkWarnings,
     warnings: allWarnings,
     detectedContext: preview.detectedPlayer?.detectedContext,

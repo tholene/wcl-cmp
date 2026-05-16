@@ -48,6 +48,24 @@ export type PlayerAnalysisTimeframePreset =
 
 export type PlayerBenchmarkTargetPercentile = 50 | 75 | 90
 
+export type AutomatedBenchmarkConfig = {
+  mode: 'auto'
+  targetPercentile: 50 | 75 | 90
+  metric: string
+  maxCandidates?: number
+  itemLevelWindow?: number
+  durationWindowPercent?: number
+}
+
+export type ManualBenchmarkConfig = {
+  mode: 'manual'
+  reportCode: string
+  fightId: number
+  playerName: string
+}
+
+export type PlayerAnalysisBenchmarkConfig = AutomatedBenchmarkConfig | ManualBenchmarkConfig
+
 export type PlayerBenchmarkRequest = {
   targetPercentile: PlayerBenchmarkTargetPercentile
   requireSameClassSpec: true
@@ -59,6 +77,7 @@ export type PlayerBenchmarkRequest = {
     playerName: string
     sourceId?: number
   }
+  autoConfig?: AutomatedBenchmarkConfig
 }
 
 export type PlayerDetectedContext = {
@@ -190,15 +209,16 @@ export type PlayerAnalysisExportStartResponse = {
 
 export type PlayerBenchmarkCandidatesRequest = {
   playerName: string
-  reportCode: string
-  fightId: number
   encounterId: number
+  encounterName?: string
   difficulty: number
   className: string
   specName: string
   itemLevel?: number | null
-  fightDurationMs: number
+  durationMs?: number
   targetPercentile: 50 | 75 | 90
+  metric: string
+  maxCandidates?: number
   itemLevelWindow?: number
   killDurationWindowPct?: number
 }
@@ -227,4 +247,45 @@ export type PlayerBenchmarkCandidate = {
     durationDeltaPct?: number | null
   }
   warnings: string[]
+}
+
+export type NormalizedBenchmarkCandidate = {
+  source: 'wclRankings' | 'manual'
+  characterName: string
+  className?: string
+  specName?: string
+  serverName?: string
+  region?: string
+  encounterId: number
+  encounterName?: string
+  difficulty?: number
+  reportCode?: string
+  fightId?: number
+  percentile?: number
+  rank?: number
+  metric?: string
+  amount?: number
+  itemLevel?: number
+  bracket?: number
+  durationMs?: number
+  reportStartTime?: number
+  reportUrl?: string
+  validation: {
+    sameEncounter: boolean
+    sameDifficulty: boolean
+    sameClass: boolean
+    sameSpec: boolean
+    hasReportCode: boolean
+    hasFightId: boolean
+    hasUsableExportTarget: boolean
+  }
+  score: number
+  warnings: string[]
+}
+
+export type BenchmarkCandidatesResponse = {
+  candidates: NormalizedBenchmarkCandidate[]
+  selectedCandidate?: NormalizedBenchmarkCandidate
+  warnings: string[]
+  apiSupported: boolean
 }
