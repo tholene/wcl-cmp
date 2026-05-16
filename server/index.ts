@@ -11,6 +11,14 @@ import { validateAndResolveExportFilePath } from './player-analysis/player-analy
 
 dotenv.config()
 
+process.on('uncaughtException', (error) => {
+  console.error('[server] Uncaught exception:', error)
+})
+
+process.on('unhandledRejection', (reason) => {
+  console.error('[server] Unhandled rejection:', reason)
+})
+
 const app = express()
 app.use(cors())
 app.use(express.json())
@@ -334,6 +342,14 @@ app.post('/api/player-reviews/prompt', async (req: Request, res: Response) => {
 // ---------------------------------------------------------------------------
 
 app.post('/api/player-analysis/export-preview', async (req: Request, res: Response) => {
+  if (!req.body?.playerName?.trim()) {
+    res.status(400).json({ error: 'playerName is required.' })
+    return
+  }
+  if (!Array.isArray(req.body?.views) || req.body.views.length === 0) {
+    res.status(400).json({ error: 'At least one export view is required.' })
+    return
+  }
   try {
     const config = getWclConfig()
     const preview = await getExportPreview(config, req.body)
@@ -345,6 +361,14 @@ app.post('/api/player-analysis/export-preview', async (req: Request, res: Respon
 })
 
 app.post('/api/player-analysis/export', async (req: Request, res: Response) => {
+  if (!req.body?.playerName?.trim()) {
+    res.status(400).json({ error: 'playerName is required.' })
+    return
+  }
+  if (!Array.isArray(req.body?.views) || req.body.views.length === 0) {
+    res.status(400).json({ error: 'At least one export view is required.' })
+    return
+  }
   try {
     const config = getWclConfig()
     const jobStart = startExportJob(config, req.body)

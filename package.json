@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "concurrently -k \"npm:dev:web\" \"npm:dev:api\"",
     "dev:web": "vite --host 0.0.0.0 --port 5780",
-    "dev:api": "tsx watch server/index.ts",
+    "dev:api": "tsx --watch server/index.ts",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
     "preview": "vite preview --port 5780",
@@ -14,7 +14,7 @@
   },
   "dependencies": {
     "@tanstack/react-query": "^5.100.9",
-    "archiver": "^8.0.0",
+    "archiver": "^7.0.1",
     "cors": "^2.8.6",
     "dotenv": "^17.4.2",
     "express": "^5.2.1",

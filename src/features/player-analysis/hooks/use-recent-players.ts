@@ -6,11 +6,25 @@ type RecentPlayersResponse = { players: RecentPlayer[]; generatedAt: number }
 
 const fetchRecentPlayers = async (): Promise<RecentPlayersResponse> => {
   const response = await fetch('/api/players/recent')
+  const text = await response.text()
+  if (!text.trim()) {
+    throw new Error(
+      response.status === 502 || response.status === 503
+        ? 'The API server may not be running.'
+        : `Server returned ${response.status} with no body.`
+    )
+  }
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(text)
+  } catch {
+    throw new Error('Failed to fetch recent players: invalid server response.')
+  }
   if (!response.ok) {
-    const data = (await response.json()) as { error?: string }
+    const data = parsed as { error?: string }
     throw new Error(data.error ?? 'Failed to fetch recent players.')
   }
-  return (await response.json()) as RecentPlayersResponse
+  return parsed as RecentPlayersResponse
 }
 
 export const useRecentPlayers = () =>

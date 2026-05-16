@@ -38,6 +38,7 @@ export async function createBundleZip(exportId: string, filenames: string[]): Pr
     const archive = archiver('zip', { zlib: { level: 6 } })
 
     output.on('close', () => resolve({ sizeBytes: archive.pointer() }))
+    output.on('error', reject)
     archive.on('error', reject)
 
     archive.pipe(output)

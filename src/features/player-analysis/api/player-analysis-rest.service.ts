@@ -8,6 +8,29 @@ import type {
   PlayerBenchmarkCandidate,
 } from '../types/player-analysis.types'
 
+async function safeParseResponse<T>(response: Response): Promise<T> {
+  const text = await response.text()
+  if (!text.trim()) {
+    const hint =
+      response.status === 502 || response.status === 503
+        ? 'The API server may not be running.'
+        : 'Check the backend terminal for errors.'
+    throw new Error(`Server returned ${response.status} with no body. ${hint}`)
+  }
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(text)
+  } catch {
+    if (!response.ok) throw new Error(`Server error ${response.status}: ${text.slice(0, 300)}`)
+    throw new Error('Server returned non-JSON response. Check the backend terminal.')
+  }
+  if (!response.ok) {
+    const err = parsed as ApiErrorResponse
+    throw new Error(err.error ?? `Request failed with status ${response.status}.`)
+  }
+  return parsed as T
+}
+
 export const PlayerAnalysisRestService = {
   getExportPreview: async (request: PlayerAnalysisExportRequest): Promise<PlayerAnalysisExportPreview> => {
     const response = await fetch('/api/player-analysis/export-preview', {
@@ -15,11 +38,7 @@ export const PlayerAnalysisRestService = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(request),
     })
-    if (!response.ok) {
-      const data = (await response.json()) as ApiErrorResponse
-      throw new Error(data.error ?? 'Failed to preview export scope.')
-    }
-    return (await response.json()) as PlayerAnalysisExportPreview
+    return safeParseResponse<PlayerAnalysisExportPreview>(response)
   },
 
   startExport: async (request: PlayerAnalysisExportRequest): Promise<PlayerAnalysisExportStartResponse> => {
@@ -28,20 +47,12 @@ export const PlayerAnalysisRestService = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(request),
     })
-    if (!response.ok) {
-      const data = (await response.json()) as ApiErrorResponse
-      throw new Error(data.error ?? 'Failed to start export job.')
-    }
-    return (await response.json()) as PlayerAnalysisExportStartResponse
+    return safeParseResponse<PlayerAnalysisExportStartResponse>(response)
   },
 
   getExportStatus: async (exportId: string): Promise<PlayerAnalysisExportJob> => {
     const response = await fetch(`/api/player-analysis/exports/${exportId}/status`)
-    if (!response.ok) {
-      const data = (await response.json()) as ApiErrorResponse
-      throw new Error(data.error ?? 'Failed to fetch export status.')
-    }
-    return (await response.json()) as PlayerAnalysisExportJob
+    return safeParseResponse<PlayerAnalysisExportJob>(response)
   },
 
   getBenchmarkCandidates: async (
@@ -52,10 +63,6 @@ export const PlayerAnalysisRestService = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(request),
     })
-    if (!response.ok) {
-      const data = (await response.json()) as ApiErrorResponse
-      throw new Error(data.error ?? 'Failed to fetch benchmark candidates.')
-    }
-    return (await response.json()) as { candidates: PlayerBenchmarkCandidate[]; warnings: string[] }
+    return safeParseResponse<{ candidates: PlayerBenchmarkCandidate[]; warnings: string[] }>(response)
   },
 }
