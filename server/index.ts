@@ -1,8 +1,13 @@
+import path from 'node:path'
 import cors from 'cors'
 import dotenv from 'dotenv'
 import express, { type Request, type Response } from 'express'
 import { getConfigStatus, getServerConfig, getWclConfig } from './warcraft-logs/wcl-config'
 import { WclService } from './warcraft-logs/wcl-service'
+import { getExportPreview, startExportJob } from './player-analysis/player-analysis-export.service'
+import { PlayerAnalysisBenchmarkService } from './player-analysis/player-analysis-benchmark.service'
+import { JobStore } from './player-analysis/player-analysis-job-store'
+import { validateAndResolveExportFilePath } from './player-analysis/player-analysis-export-files'
 
 dotenv.config()
 
@@ -247,6 +252,154 @@ app.get('/api/reports/:code', async (req: Request, res: Response) => {
       hint: 'Verify report code and WCL credentials.',
     })
   }
+})
+
+app.get('/api/players/recent', async (_req: Request, res: Response) => {
+  try {
+    const config = getWclConfig()
+    const players = await WclService.getRecentPlayers(config)
+
+    res.status(200).json({
+      players,
+      generatedAt: Date.now(),
+    })
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unknown error while fetching recent players.'
+
+    res.status(500).json({
+      error: message,
+      hint: 'Verify WCL credentials and guild configuration.',
+    })
+  }
+})
+
+// TODO: deprecated — replaced by /api/player-analysis/export
+app.post('/api/player-reviews/snapshot', async (req: Request, res: Response) => {
+  try {
+    const config = getWclConfig()
+    const snapshot = await WclService.getPlayerReviewSnapshot(config, req.body)
+
+    res.status(200).json(snapshot)
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unknown error while generating snapshot.'
+    res.status(400).json({
+      error: message,
+      hint: 'Check player name, selected reports, and filters.',
+    })
+  }
+})
+
+// TODO: deprecated — replaced by /api/player-analysis/export-preview
+app.post('/api/player-reviews/scope-preview', async (req: Request, res: Response) => {
+  try {
+    const config = getWclConfig()
+    const preview = await WclService.getPlayerReviewScopePreview(config, req.body)
+    res.status(200).json(preview)
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unknown error while previewing review scope.'
+    res.status(400).json({
+      error: message,
+      hint: 'Check player name, scope preset, and report selection.',
+    })
+  }
+})
+
+// TODO: deprecated — prompt workflow removed; no replacement
+app.post('/api/player-reviews/prompt', async (req: Request, res: Response) => {
+  try {
+    const config = getWclConfig()
+    const payload = req.body as { snapshot?: unknown }
+
+    const snapshot = payload.snapshot
+      ? (payload.snapshot as Parameters<typeof WclService.generatePlayerReviewPrompt>[0])
+      : await WclService.getPlayerReviewSnapshot(config, req.body)
+
+    const prompt = WclService.generatePlayerReviewPrompt(snapshot)
+
+    res.status(200).json({
+      prompt,
+      snapshot,
+    })
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unknown error while generating prompt.'
+    res.status(400).json({
+      error: message,
+      hint: 'Generate a snapshot first or provide a valid snapshot payload.',
+    })
+  }
+})
+
+// ---------------------------------------------------------------------------
+// Player Analysis Export endpoints
+// ---------------------------------------------------------------------------
+
+app.post('/api/player-analysis/export-preview', async (req: Request, res: Response) => {
+  try {
+    const config = getWclConfig()
+    const preview = await getExportPreview(config, req.body)
+    res.status(200).json(preview)
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unknown error during export preview.'
+    res.status(400).json({ error: message, hint: 'Check player name, scope preset, and report selection.' })
+  }
+})
+
+app.post('/api/player-analysis/export', async (req: Request, res: Response) => {
+  try {
+    const config = getWclConfig()
+    const jobStart = startExportJob(config, req.body)
+    res.status(202).json(jobStart)
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unknown error starting export job.'
+    res.status(400).json({ error: message, hint: 'Check player name and export request.' })
+  }
+})
+
+app.get('/api/player-analysis/exports/:exportId/status', (req: Request, res: Response) => {
+  const exportId = resolveReportCodeParam(req.params.exportId)
+  const job = JobStore.get(exportId)
+  if (!job) {
+    res.status(404).json({ error: 'Export not found.' })
+    return
+  }
+  res.status(200).json(job)
+})
+
+app.post('/api/player-analysis/benchmark-candidates', async (req: Request, res: Response) => {
+  try {
+    const config = getWclConfig()
+    const result = await PlayerAnalysisBenchmarkService.findBenchmarkCandidates(config, req.body)
+    res.status(200).json(result)
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unknown error finding benchmark candidates.'
+    res.status(400).json({ error: message })
+  }
+})
+
+app.get('/api/player-analysis/exports/:exportId/:filename', (req: Request, res: Response) => {
+  const exportId = resolveReportCodeParam(req.params.exportId)
+  const filename = resolveReportCodeParam(req.params.filename)
+
+  const resolvedPath = validateAndResolveExportFilePath(exportId, filename)
+  if (!resolvedPath) {
+    res.status(400).json({ error: 'Invalid export ID or filename.' })
+    return
+  }
+
+  const ext = path.extname(filename).toLowerCase()
+  const contentTypes: Record<string, string> = {
+    '.csv': 'text/csv',
+    '.json': 'application/json',
+    '.md': 'text/markdown',
+    '.zip': 'application/zip',
+  }
+  const contentType = contentTypes[ext] ?? 'application/octet-stream'
+  res.setHeader('Content-Type', contentType)
+  res.sendFile(resolvedPath, (err) => {
+    if (err && !res.headersSent) {
+      res.status(404).json({ error: 'File not found.' })
+    }
+  })
 })
 
 app.get('/api/bosses/recent', async (_req: Request, res: Response) => {

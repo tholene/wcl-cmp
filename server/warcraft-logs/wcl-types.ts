@@ -222,3 +222,202 @@ export type WclPlayerFightReview = {
     limitations: string[]
   }
 }
+
+export type WclRecentPlayer = {
+  name: string
+  className?: string | null
+  specName?: string | null
+  role?: 'tank' | 'healer' | 'dps' | 'unknown'
+  seenInReportCodes: string[]
+  lastSeenAt?: number | null
+}
+
+export type WclPlayerReviewScopePreset =
+  | 'last-7-days'
+  | 'previous-calendar-week'
+  | 'last-2-weeks'
+  | 'manual-reports'
+
+export type WclPlayerReviewRoleMetadata = {
+  role: 'tank' | 'healer' | 'dps' | 'unknown'
+  specName?: string
+  className?: string
+  source: 'wcl' | 'configured' | 'unknown'
+  confidence: 'high' | 'medium' | 'low' | 'unknown'
+  warnings: string[]
+}
+
+export type WclPlayerReviewScopeSummary = {
+  requestedPlayerName: string
+  scopePreset?: WclPlayerReviewScopePreset
+  since?: number
+  until?: number
+  onlyPlayerPresent: boolean
+  reportsScanned: number
+  reportsIncluded: number
+  fightsScanned: number
+  fightsIncluded: number
+  fightsSkippedBecausePlayerAbsent: number
+  fightsSkippedByDate: number
+  fightsSkippedByKillWipeFilter: number
+  payloadLimitsApplied: string[]
+  warnings: string[]
+}
+
+export type WclPlayerReviewScopePreviewRequest = {
+  playerName: string
+  scopePreset?: WclPlayerReviewScopePreset
+  since?: number
+  until?: number
+  reportCodes?: string[]
+  includeKills?: boolean
+  includeWipes?: boolean
+  includeTrash?: boolean
+  onlyPlayerPresent?: boolean
+  maxReports?: number
+  maxFights?: number
+}
+
+export type WclPlayerReviewScopePreview = {
+  playerName: string
+  scopePreset?: WclPlayerReviewScopePreset
+  since?: number
+  until?: number
+  reportsScanned: number
+  reportsIncluded: number
+  fightsScanned: number
+  fightsIncluded: number
+  fightsSkippedBecausePlayerAbsent: number
+  fightsSkippedByDate: number
+  fightsSkippedByKillWipeFilter: number
+  estimatedPayloadLevel: 'small' | 'medium' | 'large'
+  roleInference: WclPlayerReviewRoleMetadata
+  includedReports: Array<{
+    code: string
+    title: string
+    startTime: number
+    url: string
+    playerPresent: boolean
+    includedFightIds: number[]
+    skippedFightIds: number[]
+    warnings: string[]
+  }>
+  warnings: string[]
+}
+
+export type WclPlayerReviewSnapshotRequest = {
+  playerName: string
+  scopePreset?: WclPlayerReviewScopePreset
+  since?: number
+  until?: number
+  reportCodes?: string[]
+  fightIdsByReport?: Record<string, number[]>
+  includeKills?: boolean
+  includeWipes?: boolean
+  includeTrash?: boolean
+  onlyPlayerPresent?: boolean
+  maxReports?: number
+  maxFights?: number
+  maxDeathsPerFight?: number
+  maxEventsBeforeDeath?: number
+  maxDamageTakenAbilities?: number
+  maxCasts?: number
+  maxBuffs?: number
+}
+
+export type WclPlayerReviewSnapshot = {
+  player: {
+    name: string
+    className?: string | null
+    specName?: string | null
+    role?: 'tank' | 'healer' | 'dps' | 'unknown'
+    possibleActorIds: Array<{
+      reportCode: string
+      actorId: number
+    }>
+  }
+  roleMetadata: WclPlayerReviewRoleMetadata
+  scopeSummary: WclPlayerReviewScopeSummary
+  reports: Array<{
+    code: string
+    title: string
+    url: string
+    startTime: number
+  }>
+  fights: WclPlayerFightSnapshot[]
+  aggregate: {
+    pullsReviewed: number
+    killsReviewed: number
+    wipesReviewed: number
+    deaths: number
+    earlyDeaths: number
+    averageDps?: number | null
+    averageHps?: number | null
+    majorDamageTakenAbilities: Array<{
+      abilityName: string
+      count: number
+      total: number
+    }>
+    defensiveUses: Array<{
+      abilityName: string
+      count: number
+    }>
+    interruptCount?: number | null
+    dispelCount?: number | null
+  }
+  warnings: string[]
+}
+
+export type WclPlayerFightSnapshot = {
+  reportCode: string
+  reportUrl: string
+  fightId: number
+  encounterId: number
+  encounterName: string
+  kill: boolean
+  difficulty: number
+  durationMs: number
+  playerPresent: boolean
+  playerDied: boolean
+  deathTimeMs?: number | null
+  throughput?: {
+    damageDone?: number | null
+    dps?: number | null
+    healingDone?: number | null
+    hps?: number | null
+    activeTimePercent?: number | null
+  }
+  damageTaken: Array<{
+    abilityName: string
+    total: number
+    hits: number
+  }>
+  deaths: Array<{
+    timestampMs: number
+    killingBlow?: string | null
+    lastDamageEvents: Array<{
+      secondsBeforeDeath: number
+      abilityName: string
+      amount: number
+      sourceName?: string | null
+    }>
+    healingReceivedBeforeDeath: Array<{
+      secondsBeforeDeath: number
+      abilityName: string
+      amount: number
+      sourceName?: string | null
+    }>
+    defensiveBuffsActive?: string[]
+  }>
+  casts: Array<{
+    abilityName: string
+    count: number
+  }>
+  buffs: Array<{
+    abilityName: string
+    uptimePercent?: number | null
+    applications?: number | null
+  }>
+  notes: string[]
+  warnings: string[]
+}
