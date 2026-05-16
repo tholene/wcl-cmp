@@ -14,6 +14,10 @@ const NAV_ITEMS = [
     label: 'Bosses',
     to: PATHS.BOSSES,
   },
+  {
+    label: 'Player Analysis',
+    to: PATHS.PLAYER_ANALYSIS,
+  },
 ] as const
 
 export const AppLayout: FC<AppLayoutProps> = ({ children }) => (

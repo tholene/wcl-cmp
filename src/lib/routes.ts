@@ -5,6 +5,7 @@ export const PATHS = {
   REPORT_DETAILS: '/reports/:code',
   FIGHT_REVIEW: '/reports/:code/fights/:fightId',
   PLAYER_FIGHT_REVIEW: '/reports/:code/fights/:fightId/players/:playerId',
+  PLAYER_ANALYSIS: '/player-analysis',
 } as const
 
 export const getReportDetailsPath = (code: string): string =>

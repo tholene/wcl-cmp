@@ -20,3 +20,10 @@ export const playersQueryKeys = {
   fightReview: (code: string, fightId: number, playerId: number) =>
     [...playersQueryKeys.all, 'fightReview', code, fightId, playerId] as const,
 }
+
+
+export const playerAnalysisQueryKeys = {
+  all: ['playerAnalysis'] as const,
+  recentPlayers: () => [...playerAnalysisQueryKeys.all, 'recentPlayers'] as const,
+  exportStatus: (exportId: string) => [...playerAnalysisQueryKeys.all, 'status', exportId] as const,
+}
