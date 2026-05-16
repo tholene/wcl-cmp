@@ -47,15 +47,17 @@ export const PlayerAnalysisScopeForm: FC<Props> = ({
 }) => (
   <section className="rounded-xl border border-slate-800 bg-slate-900/70 p-4">
     <h2 className="text-sm font-semibold text-slate-200">Export Scope</h2>
+    <p className="mt-1 text-xs text-slate-400">Enter a character name to get started.</p>
 
-    <label className="mt-3 block text-xs text-slate-400">Character name</label>
+    <label className="mt-3 block text-xs font-medium text-slate-300">Character name</label>
     <input
-      className="mt-1 w-full rounded border border-slate-700 bg-slate-950 px-2 py-1 text-sm text-slate-100"
+      className="mt-1 w-full rounded border border-slate-600 bg-slate-950 px-3 py-2 text-sm text-slate-100 placeholder-slate-500 focus:border-violet-500 focus:outline-none"
       list="player-analysis-recent-players"
       value={playerName}
       onChange={(e) => onPlayerNameChange(e.target.value)}
-      placeholder="Enter character name..."
+      placeholder="Start typing a character name..."
       autoComplete="off"
+      aria-label="Character name"
     />
     <datalist id="player-analysis-recent-players">
       {players.map((p) => (

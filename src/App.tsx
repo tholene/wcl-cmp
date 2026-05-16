@@ -7,20 +7,19 @@ import { FightReviewContainer } from '@/features/fights/containers/fight-review-
 import { PlayerAnalysisPage } from '@/features/player-analysis/containers/player-analysis-page'
 import { PlayerFightReviewContainer } from '@/features/players/containers/player-fight-review-container'
 import { ReportDetailsContainer } from '@/features/reports/containers/report-details-container'
-import { ReportsDashboardContainer } from '@/features/reports/containers/reports-dashboard-container'
 import { PATHS } from '@/lib/routes'
 
 export const App: FC = () => (
   <AppLayout>
     <Routes>
-      <Route path={PATHS.HOME} element={<ReportsDashboardContainer />} />
+      <Route path={PATHS.HOME} element={<Navigate to={PATHS.PLAYER_ANALYSIS} replace />} />
+      <Route path={PATHS.PLAYER_ANALYSIS} element={<PlayerAnalysisPage />} />
       <Route path={PATHS.BOSSES} element={<BossesOverviewContainer />} />
       <Route path={PATHS.BOSS_DETAILS} element={<BossDetailsContainer />} />
       <Route path={PATHS.REPORT_DETAILS} element={<ReportDetailsContainer />} />
       <Route path={PATHS.FIGHT_REVIEW} element={<FightReviewContainer />} />
       <Route path={PATHS.PLAYER_FIGHT_REVIEW} element={<PlayerFightReviewContainer />} />
-      <Route path={PATHS.PLAYER_ANALYSIS} element={<PlayerAnalysisPage />} />
-      <Route path="*" element={<Navigate to={PATHS.HOME} replace />} />
+      <Route path="*" element={<Navigate to={PATHS.PLAYER_ANALYSIS} replace />} />
     </Routes>
   </AppLayout>
 )

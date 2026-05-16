@@ -7,15 +7,7 @@ type AppLayoutProps = PropsWithChildren
 
 const NAV_ITEMS = [
   {
-    label: 'Reports',
-    to: PATHS.HOME,
-  },
-  {
-    label: 'Bosses',
-    to: PATHS.BOSSES,
-  },
-  {
-    label: 'Player Analysis',
+    label: 'Player Analysis Export',
     to: PATHS.PLAYER_ANALYSIS,
   },
 ] as const
@@ -25,8 +17,8 @@ export const AppLayout: FC<AppLayoutProps> = ({ children }) => (
     <div className="mx-auto flex w-full max-w-7xl flex-col gap-6 p-6 lg:p-10">
       <header className="rounded-xl border border-slate-800 bg-slate-900/70 p-4">
         <div className="mb-3">
-          <h1 className="text-lg font-semibold text-slate-100">Warcraft Logs Guild Analyzer</h1>
-          <p className="text-xs text-slate-400">Local-first raid review workspace</p>
+          <h1 className="text-lg font-semibold text-slate-100">Warcraft Logs Player Exporter</h1>
+          <p className="text-xs text-slate-400">Export player data from WCL without manually downloading each tab.</p>
         </div>
 
         <nav className="flex items-center gap-2" aria-label="Primary">
@@ -34,7 +26,6 @@ export const AppLayout: FC<AppLayoutProps> = ({ children }) => (
             <NavLink
               key={item.to}
               to={item.to}
-              end={item.to === PATHS.HOME}
               className={({ isActive }) =>
                 cn(
                   'rounded-md border px-3 py-1.5 text-sm transition',
