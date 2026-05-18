@@ -17,6 +17,7 @@ type Props = {
   onGenerateExport: () => void
   isGenerating: boolean
   viewCount: number
+  exportBlockedReason?: string | null
 }
 
 export const PlayerAnalysisPreviewPanel: FC<Props> = ({
@@ -28,6 +29,7 @@ export const PlayerAnalysisPreviewPanel: FC<Props> = ({
   onGenerateExport,
   isGenerating,
   viewCount,
+  exportBlockedReason,
 }) => {
   const player = preview.detectedPlayer
   const selectedFightCount = Object.values(selectedFightIdsByReport).reduce((sum, fightIds) => sum + fightIds.length, 0)
@@ -215,7 +217,7 @@ export const PlayerAnalysisPreviewPanel: FC<Props> = ({
       <button
         type="button"
         onClick={onGenerateExport}
-        disabled={isGenerating || selectedFightCount === 0 || viewCount === 0}
+        disabled={isGenerating || selectedFightCount === 0 || viewCount === 0 || !!exportBlockedReason}
         className="w-full rounded border border-violet-600 bg-violet-700/20 px-3 py-2 text-sm font-medium text-violet-200 hover:bg-violet-700/30 disabled:opacity-60"
       >
         {isGenerating ? 'Starting export…' : 'Generate export'}
@@ -229,6 +231,9 @@ export const PlayerAnalysisPreviewPanel: FC<Props> = ({
       )}
       {viewCount === 0 && (
         <p className="text-xs text-rose-300">No views selected — select at least one export view.</p>
+      )}
+      {exportBlockedReason && (
+        <p className="text-xs text-amber-300">{exportBlockedReason}</p>
       )}
     </div>
   )

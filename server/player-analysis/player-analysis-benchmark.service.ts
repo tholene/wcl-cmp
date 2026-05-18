@@ -59,6 +59,59 @@ type EncounterRankingsQueryResponse = {
   }
 }
 
+function toNonEmptyString(value: unknown): string | undefined {
+  if (typeof value !== 'string') return undefined
+  const trimmed = value.trim()
+  return trimmed.length > 0 ? trimmed : undefined
+}
+
+function toFiniteNumber(value: unknown): number | undefined {
+  if (typeof value === 'number' && Number.isFinite(value)) return value
+  if (typeof value === 'string' && value.trim().length > 0) {
+    const parsed = Number(value)
+    if (Number.isFinite(parsed)) return parsed
+  }
+  return undefined
+}
+
+function toPositiveInteger(value: unknown): number | undefined {
+  const n = toFiniteNumber(value)
+  if (n === undefined) return undefined
+  if (!Number.isInteger(n) || n <= 0) return undefined
+  return n
+}
+
+function isHiddenOrPrivateName(name: string | undefined): boolean {
+  if (!name) return true
+  const normalized = name.trim().toLowerCase()
+  if (!normalized) return true
+  if (normalized === 'anonymous') return true
+  if (normalized === 'unknown') return true
+  if (normalized === 'hidden') return true
+  if (normalized === 'private') return true
+  if (normalized === 'redacted') return true
+  if (normalized === 'unavailable') return true
+  if (normalized.startsWith('anonymous ')) return true
+  if (normalized.startsWith('hidden ')) return true
+  if (normalized.startsWith('player (') && normalized.endsWith(')')) return true
+  return false
+}
+
+function getMissingRequiredBaselineFields(baseline: BenchmarkBaseline): string[] {
+  const missing: string[] = []
+  if (!toNonEmptyString(baseline.reportCode)) missing.push('reportCode')
+  if (!toPositiveInteger(baseline.fightId)) missing.push('fightId')
+  if (!toPositiveInteger(baseline.encounterId)) missing.push('encounterId')
+  if (!toNonEmptyString(baseline.encounterName)) missing.push('encounterName')
+  if (!toPositiveInteger(baseline.difficulty)) missing.push('difficulty')
+  if (!toNonEmptyString(baseline.playerName)) missing.push('playerName')
+  const className = toNonEmptyString(baseline.className)
+  if (!className || className.toLowerCase() === 'unknown') missing.push('className')
+  const specName = toNonEmptyString(baseline.specName)
+  if (!specName || specName.toLowerCase() === 'unknown') missing.push('specName')
+  return missing
+}
+
 const ENCOUNTER_CHARACTER_RANKINGS_QUERY = `
   query EncounterCharacterRankings(
     $encounterId: Int!
@@ -114,66 +167,72 @@ function normalizeRankingEntry(
       ? (entry['report'] as Record<string, unknown>)
       : {}
 
-  const characterName = typeof entry['name'] === 'string' ? entry['name'] : ''
-  // WCL ranking responses use 'class'/'spec' (short forms)
-  const className =
-    typeof entry['class'] === 'string'
-      ? entry['class']
-      : typeof entry['className'] === 'string'
-        ? entry['className']
-        : undefined
-  const specName =
-    typeof entry['spec'] === 'string'
-      ? entry['spec']
-      : typeof entry['specName'] === 'string'
-        ? entry['specName']
-        : undefined
-  // WCL uses 'fightID' (capital D) in some contexts — check both
-  const reportCode = typeof report['code'] === 'string' ? report['code'] : undefined
-  const fightId =
-    typeof report['fightID'] === 'number'
-      ? report['fightID']
-      : typeof report['fightId'] === 'number'
-        ? report['fightId']
-        : undefined
-  const itemLevel =
-    typeof entry['itemLevel'] === 'number'
-      ? entry['itemLevel']
-      : typeof entry['bracketData'] === 'number'
-        ? Math.round(entry['bracketData'] as number)
-        : undefined
-  const durationMs = typeof entry['duration'] === 'number' ? entry['duration'] : undefined
-  const amount = typeof entry['amount'] === 'number' ? entry['amount'] : undefined
-  const rank = typeof entry['rank'] === 'number' ? entry['rank'] : undefined
-  const reportStartTime = typeof report['startTime'] === 'number' ? report['startTime'] : undefined
+  const characterName = toNonEmptyString(entry['name']) ?? ''
+  const className = toNonEmptyString(entry['class']) ?? toNonEmptyString(entry['className'])
+  const specName = toNonEmptyString(entry['spec']) ?? toNonEmptyString(entry['specName'])
+  const reportCode = toNonEmptyString(report['code'])
+  const fightId = toPositiveInteger(report['fightID']) ?? toPositiveInteger(report['fightId'])
+  const bracket = toFiniteNumber(entry['bracketData'])
+  const itemLevel = toFiniteNumber(entry['itemLevel']) ?? (bracket !== undefined ? Math.round(bracket) : undefined)
+  const durationMs = toFiniteNumber(entry['duration'])
+  const amount = toFiniteNumber(entry['amount'])
+  const rank = toPositiveInteger(entry['rank'])
+  const reportStartTime = toFiniteNumber(report['startTime'])
 
   // WCL may omit percentile field — derive from rank + count if needed
-  let percentile = typeof entry['percentile'] === 'number' ? entry['percentile'] : undefined
+  let percentile = toFiniteNumber(entry['percentile'])
   if (percentile === undefined && rank !== undefined && totalCount > 0) {
     percentile = Math.round((1 - (rank - 1) / totalCount) * 100)
   }
 
   const serverRaw = entry['server']
   const serverName =
-    typeof serverRaw === 'string'
-      ? serverRaw
-      : serverRaw && typeof serverRaw === 'object'
-        ? ((serverRaw as Record<string, unknown>)['name'] as string | undefined)
+    toNonEmptyString(serverRaw) ??
+    (serverRaw && typeof serverRaw === 'object'
+      ? toNonEmptyString((serverRaw as Record<string, unknown>)['name'])
+      : undefined)
+  const serverSlug =
+    toNonEmptyString(entry['serverSlug']) ??
+    (serverRaw && typeof serverRaw === 'object'
+      ? toNonEmptyString((serverRaw as Record<string, unknown>)['slug'])
+      : undefined)
+  const region =
+    toNonEmptyString(entry['region']) ??
+    toNonEmptyString(entry['serverRegion']) ??
+    (serverRaw && typeof serverRaw === 'object'
+      ? toNonEmptyString((serverRaw as Record<string, unknown>)['region'])
+      : undefined)
+  const characterId = toPositiveInteger(entry['id'])
+  const reportUrl =
+    reportCode && fightId !== undefined
+      ? `https://www.warcraftlogs.com/reports/${reportCode}#fight=${fightId}`
+      : undefined
+  const characterUrl =
+    characterId !== undefined
+      ? `https://www.warcraftlogs.com/character/id/${characterId}`
+      : serverSlug && region && !isHiddenOrPrivateName(characterName)
+        ? `https://www.warcraftlogs.com/character/${region.toLowerCase()}/${serverSlug.toLowerCase()}/${encodeURIComponent(characterName)}`
         : undefined
-  const region = typeof entry['region'] === 'string' ? entry['region'] : undefined
 
+  const sameEncounter = true
+  const sameDifficulty = true
   const sameClass = !!className && className.toLowerCase() === context.className.toLowerCase()
   const sameSpec = !!specName && specName.toLowerCase() === context.specName.toLowerCase()
+  const hasMandatoryMatch = sameEncounter && sameDifficulty && sameClass && sameSpec
+  const hasUsablePlayerName = !isHiddenOrPrivateName(characterName)
   const hasReportCode = !!reportCode
-  const hasFightId = typeof fightId === 'number'
-  const hasRealName = !!characterName && characterName.toLowerCase() !== 'anonymous'
-  const hasUsableExportTarget = hasRealName && hasReportCode && hasFightId && sameClass && sameSpec
+  const hasFightId = fightId !== undefined
+  const hasUsableExportTarget = hasMandatoryMatch && hasUsablePlayerName && hasReportCode && hasFightId
 
   const warnings: string[] = []
   if (!characterName) warnings.push('Ranking entry missing character name.')
-  if (characterName && !hasRealName) warnings.push('Ranking entry has a hidden/anonymous name — cannot identify player for export.')
+  if (characterName && !hasUsablePlayerName) {
+    warnings.push('Ranking entry has a hidden/private player name — cannot identify player for export.')
+  }
   if (!className) warnings.push('Ranking entry missing class — same-class validation skipped.')
   if (!specName) warnings.push('Ranking entry missing spec — same-spec validation skipped.')
+  if (!sameClass) warnings.push(`Ranking entry class mismatch (${className ?? 'unknown'} vs baseline ${context.className}).`)
+  if (!sameSpec) warnings.push(`Ranking entry spec mismatch (${specName ?? 'unknown'} vs baseline ${context.specName}).`)
   if (!hasReportCode) warnings.push('Ranking entry missing report code — cannot use for export.')
   if (!hasFightId) warnings.push('Ranking entry missing fight ID — cannot use for export.')
 
@@ -183,7 +242,9 @@ function normalizeRankingEntry(
     className,
     specName,
     serverName,
+    serverSlug,
     region,
+    characterUrl,
     encounterId: context.encounterId,
     encounterName: context.encounterName,
     difficulty: context.difficulty,
@@ -194,17 +255,16 @@ function normalizeRankingEntry(
     metric: context.metric,
     amount,
     itemLevel,
+    bracket,
     durationMs,
     reportStartTime,
-    reportUrl:
-      reportCode && hasFightId
-        ? `https://www.warcraftlogs.com/reports/${reportCode}#fight=${fightId}`
-        : undefined,
+    reportUrl,
     validation: {
-      sameEncounter: true,
-      sameDifficulty: true,
+      sameEncounter,
+      sameDifficulty,
       sameClass,
       sameSpec,
+      hasUsablePlayerName,
       hasReportCode,
       hasFightId,
       hasUsableExportTarget,
@@ -349,7 +409,7 @@ async function findCandidatesForBaseline(
   const usableCount = allSorted.filter((c) => c.validation.hasUsableExportTarget).length
   if (usableCount === 0 && allSorted.length > 0) {
     allWarnings.push(
-      `Found ${allSorted.length} ranking${allSorted.length > 1 ? 's' : ''} but none have both a report code and fight ID — cannot use for automated export. Use manual benchmark mode.`
+      `Found ${allSorted.length} ranking${allSorted.length > 1 ? 's' : ''} but none are exportable (same encounter/difficulty/class/spec with visible player name, report code, and fight ID). Use manual benchmark mode.`
     )
   } else if (allSorted.length === 0) {
     allWarnings.push(
@@ -566,33 +626,21 @@ export const PlayerAnalysisBenchmarkService = {
 
       if (!baselineForQuery.className || baselineForQuery.className === 'unknown' ||
         !baselineForQuery.specName || baselineForQuery.specName === 'unknown') {
+        baselineWarnings.push(
+          `Valid className and specName are required for benchmark discovery. ` +
+            `Received "${baselineForQuery.className ?? 'none'}"/"${baselineForQuery.specName ?? 'none'}" — provide class/spec manually in the benchmark form.`
+        )
+      }
+
+      const missingRequiredFields = getMissingRequiredBaselineFields(baselineForQuery)
+      if (missingRequiredFields.length > 0) {
         groups.push({
-          baseline,
+          baseline: baselineForQuery,
           candidates: [],
           warnings: [
-            `Valid className and specName are required for benchmark discovery. ` +
-            `Received "${baseline.className ?? 'none'}"/"${baseline.specName ?? 'none'}" — provide class/spec manually in the benchmark form.`,
+            ...baselineWarnings,
+            ...missingRequiredFields.map((field) => `Missing required baseline field "${field}" for benchmark discovery.`),
           ],
-          apiSupported: false,
-        })
-        continue
-      }
-
-      if (typeof baseline.encounterId !== 'number' || baseline.encounterId <= 0) {
-        groups.push({
-          baseline,
-          candidates: [],
-          warnings: [`encounterId must be a positive integer (got ${String(baseline.encounterId)}) — this fight cannot be used for benchmark discovery.`],
-          apiSupported: false,
-        })
-        continue
-      }
-
-      if (typeof baseline.difficulty !== 'number' || baseline.difficulty <= 0) {
-        groups.push({
-          baseline,
-          candidates: [],
-          warnings: [`difficulty must be a positive integer (got ${String(baseline.difficulty)}) — this fight cannot be used for benchmark discovery.`],
           apiSupported: false,
         })
         continue

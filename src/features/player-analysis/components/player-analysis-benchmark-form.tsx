@@ -46,19 +46,57 @@ type Props = {
 
 const PERCENTILE_OPTIONS: Array<50 | 75 | 90> = [50, 75, 90]
 
-function CandidateRow({ candidate, isSelected }: { candidate: NormalizedBenchmarkCandidate; isSelected: boolean }) {
-  const usable = candidate.validation.hasUsableExportTarget
+function getExportabilityReasons(candidate: NormalizedBenchmarkCandidate): string[] {
+  const reasons: string[] = []
+  if (!candidate.validation.sameEncounter) reasons.push('encounter mismatch')
+  if (!candidate.validation.sameDifficulty) reasons.push('difficulty mismatch')
+  if (!candidate.validation.sameClass) reasons.push('class mismatch')
+  if (!candidate.validation.sameSpec) reasons.push('spec mismatch')
+  if (!candidate.validation.hasUsablePlayerName) reasons.push('player name hidden/private')
+  if (!candidate.validation.hasReportCode) reasons.push('missing report code')
+  if (!candidate.validation.hasFightId) reasons.push('missing fight ID')
+  return reasons
+}
+
+function isSameCandidate(
+  left: NormalizedBenchmarkCandidate | undefined,
+  right: NormalizedBenchmarkCandidate
+): boolean {
+  if (!left) return false
   return (
-    <div className={`rounded border px-2 py-1.5 text-xs ${usable ? 'border-slate-700 bg-slate-900/60' : 'border-slate-800 bg-slate-950/40 opacity-60'}`}>
+    left.reportCode === right.reportCode &&
+    left.fightId === right.fightId &&
+    left.characterName === right.characterName
+  )
+}
+
+function CandidateRow({
+  candidate,
+  isSelected,
+}: {
+  candidate: NormalizedBenchmarkCandidate
+  isSelected: boolean
+}) {
+  const exportable = candidate.validation.hasUsableExportTarget
+  const validationReasons = getExportabilityReasons(candidate)
+  const warningSummary = candidate.warnings.filter((w) => w.trim().length > 0).slice(0, 2)
+  return (
+    <div className={`rounded border px-2 py-1.5 text-xs ${exportable ? 'border-slate-700 bg-slate-900/60' : 'border-slate-800 bg-slate-950/40'}`}>
       <div className="flex items-center justify-between gap-2">
         <span className="truncate font-medium text-slate-200">{candidate.characterName || '—'}</span>
         <div className="flex shrink-0 items-center gap-1.5">
-          {isSelected && usable && (
+          {isSelected && exportable && (
             <span className="rounded bg-emerald-800/50 px-1 py-0.5 text-emerald-300">selected</span>
           )}
-          {!usable && (
-            <span className="rounded bg-slate-800 px-1 py-0.5 text-slate-500">unusable</span>
-          )}
+          <span
+            className={`rounded px-1 py-0.5 ${
+              exportable
+                ? 'bg-emerald-900/40 text-emerald-300'
+                : 'bg-rose-900/40 text-rose-300'
+            }`}
+          >
+            {exportable ? 'exportable' : 'not exportable'}
+          </span>
         </div>
       </div>
       <div className="mt-0.5 flex flex-wrap gap-2 text-slate-400">
@@ -70,6 +108,9 @@ function CandidateRow({ candidate, isSelected }: { candidate: NormalizedBenchmar
         )}
         {candidate.durationMs !== undefined && (
           <span>{Math.round(candidate.durationMs / 1000)}s</span>
+        )}
+        {candidate.serverName && (
+          <span>{candidate.serverName}{candidate.region ? ` (${candidate.region})` : ''}</span>
         )}
         {candidate.reportCode ? (
           <span className="text-slate-500">{candidate.reportCode}</span>
@@ -83,6 +124,14 @@ function CandidateRow({ candidate, isSelected }: { candidate: NormalizedBenchmar
           <span className="text-amber-400">{candidate.warnings.length} warning{candidate.warnings.length > 1 ? 's' : ''}</span>
         )}
       </div>
+      {!exportable && (
+        <p className="mt-1 text-[11px] text-rose-300">
+          Reasons: {(validationReasons.length > 0 ? validationReasons : ['failed validation']).join(', ')}
+        </p>
+      )}
+      {warningSummary.map((warning, index) => (
+        <p key={index} className="mt-0.5 text-[11px] text-amber-300">{warning}</p>
+      ))}
     </div>
   )
 }
@@ -122,7 +171,7 @@ export const PlayerAnalysisBenchmarkForm: FC<Props> = ({
         <input
           type="checkbox"
           checked={includeBenchmark}
-          onChange={(e) => onBenchmarkModeChange(e.target.checked ? 'manual' : 'none')}
+          onChange={(e) => onBenchmarkModeChange(e.target.checked ? 'auto' : 'none')}
         />
         Include benchmark comparison
       </label>
@@ -459,10 +508,9 @@ export const PlayerAnalysisBenchmarkForm: FC<Props> = ({
               {/* Export summary — what will actually be included */}
               {candidatesResult && (() => {
                 const willExport = (candidatesResult.groups ?? []).flatMap((g) =>
-                  g.candidates
-                    .filter((c) => c.validation.hasUsableExportTarget)
-                    .slice(0, 1)
-                    .map((c) => ({ baseline: g.baseline, candidate: c }))
+                  g.selectedCandidate && g.selectedCandidate.validation.hasUsableExportTarget
+                    ? [{ baseline: g.baseline, candidate: g.selectedCandidate }]
+                    : []
                 )
                 return (
                   <div className="rounded border border-slate-700 bg-slate-950/50 p-2 text-xs space-y-1">
@@ -523,7 +571,7 @@ export const PlayerAnalysisBenchmarkForm: FC<Props> = ({
                               <CandidateRow
                                 key={`${c.reportCode ?? i}-${c.fightId ?? i}`}
                                 candidate={c}
-                                isSelected={i === 0 && c.validation.hasUsableExportTarget}
+                                isSelected={isSameCandidate(group.selectedCandidate, c)}
                               />
                             ))}
                           </>

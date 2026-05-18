@@ -69,7 +69,8 @@ function buildSelectedCandidates(
       (b) => b.reportCode === group.baseline.reportCode && b.fightId === group.baseline.fightId
     )
     if (!baseline || !selectedKeys.has(baseline.key)) continue
-    const candidate = group.candidates.find((c) => c.validation.hasUsableExportTarget)
+    const candidate =
+      group.selectedCandidate?.validation.hasUsableExportTarget ? group.selectedCandidate : undefined
     if (!candidate || !candidate.reportCode || typeof candidate.fightId !== 'number') continue
     result.push({
       baselineReportCode: baseline.reportCode,
@@ -358,6 +359,7 @@ export const PlayerAnalysisPage: FC = () => {
 
   const handleGenerateExport = async () => {
     if (selectedViews.length === 0 || countSelectedFights(selectedFightIdsByReport) === 0) return
+    if (exportBlockedReason) return
     await exportJob.startExport(buildRequest({ forExport: true }))
   }
 
@@ -427,6 +429,26 @@ export const PlayerAnalysisPage: FC = () => {
     !!preview.detectedPlayer &&
     !!effectiveClassName &&
     !!effectiveSpecName
+
+  const selectedBaselineKeysList = [...selectedBaselineKeys]
+  const selectedGroupCount =
+    benchmarkCandidatesMutation.data?.groups.filter((group) =>
+      selectedBaselineKeys.has(`${group.baseline.reportCode}:${group.baseline.fightId}`)
+    ).length ?? 0
+  const selectedExportableCount =
+    benchmarkCandidatesMutation.data?.groups.filter((group) => {
+      if (!selectedBaselineKeys.has(`${group.baseline.reportCode}:${group.baseline.fightId}`)) return false
+      return !!group.selectedCandidate?.validation.hasUsableExportTarget
+    }).length ?? 0
+  const benchmarkAutoNoExportableGuard =
+    benchmarkMode === 'auto' &&
+    selectedBaselineKeysList.length > 0 &&
+    selectedGroupCount > 0 &&
+    selectedExportableCount === 0
+  const benchmarkAutoGuardReason = benchmarkAutoNoExportableGuard
+    ? 'Auto benchmark is enabled, but none of the selected baseline fights has an exportable candidate. Switch to Manual log mode or adjust baseline/context and re-run candidate discovery.'
+    : null
+  const exportBlockedReason = benchmarkAutoGuardReason
 
   const showProgress = exportJob.isStarting || job !== null
   const showResults = job?.status === 'complete' || job?.status === 'partial'
@@ -517,6 +539,7 @@ export const PlayerAnalysisPage: FC = () => {
               onGenerateExport={handleGenerateExport}
               isGenerating={exportJob.isStarting}
               viewCount={selectedViews.length}
+              exportBlockedReason={exportBlockedReason}
             />
           )}
 

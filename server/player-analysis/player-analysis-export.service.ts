@@ -1357,6 +1357,7 @@ async function runExportJob(
             sameDifficulty: true,
             sameClass: true,
             sameSpec: true,
+            hasUsablePlayerName: true,
             hasReportCode: true,
             hasFightId: true,
             hasUsableExportTarget: true,

@@ -312,7 +312,9 @@ export type NormalizedBenchmarkCandidate = {
   className?: string
   specName?: string
   serverName?: string
+  serverSlug?: string
   region?: string
+  characterUrl?: string
   encounterId: number
   encounterName?: string
   difficulty?: number
@@ -332,6 +334,7 @@ export type NormalizedBenchmarkCandidate = {
     sameDifficulty: boolean
     sameClass: boolean
     sameSpec: boolean
+    hasUsablePlayerName: boolean
     hasReportCode: boolean
     hasFightId: boolean
     hasUsableExportTarget: boolean
