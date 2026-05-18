@@ -111,7 +111,7 @@ function resolveTimeframe(
 ): { since: number | undefined; until: number | undefined } {
   const nowMs = Date.now()
 
-  if (!preset || preset === 'manualReports') {
+  if (!preset || preset === 'manualReports' || preset === 'latestRaid') {
     return { since, until }
   }
 
@@ -138,6 +138,25 @@ function resolveTimeframe(
   }
 
   return { since, until }
+}
+
+function selectLatestRaidReportCodes(
+  reports: Array<{ code: string; startTime: number; zoneName?: string | null }>
+): string[] {
+  if (reports.length === 0) return []
+  const sorted = [...reports].sort((left, right) => right.startTime - left.startTime)
+  const latest = sorted[0]
+  const latestZone = latest.zoneName?.trim().toLowerCase()
+  const maxWindowMs = 6 * 60 * 60 * 1000
+
+  return sorted
+    .filter((report) => {
+      if (latest.startTime - report.startTime > maxWindowMs) return false
+      if (!latestZone) return true
+      const zone = report.zoneName?.trim().toLowerCase()
+      return !zone || zone === latestZone
+    })
+    .map((report) => report.code)
 }
 
 // ---------------------------------------------------------------------------
@@ -400,19 +419,27 @@ export async function getExportPreview(
   const warnings: string[] = [...limitWarnings]
 
   const { since, until } = resolveTimeframe(request.timeframePreset, request.since, request.until)
+  const requestedFightIdsByReport = request.fightIdsByReport ?? {}
 
   let reportCodes: string[]
   if (request.reportCodes?.length) {
     reportCodes = request.reportCodes.slice(0, limits.maxReports)
   } else {
     const recentReports = await WclService.listRecentReports(config, limits.maxReports)
-    reportCodes = recentReports
-      .filter((r) => {
-        if (since !== undefined && r.startTime < since) return false
-        if (until !== undefined && r.startTime > until) return false
-        return true
-      })
-      .map((r) => r.code)
+    if (request.timeframePreset === 'latestRaid') {
+      reportCodes = selectLatestRaidReportCodes(recentReports)
+      if (reportCodes.length === 0 && recentReports[0]) {
+        reportCodes = [recentReports[0].code]
+      }
+    } else {
+      reportCodes = recentReports
+        .filter((r) => {
+          if (since !== undefined && r.startTime < since) return false
+          if (until !== undefined && r.startTime > until) return false
+          return true
+        })
+        .map((r) => r.code)
+    }
   }
 
   if (reportCodes.length > limits.maxReports) {
@@ -457,6 +484,11 @@ export async function getExportPreview(
 
     const includedFights: PlayerAnalysisExportPreview['includedReports'][0]['includedFights'] = []
     const skippedFights: PlayerAnalysisExportPreview['includedReports'][0]['skippedFights'] = []
+    const hasExplicitFightSelection = Object.prototype.hasOwnProperty.call(requestedFightIdsByReport, report.code)
+    const selectedFightIds = new Set(
+      (requestedFightIdsByReport[report.code] ?? [])
+        .filter((fightId): fightId is number => Number.isFinite(fightId) && fightId > 0)
+    )
 
     for (const fight of report.fights) {
       fightsScanned += 1
@@ -475,6 +507,10 @@ export async function getExportPreview(
       }
       if (onlyPlayerPresent && !playerPresent) {
         skippedFights.push({ fightId: fight.id, encounterName: fight.encounterName, reason: 'player not present' })
+        continue
+      }
+      if (hasExplicitFightSelection && !selectedFightIds.has(fight.id)) {
+        skippedFights.push({ fightId: fight.id, encounterName: fight.encounterName, reason: 'fight not selected' })
         continue
       }
 

@@ -35,6 +35,7 @@ export const EXPERIMENTAL_EXPORT_VIEWS: PlayerAnalysisExportView[] = [
 ]
 
 export type PlayerAnalysisTimeframePreset =
+  | 'latestRaid'
   | 'last7Days'
   | 'previousCalendarWeek'
   | 'last14Days'

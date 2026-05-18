@@ -41,6 +41,7 @@ export const VIEW_LABELS: Record<PlayerAnalysisExportView, string> = {
 }
 
 export type PlayerAnalysisTimeframePreset =
+  | 'latestRaid'
   | 'last7Days'
   | 'previousCalendarWeek'
   | 'last14Days'

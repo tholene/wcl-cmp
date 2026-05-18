@@ -1,5 +1,6 @@
-import { useState, type FC } from 'react'
+import { useRef, useState, type FC } from 'react'
 import { useRecentReports } from '@/features/reports/hooks/use-recent-reports'
+import type { ReportSummary } from '@/features/reports/types/report-summary'
 import { BenchmarkErrorBoundary } from '../components/benchmark-error-boundary'
 import { PlayerAnalysisBenchmarkForm } from '../components/player-analysis-benchmark-form'
 import { PlayerAnalysisExportProgress } from '../components/player-analysis-export-progress'
@@ -11,7 +12,14 @@ import { useBenchmarkCandidates } from '../hooks/use-benchmark-candidates'
 import { usePlayerAnalysisExportJob } from '../hooks/use-player-analysis-export-job'
 import { usePlayerAnalysisPreview } from '../hooks/use-player-analysis-preview'
 import { useRecentPlayers } from '../hooks/use-recent-players'
-import { STABLE_EXPORT_VIEWS, type BenchmarkCandidatesResponse, type PlayerAnalysisExportView, type PlayerAnalysisTimeframePreset, type SelectedBenchmarkCandidate } from '../types/player-analysis.types'
+import {
+  STABLE_EXPORT_VIEWS,
+  type BenchmarkCandidatesResponse,
+  type PlayerAnalysisExportRequest,
+  type PlayerAnalysisExportView,
+  type PlayerAnalysisTimeframePreset,
+  type SelectedBenchmarkCandidate,
+} from '../types/player-analysis.types'
 import type { WowRole } from '../types/wow-class-spec'
 
 type ManualBenchmarkConfig = {
@@ -85,6 +93,54 @@ function buildSelectedCandidates(
   return result
 }
 
+function selectLatestRaidReportCodes(reports: ReportSummary[]): string[] {
+  if (reports.length === 0) return []
+  const sorted = [...reports].sort((left, right) => right.startTime - left.startTime)
+  const latest = sorted[0]
+  const latestZone = latest.zoneName?.trim().toLowerCase()
+  const maxWindowMs = 6 * 60 * 60 * 1000
+
+  return sorted
+    .filter((report) => {
+      if (latest.startTime - report.startTime > maxWindowMs) return false
+      if (!latestZone) return true
+      const zone = report.zoneName?.trim().toLowerCase()
+      return !zone || zone === latestZone
+    })
+    .map((report) => report.code)
+}
+
+function buildDefaultFightSelection(preview: {
+  includedReports: Array<{
+    code: string
+    includedFights: Array<{
+      fightId: number
+      encounterId?: number
+      kill: boolean
+      playerPresent: boolean
+      durationMs: number
+    }>
+  }>
+}): Record<string, number[]> {
+  const selected: Record<string, number[]> = {}
+
+  for (const report of preview.includedReports ?? []) {
+    const eligible = (report.includedFights ?? []).filter(
+      (fight) => fight.playerPresent && (fight.encounterId ?? 0) > 0 && fight.durationMs >= 60_000
+    )
+    const preferred = eligible.some((fight) => fight.kill)
+      ? eligible.filter((fight) => fight.kill)
+      : eligible
+    selected[report.code] = preferred.map((fight) => fight.fightId)
+  }
+
+  return selected
+}
+
+function countSelectedFights(selection: Record<string, number[]>): number {
+  return Object.values(selection).reduce((sum, fightIds) => sum + fightIds.length, 0)
+}
+
 export const PlayerAnalysisPage: FC = () => {
   const recentPlayersQuery = useRecentPlayers()
   const recentReportsQuery = useRecentReports()
@@ -93,13 +149,14 @@ export const PlayerAnalysisPage: FC = () => {
   const benchmarkCandidatesMutation = useBenchmarkCandidates()
 
   const [playerName, setPlayerName] = useState('')
-  const [timeframePreset, setTimeframePreset] = useState<PlayerAnalysisTimeframePreset>('last7Days')
+  const [timeframePreset, setTimeframePreset] = useState<PlayerAnalysisTimeframePreset>('latestRaid')
   const [selectedReports, setSelectedReports] = useState<string[]>([])
   const [includeKills, setIncludeKills] = useState(true)
   const [includeWipes, setIncludeWipes] = useState(true)
   const [includeTrash, setIncludeTrash] = useState(false)
   const [onlyPlayerPresent, setOnlyPlayerPresent] = useState(true)
   const [selectedViews, setSelectedViews] = useState<PlayerAnalysisExportView[]>([...STABLE_EXPORT_VIEWS])
+  const [selectedFightIdsByReport, setSelectedFightIdsByReport] = useState<Record<string, number[]>>({})
 
   const [benchmarkMode, setBenchmarkMode] = useState<'none' | 'manual' | 'auto'>('none')
   const [manualBenchmarkConfig, setManualBenchmarkConfig] = useState<ManualBenchmarkConfig>({
@@ -115,6 +172,7 @@ export const PlayerAnalysisPage: FC = () => {
   })
   const [selectedBaselineKeys, setSelectedBaselineKeys] = useState<Set<string>>(new Set())
   const [playerUserContext, setPlayerUserContext] = useState<ClassSpecOverride | null>(null)
+  const previewRequestSeq = useRef(0)
 
   const preview = previewMutation.data ?? null
   const job = exportJob.jobStatus
@@ -153,86 +211,112 @@ export const PlayerAnalysisPage: FC = () => {
     : []
 
   const contextSource = wclSpecName ? ('wclDetected' as const) : ('userProvided' as const)
+  const invalidatePreviewState = () => {
+    previewRequestSeq.current += 1
+    previewMutation.reset()
+    setSelectedFightIdsByReport({})
+    setSelectedBaselineKeys(new Set())
+    benchmarkCandidatesMutation.reset()
+    setPlayerUserContext(null)
+  }
 
-  const buildRequest = () => ({
-    playerName,
-    timeframePreset,
-    reportCodes: timeframePreset === 'manualReports' ? selectedReports : undefined,
-    includeKills,
-    includeWipes,
-    includeTrash,
-    onlyPlayerPresent,
-    views: selectedViews,
-    playerContext: playerUserContext
-      ? {
-          className: playerUserContext.className,
-          specName: playerUserContext.specName,
-          role: playerUserContext.role,
-          source: 'userProvided' as const,
-        }
-      : undefined,
-    ...(benchmarkMode !== 'none'
-      ? {
-          includeBenchmark: true,
-          benchmark: {
-            targetPercentile: autoBenchmarkConfig.targetPercentile,
-            requireSameClassSpec: true as const,
-            itemLevelWindow: autoBenchmarkConfig.itemLevelWindow,
-            killDurationWindowPct: autoBenchmarkConfig.durationWindowPercent,
-            ...(benchmarkMode === 'manual' &&
-            manualBenchmarkConfig.reportCode &&
-            manualBenchmarkConfig.fightId &&
-            manualBenchmarkConfig.playerName
-              ? {
-                  manualTarget: {
-                    reportCode: manualBenchmarkConfig.reportCode,
-                    fightId: Number(manualBenchmarkConfig.fightId),
-                    playerName: manualBenchmarkConfig.playerName,
-                  },
-                }
-              : {}),
-            ...(benchmarkMode === 'auto'
-              ? {
-                  selectedCandidates: buildSelectedCandidates(
-                    availableBaselines,
-                    benchmarkCandidatesMutation.data ?? null,
-                    selectedBaselineKeys
-                  ),
-                  autoConfig: {
-                    mode: 'auto' as const,
-                    baselines: availableBaselines
-                      .filter((b) => selectedBaselineKeys.has(b.key))
-                      .map((b) => ({
-                        reportCode: b.reportCode,
-                        fightId: b.fightId,
-                        encounterId: b.encounterId,
-                        encounterName: b.encounterName,
-                        difficulty: b.difficulty,
-                        durationMs: b.durationMs,
-                        playerName: b.playerName,
-                        className: b.className,
-                        specName: b.specName,
-                        itemLevel: b.itemLevel,
-                        contextSource,
-                      })),
-                    targetPercentile: autoBenchmarkConfig.targetPercentile,
-                    metric: autoBenchmarkConfig.metric,
-                    itemLevelWindow: autoBenchmarkConfig.itemLevelWindow,
-                    durationWindowPercent: autoBenchmarkConfig.durationWindowPercent,
-                  },
-                }
-              : {}),
-          },
-        }
-      : {}),
-  })
+  const buildRequest = (params?: { forExport?: boolean }): PlayerAnalysisExportRequest => {
+    const reportCodes =
+      timeframePreset === 'manualReports'
+        ? selectedReports
+        : timeframePreset === 'latestRaid' && latestRaidReportCodes.length > 0
+          ? latestRaidReportCodes
+          : undefined
+
+    return {
+      playerName,
+      timeframePreset,
+      reportCodes,
+      fightIdsByReport: params?.forExport ? selectedFightIdsByReport : undefined,
+      includeKills,
+      includeWipes,
+      includeTrash,
+      onlyPlayerPresent,
+      views: selectedViews,
+      playerContext: playerUserContext
+        ? {
+            className: playerUserContext.className,
+            specName: playerUserContext.specName,
+            role: playerUserContext.role,
+            source: 'userProvided' as const,
+          }
+        : undefined,
+      ...(benchmarkMode !== 'none'
+        ? {
+            includeBenchmark: true,
+            benchmark: {
+              targetPercentile: autoBenchmarkConfig.targetPercentile,
+              requireSameClassSpec: true as const,
+              itemLevelWindow: autoBenchmarkConfig.itemLevelWindow,
+              killDurationWindowPct: autoBenchmarkConfig.durationWindowPercent,
+              ...(benchmarkMode === 'manual' &&
+              manualBenchmarkConfig.reportCode &&
+              manualBenchmarkConfig.fightId &&
+              manualBenchmarkConfig.playerName
+                ? {
+                    manualTarget: {
+                      reportCode: manualBenchmarkConfig.reportCode,
+                      fightId: Number(manualBenchmarkConfig.fightId),
+                      playerName: manualBenchmarkConfig.playerName,
+                    },
+                  }
+                : {}),
+              ...(benchmarkMode === 'auto'
+                ? {
+                    selectedCandidates: buildSelectedCandidates(
+                      availableBaselines,
+                      benchmarkCandidatesMutation.data ?? null,
+                      selectedBaselineKeys
+                    ),
+                    autoConfig: {
+                      mode: 'auto' as const,
+                      baselines: availableBaselines
+                        .filter((b) => selectedBaselineKeys.has(b.key))
+                        .map((b) => ({
+                          reportCode: b.reportCode,
+                          fightId: b.fightId,
+                          encounterId: b.encounterId,
+                          encounterName: b.encounterName,
+                          difficulty: b.difficulty,
+                          durationMs: b.durationMs,
+                          playerName: b.playerName,
+                          className: b.className,
+                          specName: b.specName,
+                          itemLevel: b.itemLevel,
+                          contextSource,
+                        })),
+                      targetPercentile: autoBenchmarkConfig.targetPercentile,
+                      metric: autoBenchmarkConfig.metric,
+                      itemLevelWindow: autoBenchmarkConfig.itemLevelWindow,
+                      durationWindowPercent: autoBenchmarkConfig.durationWindowPercent,
+                    },
+                  }
+                : {}),
+            },
+          }
+        : {}),
+    }
+  }
 
   const handlePreview = () => {
     setSelectedBaselineKeys(new Set())
     setPlayerUserContext(null)
+    const requestId = previewRequestSeq.current + 1
+    previewRequestSeq.current = requestId
     previewMutation.mutate(buildRequest(), {
       onSuccess: (data) => {
-        // Auto-select kills by default
+        if (requestId !== previewRequestSeq.current) {
+          return
+        }
+
+        const defaultFightSelection = buildDefaultFightSelection(data)
+        setSelectedFightIdsByReport(defaultFightSelection)
+
         const defaultKeys = new Set(
           data.includedReports
             .filter((r) => r.playerPresent)
@@ -248,8 +332,8 @@ export const PlayerAnalysisPage: FC = () => {
   }
 
   const handleGenerateExport = async () => {
-    if (selectedViews.length === 0) return
-    await exportJob.startExport(buildRequest())
+    if (selectedViews.length === 0 || countSelectedFights(selectedFightIdsByReport) === 0) return
+    await exportJob.startExport(buildRequest({ forExport: true }))
   }
 
   const handleFindCandidates = () => {
@@ -282,6 +366,35 @@ export const PlayerAnalysisPage: FC = () => {
     })
   }
 
+  const handleScopeFieldChange = (applyChange: () => void) => {
+    applyChange()
+    invalidatePreviewState()
+  }
+
+  const handleFightSelectionChange = (reportCode: string, fightId: number, selected: boolean) => {
+    setSelectedFightIdsByReport((current) => {
+      const existing = current[reportCode] ?? []
+      const next = selected
+        ? (existing.includes(fightId) ? existing : [...existing, fightId])
+        : existing.filter((id) => id !== fightId)
+      return { ...current, [reportCode]: next }
+    })
+  }
+
+  const handleSelectAllEligibleFights = () => {
+    if (!preview) return
+    setSelectedFightIdsByReport(buildDefaultFightSelection(preview))
+  }
+
+  const handleClearFightSelection = () => {
+    if (!preview) return
+    const empty: Record<string, number[]> = {}
+    for (const report of preview.includedReports ?? []) {
+      empty[report.code] = []
+    }
+    setSelectedFightIdsByReport(empty)
+  }
+
   const canFindCandidates =
     !!preview &&
     selectedBaselineKeys.size > 0 &&
@@ -294,6 +407,7 @@ export const PlayerAnalysisPage: FC = () => {
 
   const players = recentPlayersQuery.data?.players ?? []
   const reports = recentReportsQuery.data?.reports ?? []
+  const latestRaidReportCodes = selectLatestRaidReportCodes(reports)
 
   return (
     <div className="space-y-4">
@@ -307,6 +421,11 @@ export const PlayerAnalysisPage: FC = () => {
           <PlayerAnalysisScopeForm
             players={players}
             reports={reports}
+            latestRaidReportCodes={latestRaidReportCodes}
+            recentPlayersLoading={recentPlayersQuery.isLoading}
+            recentPlayersError={recentPlayersQuery.error instanceof Error ? recentPlayersQuery.error.message : null}
+            reportsLoading={recentReportsQuery.isLoading}
+            reportsError={recentReportsQuery.error instanceof Error ? recentReportsQuery.error.message : null}
             playerName={playerName}
             timeframePreset={timeframePreset}
             selectedReports={selectedReports}
@@ -314,13 +433,13 @@ export const PlayerAnalysisPage: FC = () => {
             includeWipes={includeWipes}
             includeTrash={includeTrash}
             onlyPlayerPresent={onlyPlayerPresent}
-            onPlayerNameChange={setPlayerName}
-            onTimeframePresetChange={setTimeframePreset}
-            onSelectedReportsChange={setSelectedReports}
-            onIncludeKillsChange={setIncludeKills}
-            onIncludeWipesChange={setIncludeWipes}
-            onIncludeTrashChange={setIncludeTrash}
-            onOnlyPlayerPresentChange={setOnlyPlayerPresent}
+            onPlayerNameChange={(value) => handleScopeFieldChange(() => setPlayerName(value))}
+            onTimeframePresetChange={(value) => handleScopeFieldChange(() => setTimeframePreset(value))}
+            onSelectedReportsChange={(value) => handleScopeFieldChange(() => setSelectedReports(value))}
+            onIncludeKillsChange={(value) => handleScopeFieldChange(() => setIncludeKills(value))}
+            onIncludeWipesChange={(value) => handleScopeFieldChange(() => setIncludeWipes(value))}
+            onIncludeTrashChange={(value) => handleScopeFieldChange(() => setIncludeTrash(value))}
+            onOnlyPlayerPresentChange={(value) => handleScopeFieldChange(() => setOnlyPlayerPresent(value))}
             onPreview={handlePreview}
             isPreviewing={previewMutation.isPending}
           />
@@ -360,6 +479,10 @@ export const PlayerAnalysisPage: FC = () => {
           {preview && !showProgress && (
             <PlayerAnalysisPreviewPanel
               preview={preview}
+              selectedFightIdsByReport={selectedFightIdsByReport}
+              onFightSelectionChange={handleFightSelectionChange}
+              onSelectAllEligibleFights={handleSelectAllEligibleFights}
+              onClearFightSelection={handleClearFightSelection}
               onGenerateExport={handleGenerateExport}
               isGenerating={exportJob.isStarting}
               viewCount={selectedViews.length}
