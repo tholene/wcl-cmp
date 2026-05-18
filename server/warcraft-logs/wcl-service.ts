@@ -408,7 +408,7 @@ const mapFights = (
     encounterID: number
     name?: string | null
     kill: boolean
-    difficulty: number
+    difficulty?: number | null
     startTime: number
     endTime: number
   }> = []
@@ -420,7 +420,7 @@ const mapFights = (
       encounterId: fight.encounterID,
       encounterName: fight.name ?? `Unknown encounter ${fight.encounterID}`,
       kill: fight.kill,
-      difficulty: fight.difficulty,
+      difficulty: fight.difficulty ?? 0,
       startTime: fight.startTime,
       endTime: fight.endTime,
     }))

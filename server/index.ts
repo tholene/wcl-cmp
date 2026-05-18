@@ -392,7 +392,16 @@ app.get('/api/player-analysis/exports/:exportId/status', (req: Request, res: Res
 app.post('/api/player-analysis/benchmark-candidates', async (req: Request, res: Response) => {
   try {
     const config = getWclConfig()
-    const result = await PlayerAnalysisBenchmarkService.findBenchmarkCandidates(config, req.body)
+    const body = req.body as import('./player-analysis/player-analysis.types').BenchmarkCandidatesRequest
+    console.log('[benchmark-candidates] baselines:', JSON.stringify(
+      (body.baselines ?? []).map((b) => ({
+        encounterId: b.encounterId,
+        difficulty: b.difficulty,
+        className: b.className,
+        specName: b.specName,
+      }))
+    ))
+    const result = await PlayerAnalysisBenchmarkService.findBenchmarkCandidates(config, body)
     res.status(200).json(result)
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown error finding benchmark candidates.'

@@ -50,8 +50,23 @@ export type PlayerAnalysisExportLimits = {
 
 export type PlayerBenchmarkTargetPercentile = 50 | 75 | 90
 
+export type BenchmarkBaseline = {
+  reportCode: string
+  fightId: number
+  encounterId: number
+  encounterName?: string
+  difficulty: number
+  durationMs?: number
+  playerName: string
+  className: string
+  specName: string
+  itemLevel?: number | null
+  contextSource?: 'wclDetected' | 'userProvided'
+}
+
 export type AutomatedBenchmarkConfig = {
   mode: 'auto'
+  baselines: BenchmarkBaseline[]
   targetPercentile: 50 | 75 | 90
   metric: string
   maxCandidates?: number
@@ -68,6 +83,25 @@ export type ManualBenchmarkConfig = {
 
 export type PlayerAnalysisBenchmarkConfig = AutomatedBenchmarkConfig | ManualBenchmarkConfig
 
+export type SelectedBenchmarkCandidate = {
+  baselineReportCode: string
+  baselineFightId: number
+  baselineEncounterId: number
+  baselineEncounterName: string
+  baselineDifficulty: number
+  baselineDurationMs?: number
+  benchmarkPlayerName: string
+  benchmarkReportCode: string
+  benchmarkFightId: number
+  benchmarkEncounterId: number
+  benchmarkDifficulty: number
+  benchmarkClassName: string
+  benchmarkSpecName: string
+  benchmarkPercentile?: number
+  benchmarkItemLevel?: number
+  benchmarkDurationMs?: number
+}
+
 export type PlayerBenchmarkRequest = {
   targetPercentile: PlayerBenchmarkTargetPercentile
   requireSameClassSpec: true
@@ -75,6 +109,7 @@ export type PlayerBenchmarkRequest = {
   killDurationWindowPct?: number
   preferSameTalents?: boolean
   preferSameHeroTalents?: boolean
+  selectedCandidates?: SelectedBenchmarkCandidate[]
   manualTarget?: {
     reportCode: string
     fightId: number
@@ -97,6 +132,7 @@ export type PlayerUserContext = {
   role?: 'tank' | 'healer' | 'dps'
   className?: string
   specName?: string
+  source: 'userProvided'
 }
 
 export type PlayerAnalysisExportRequest = {
@@ -148,6 +184,18 @@ export type PlayerAnalysisExportPreview = {
     detectedContext?: PlayerDetectedContext
     specId?: number
     warnings: string[]
+    detectionDiagnostics?: {
+      fightsAttempted: number
+      playerActorFound: boolean
+      actorId?: number
+      combatantInfoQueried: boolean
+      combatantInfoEventsFound: number
+      matchingCombatantInfoFound: boolean
+      rawSpecIdFound?: number
+      specIdMapped: boolean
+      checkedReportCode?: string
+      checkedFightId?: number
+    }
   }
   includedReports: Array<{
     code: string
@@ -208,33 +256,14 @@ export type PlayerBenchmarkCandidate = {
   warnings: string[]
 }
 
-export type PlayerBenchmarkCandidatesRequest = {
-  playerName: string
-  encounterId: number
-  encounterName?: string
-  difficulty: number
-  className: string
-  specName: string
-  itemLevel?: number | null
-  durationMs?: number
+export type BenchmarkCandidatesRequest = {
+  baselines: BenchmarkBaseline[]
   targetPercentile: 50 | 75 | 90
   metric: string
-  maxCandidates?: number
   itemLevelWindow?: number
-  killDurationWindowPct?: number
-}
-
-export type BenchmarkSubjectContext = {
-  playerName: string
-  className: string
-  specName: string
-  encounterId: number
-  encounterName?: string
-  difficulty: number
-  itemLevel?: number
-  durationMs?: number
-  metric: string
-  targetPercentile: 50 | 75 | 90
+  durationWindowPercent?: number
+  maxCandidatesPerFight?: number
+  playerContext?: PlayerUserContext
 }
 
 export type NormalizedBenchmarkCandidate = {
@@ -271,11 +300,17 @@ export type NormalizedBenchmarkCandidate = {
   warnings: string[]
 }
 
-export type BenchmarkCandidatesResponse = {
+export type BenchmarkCandidateGroup = {
+  baseline: BenchmarkBaseline
   candidates: NormalizedBenchmarkCandidate[]
   selectedCandidate?: NormalizedBenchmarkCandidate
   warnings: string[]
   apiSupported: boolean
+}
+
+export type BenchmarkCandidatesResponse = {
+  groups: BenchmarkCandidateGroup[]
+  warnings: string[]
 }
 
 // ---------------------------------------------------------------------------

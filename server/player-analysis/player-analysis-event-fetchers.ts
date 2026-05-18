@@ -10,7 +10,29 @@ export type RawEvent = {
   absorbed?: number | null
   overkill?: number | null
   overheal?: number | null
-  ability?: { gameID?: number | null; name?: string | null } | null
+  mitigated?: number | null
+  blocked?: number | null
+  resisted?: number | null
+  hitType?: number | null
+  stack?: number | null
+
+  // Ability — nested object (WCL uses 'guid' in some versions, 'gameID' in others, 'id' in others)
+  ability?: {
+    gameID?: number | null
+    guid?: number | null
+    id?: number | null
+    name?: string | null
+    type?: number | string | null
+    abilityIcon?: string | null
+  } | null
+
+  // Ability — flat field forms (different WCL event types use different casings)
+  abilityGameID?: number | null
+  abilityGameId?: number | null
+  abilityID?: number | null
+  abilityId?: number | null
+  abilityName?: string | null
+
   // CombatantInfo fields
   specID?: number | null
   strength?: number | null
@@ -19,6 +41,7 @@ export type RawEvent = {
   auras?: unknown[] | null
   gear?: unknown[] | null
   talentTree?: unknown[] | null
+
   [key: string]: unknown
 }
 
@@ -68,6 +91,7 @@ const buildEventsQuery = (dataType: string): string => `
           dataType: ${dataType}
           sourceID: $sourceId
           targetID: $targetId
+          translate: true
         ) {
           data
           nextPageTimestamp

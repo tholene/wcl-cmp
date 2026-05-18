@@ -4,8 +4,9 @@ import { WclService } from '../warcraft-logs/wcl-service'
 import { fetchCombatantInfoEvents } from './player-analysis-event-fetchers'
 import type {
   PlayerBenchmarkCandidate,
-  PlayerBenchmarkCandidatesRequest,
-  BenchmarkSubjectContext,
+  BenchmarkBaseline,
+  BenchmarkCandidateGroup,
+  BenchmarkCandidatesRequest,
   NormalizedBenchmarkCandidate,
   BenchmarkCandidatesResponse,
 } from './player-analysis.types'
@@ -104,7 +105,7 @@ function parseCharacterRankingsScalar(raw: unknown): { rankings: unknown[]; coun
 
 function normalizeRankingEntry(
   raw: unknown,
-  context: BenchmarkSubjectContext,
+  context: BaselineContext,
   totalCount: number
 ): NormalizedBenchmarkCandidate {
   const entry = raw && typeof raw === 'object' ? (raw as Record<string, unknown>) : {}
@@ -165,10 +166,12 @@ function normalizeRankingEntry(
   const sameSpec = !!specName && specName.toLowerCase() === context.specName.toLowerCase()
   const hasReportCode = !!reportCode
   const hasFightId = typeof fightId === 'number'
-  const hasUsableExportTarget = hasReportCode && hasFightId && sameClass && sameSpec
+  const hasRealName = !!characterName && characterName.toLowerCase() !== 'anonymous'
+  const hasUsableExportTarget = hasRealName && hasReportCode && hasFightId && sameClass && sameSpec
 
   const warnings: string[] = []
   if (!characterName) warnings.push('Ranking entry missing character name.')
+  if (characterName && !hasRealName) warnings.push('Ranking entry has a hidden/anonymous name — cannot identify player for export.')
   if (!className) warnings.push('Ranking entry missing class — same-class validation skipped.')
   if (!specName) warnings.push('Ranking entry missing spec — same-spec validation skipped.')
   if (!hasReportCode) warnings.push('Ranking entry missing report code — cannot use for export.')
@@ -211,7 +214,7 @@ function normalizeRankingEntry(
   }
 }
 
-function scoreCandidate(c: NormalizedBenchmarkCandidate, context: BenchmarkSubjectContext): number {
+function scoreCandidate(c: NormalizedBenchmarkCandidate, context: BaselineContext): number {
   if (!c.validation.hasUsableExportTarget) return Infinity
 
   const percentileDistance =
@@ -247,6 +250,120 @@ export type ManualBenchmarkResult = {
   fight: ManualBenchmarkFight | null
   sourceId: number | null
   warnings: string[]
+}
+
+// ---------------------------------------------------------------------------
+// Per-baseline candidate discovery helper
+// ---------------------------------------------------------------------------
+
+type BaselineContext = {
+  playerName: string
+  className: string
+  specName: string
+  encounterId: number
+  encounterName?: string
+  difficulty: number
+  itemLevel?: number
+  durationMs?: number
+  metric: string
+  targetPercentile: 50 | 75 | 90
+}
+
+async function findCandidatesForBaseline(
+  config: WclConfig,
+  baseline: BenchmarkBaseline,
+  options: { targetPercentile: 50 | 75 | 90; metric: string; maxCandidates: number }
+): Promise<BenchmarkCandidateGroup> {
+  const context: BaselineContext = {
+    playerName: baseline.playerName,
+    className: baseline.className,
+    specName: baseline.specName,
+    encounterId: baseline.encounterId,
+    encounterName: baseline.encounterName,
+    difficulty: baseline.difficulty,
+    itemLevel: baseline.itemLevel ?? undefined,
+    durationMs: baseline.durationMs,
+    metric: options.metric,
+    targetPercentile: options.targetPercentile,
+  }
+
+  let rawResponse: EncounterRankingsQueryResponse
+  try {
+    rawResponse = await queryWclGraphQl<EncounterRankingsQueryResponse>({
+      config,
+      query: ENCOUNTER_CHARACTER_RANKINGS_QUERY,
+      variables: {
+        encounterId: baseline.encounterId,
+        className: baseline.className,
+        specName: baseline.specName,
+        metric: options.metric,
+        difficulty: baseline.difficulty,
+      },
+    })
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    return {
+      baseline,
+      candidates: [],
+      warnings: [`WCL characterRankings query failed: ${message}`, 'Use manual benchmark mode as a fallback.'],
+      apiSupported: false,
+    }
+  }
+
+  const rawScalar = rawResponse.worldData?.encounter?.characterRankings
+  const parsed = parseCharacterRankingsScalar(rawScalar)
+
+  if (!parsed) {
+    return {
+      baseline,
+      candidates: [],
+      warnings: [
+        'WCL characterRankings returned an unexpected response shape — automated discovery cannot proceed.',
+        'Use manual benchmark mode as a fallback.',
+      ],
+      apiSupported: false,
+    }
+  }
+
+  const { rankings, count } = parsed
+  const allWarnings: string[] = []
+
+  const normalized = rankings.map((entry) => normalizeRankingEntry(entry, context, count))
+  const scored = normalized.map((c) => ({ ...c, score: scoreCandidate(c, context) }))
+
+  const allSorted = scored
+    .sort((a, b) => {
+      const aUsable = a.score !== Infinity ? 0 : 1
+      const bUsable = b.score !== Infinity ? 0 : 1
+      if (aUsable !== bUsable) return aUsable - bUsable
+      return a.score - b.score
+    })
+    .slice(0, options.maxCandidates)
+
+  const selectedCandidate = allSorted.find((c) => c.validation.hasUsableExportTarget)
+
+  for (const c of allSorted.slice(0, 5)) {
+    allWarnings.push(...c.warnings)
+  }
+
+  const usableCount = allSorted.filter((c) => c.validation.hasUsableExportTarget).length
+  if (usableCount === 0 && allSorted.length > 0) {
+    allWarnings.push(
+      `Found ${allSorted.length} ranking${allSorted.length > 1 ? 's' : ''} but none have both a report code and fight ID — cannot use for automated export. Use manual benchmark mode.`
+    )
+  } else if (allSorted.length === 0) {
+    allWarnings.push(
+      `WCL returned no rankings for ${baseline.className} ${baseline.specName} on encounter ${baseline.encounterId} (difficulty ${baseline.difficulty}).`
+    )
+  }
+
+  return {
+    baseline,
+    candidates: allSorted,
+    selectedCandidate,
+    warnings: allWarnings,
+    apiSupported: true,
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -378,92 +495,59 @@ export const PlayerAnalysisBenchmarkService = {
   },
 
   /**
-   * Automated benchmark candidate discovery via WCL characterRankings.
-   * Queries encounter rankings filtered by class/spec/metric/difficulty.
-   * Returns normalized, scored candidates. Returns apiSupported: false if the
-   * WCL API cannot fulfil the request (wrong shape, missing fields, API error).
+   * Baseline-driven benchmark candidate discovery via WCL characterRankings.
+   * Each baseline is a specific player fight — candidates are queried per fight
+   * for that exact encounter/difficulty/class/spec.
    */
   async findBenchmarkCandidates(
     config: WclConfig,
-    request: PlayerBenchmarkCandidatesRequest
+    request: BenchmarkCandidatesRequest
   ): Promise<BenchmarkCandidatesResponse> {
-    const context: BenchmarkSubjectContext = {
-      playerName: request.playerName,
-      className: request.className,
-      specName: request.specName,
-      encounterId: request.encounterId,
-      encounterName: request.encounterName,
-      difficulty: request.difficulty,
-      itemLevel: request.itemLevel ?? undefined,
-      durationMs: request.durationMs,
-      metric: request.metric,
-      targetPercentile: request.targetPercentile,
-    }
+    const groups: BenchmarkCandidateGroup[] = []
 
-    let rawResponse: EncounterRankingsQueryResponse
-    try {
-      rawResponse = await queryWclGraphQl<EncounterRankingsQueryResponse>({
-        config,
-        query: ENCOUNTER_CHARACTER_RANKINGS_QUERY,
-        variables: {
-          encounterId: request.encounterId,
-          className: request.className,
-          specName: request.specName,
-          metric: request.metric,
-          difficulty: request.difficulty,
-        },
+    for (const baseline of request.baselines) {
+      if (!baseline.className || baseline.className === 'unknown' ||
+        !baseline.specName || baseline.specName === 'unknown') {
+        groups.push({
+          baseline,
+          candidates: [],
+          warnings: [
+            `Valid className and specName are required for benchmark discovery. ` +
+            `Received "${baseline.className ?? 'none'}"/"${baseline.specName ?? 'none'}" — provide class/spec manually in the benchmark form.`,
+          ],
+          apiSupported: false,
+        })
+        continue
+      }
+
+      if (typeof baseline.encounterId !== 'number' || baseline.encounterId <= 0) {
+        groups.push({
+          baseline,
+          candidates: [],
+          warnings: [`encounterId must be a positive integer (got ${String(baseline.encounterId)}) — this fight cannot be used for benchmark discovery.`],
+          apiSupported: false,
+        })
+        continue
+      }
+
+      if (typeof baseline.difficulty !== 'number' || baseline.difficulty <= 0) {
+        groups.push({
+          baseline,
+          candidates: [],
+          warnings: [`difficulty must be a positive integer (got ${String(baseline.difficulty)}) — this fight cannot be used for benchmark discovery.`],
+          apiSupported: false,
+        })
+        continue
+      }
+
+      const group = await findCandidatesForBaseline(config, baseline, {
+        targetPercentile: request.targetPercentile,
+        metric: request.metric,
+        maxCandidates: request.maxCandidatesPerFight ?? 10,
       })
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error)
-      return {
-        candidates: [],
-        warnings: [`WCL characterRankings query failed: ${message}`, 'Use manual benchmark mode as a fallback.'],
-        apiSupported: false,
-      }
+      groups.push(group)
     }
 
-    const rawScalar = rawResponse.worldData?.encounter?.characterRankings
-    const parsed = parseCharacterRankingsScalar(rawScalar)
-
-    if (!parsed) {
-      return {
-        candidates: [],
-        warnings: [
-          'WCL characterRankings returned an unexpected response shape — automated discovery cannot proceed.',
-          'Use manual benchmark mode as a fallback.',
-        ],
-        apiSupported: false,
-      }
-    }
-
-    const { rankings, count } = parsed
-    const allWarnings: string[] = []
-
-    const normalized = rankings.map((entry) => normalizeRankingEntry(entry, context, count))
-
-    const scored = normalized.map((c) => ({ ...c, score: scoreCandidate(c, context) }))
-
-    const usable = scored
-      .filter((c) => c.score !== Infinity)
-      .sort((a, b) => a.score - b.score)
-      .slice(0, request.maxCandidates ?? 10)
-
-    // Collect candidate-level warnings for the first few entries
-    for (const c of scored.slice(0, 5)) {
-      allWarnings.push(...c.warnings)
-    }
-
-    if (usable.length === 0 && normalized.length > 0) {
-      allWarnings.push(
-        `Found ${normalized.length} rankings but none matched class=${request.className} spec=${request.specName} with a usable report code and fight ID.`
-      )
-    }
-
-    return {
-      candidates: usable,
-      selectedCandidate: usable[0],
-      warnings: allWarnings,
-      apiSupported: true,
-    }
+    return { groups, warnings: [] }
   },
 }

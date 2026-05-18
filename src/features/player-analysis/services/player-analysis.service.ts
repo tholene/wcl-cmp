@@ -4,7 +4,7 @@ import type {
   PlayerAnalysisExportPreview,
   PlayerAnalysisExportRequest,
   PlayerAnalysisExportStartResponse,
-  PlayerBenchmarkCandidatesRequest,
+  BenchmarkCandidatesRequest,
   BenchmarkCandidatesResponse,
 } from '../types/player-analysis.types'
 
@@ -18,6 +18,6 @@ export const PlayerAnalysisService = {
   getExportStatus: async (exportId: string): Promise<PlayerAnalysisExportJob> =>
     PlayerAnalysisRestService.getExportStatus(exportId),
 
-  getBenchmarkCandidates: async (request: PlayerBenchmarkCandidatesRequest): Promise<BenchmarkCandidatesResponse> =>
+  getBenchmarkCandidates: async (request: BenchmarkCandidatesRequest): Promise<BenchmarkCandidatesResponse> =>
     PlayerAnalysisRestService.getBenchmarkCandidates(request),
 }

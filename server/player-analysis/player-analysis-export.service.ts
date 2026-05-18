@@ -41,6 +41,13 @@ import {
   createBundleZip,
   getExportFileSize,
 } from './player-analysis-export-files'
+import {
+  enrichWclEvent,
+  buildActorMapFromList,
+  computeDataQuality,
+  type DataQualityStats,
+  type ActorMap,
+} from './player-analysis-event-enrichment'
 import { WOW_SPEC_MAP } from './wow-spec-map'
 import type {
   PlayerAnalysisExportRequest,
@@ -51,7 +58,6 @@ import type {
   PlayerAnalysisTimeframePreset,
   PlayerDetectedContext,
   NormalizedBenchmarkCandidate,
-  PlayerBenchmarkCandidatesRequest,
 } from './player-analysis.types'
 
 // ---------------------------------------------------------------------------
@@ -68,6 +74,7 @@ type ReportPlayersQueryResponse = {
           type?: string | null
           subType?: string | null
           icon?: string | null
+          petOwner?: number | null
         }>
       } | null
     } | null
@@ -85,6 +92,7 @@ const REPORT_PLAYERS_QUERY = `
             type
             subType
             icon
+            petOwner
           }
         }
       }
@@ -266,6 +274,7 @@ function buildReadme(params: {
   warnings: string[]
   detectedContext?: PlayerDetectedContext
   userContext?: { role?: string; className?: string; specName?: string }
+  dataQuality?: DataQualityStats[]
 }): string {
   const scope = params.scope
   const dc = params.detectedContext
@@ -342,6 +351,23 @@ function buildReadme(params: {
     ...(params.benchmarkEnabled ? ['- `comparison-summary.csv` — numeric diff table'] : []),
     '- `bundle.zip` — all files bundled',
     '',
+    ...(params.dataQuality && params.dataQuality.length > 0
+      ? [
+          '## Data Quality',
+          '',
+          '| View | Rows | abilityGameId% | abilityName% | sourceName% | targetName% |',
+          '|---|---|---|---|---|---|',
+          ...params.dataQuality.map(
+            (dq) =>
+              `| ${dq.view} | ${dq.totalRows} | ${dq.abilityGameIdPct}% | ${dq.abilityNamePct}% | ${dq.sourceNamePct}% | ${dq.targetNamePct}% |`
+          ),
+          '',
+          ...params.dataQuality
+            .filter((dq) => dq.abilityNamePct < 50 && dq.totalRows > 0)
+            .map((dq) => `Warning: ${dq.view} — only ${dq.abilityNamePct}% of rows have abilityName; rawEventJson included for debugging.`),
+          '',
+        ]
+      : []),
     '## Important caveats',
     '- This export is evidence, not a verdict.',
     '- Do not compare across different specs.',
@@ -407,6 +433,10 @@ export async function getExportPreview(
   const sourceIdsByReport: Record<string, number[]> = {}
   let detectedClassName: string | null = null
   let firstPlayerFight: { code: string; fightId: number; startTime: number; endTime: number; sourceId: number } | null = null
+  const specCandidateFights: Array<{
+    code: string; fightId: number; startTime: number; endTime: number; sourceId: number
+    isKill: boolean; durationMs: number
+  }> = []
 
   const reportResults = await Promise.allSettled(
     reportCodes.map((code) => WclService.getReportDetails(config, code))
@@ -473,6 +503,19 @@ export async function getExportPreview(
           sourceId: actor.id,
         }
       }
+
+      const fightDurationMs = Math.max(fight.endTime - fight.startTime, 0)
+      if (playerPresent && actor && fight.encounterId > 0 && fightDurationMs >= 60000) {
+        specCandidateFights.push({
+          code: report.code,
+          fightId: fight.id,
+          startTime: fight.startTime,
+          endTime: fight.endTime,
+          sourceId: actor.id,
+          isKill: fight.kill,
+          durationMs: fightDurationMs,
+        })
+      }
     }
 
     if (includedFights.length > 0) reportsIncluded += 1
@@ -488,39 +531,84 @@ export async function getExportPreview(
     })
   }
 
-  // Spec detection: one CombatantInfo fetch for the first player-present fight
+  // Spec detection: try multiple boss fights before giving up
   let detectedContext: PlayerDetectedContext = { source: 'unknown', confidence: 'low' }
 
-  if (firstPlayerFight) {
+  const diag = {
+    fightsAttempted: 0,
+    playerActorFound: detectedClassName !== null,
+    actorId: firstPlayerFight?.sourceId,
+    combatantInfoQueried: false,
+    combatantInfoEventsFound: 0,
+    matchingCombatantInfoFound: false,
+    rawSpecIdFound: undefined as number | undefined,
+    specIdMapped: false,
+    checkedReportCode: undefined as string | undefined,
+    checkedFightId: undefined as number | undefined,
+  }
+
+  // Sort: kills first, then by duration descending; cap at 5 attempts
+  const sortedCandidates = specCandidateFights
+    .sort((a, b) => (b.isKill ? 1 : 0) - (a.isKill ? 1 : 0) || b.durationMs - a.durationMs)
+    .slice(0, 5)
+
+  // Fallback to any player-present fight if no boss fights found
+  if (sortedCandidates.length === 0 && firstPlayerFight) {
+    sortedCandidates.push({ ...firstPlayerFight, isKill: false, durationMs: 0 })
+  }
+
+  for (const candidate of sortedCandidates) {
+    diag.fightsAttempted += 1
+    diag.checkedReportCode = candidate.code
+    diag.checkedFightId = candidate.fightId
     try {
       const combatantResult = await fetchCombatantInfoEvents({
         config,
-        code: firstPlayerFight.code,
-        fightId: firstPlayerFight.fightId,
-        startTime: firstPlayerFight.startTime,
-        endTime: firstPlayerFight.endTime,
+        code: candidate.code,
+        fightId: candidate.fightId,
+        startTime: candidate.startTime,
+        endTime: candidate.endTime,
         maxEvents: 50,
       })
-      const details = extractCombatantDetails(combatantResult.events, firstPlayerFight.sourceId)
-      if (details.specId !== null && details.specName !== null) {
-        detectedContext = {
-          specId: details.specId,
-          className: WOW_SPEC_MAP[details.specId]?.className,
-          specName: details.specName,
-          role: details.role ?? undefined,
-          source: 'wclCombatantInfo',
-          confidence: 'high',
+      diag.combatantInfoQueried = true
+      diag.combatantInfoEventsFound += combatantResult.events.length
+      const details = extractCombatantDetails(combatantResult.events, candidate.sourceId)
+      if (details.specId !== null) {
+        diag.rawSpecIdFound = details.specId
+        if (WOW_SPEC_MAP[details.specId]) {
+          diag.specIdMapped = true
+          diag.matchingCombatantInfoFound = true
+          detectedContext = {
+            specId: details.specId,
+            className: WOW_SPEC_MAP[details.specId].className,
+            specName: details.specName!,
+            role: details.role ?? undefined,
+            source: 'wclCombatantInfo',
+            confidence: 'high',
+          }
+          break
+        } else {
+          warnings.push(`specID ${details.specId} found in ${candidate.code}#${candidate.fightId} but not in WOW_SPEC_MAP — spec remains unknown.`)
         }
-      } else if (detectedClassName) {
-        detectedContext = { className: detectedClassName, source: 'wclActor', confidence: 'medium' }
+      } else if (combatantResult.events.length > 0) {
+        warnings.push(`CombatantInfo events found for ${candidate.code}#${candidate.fightId} but player sourceID ${candidate.sourceId} was not matched.`)
+      } else {
+        warnings.push(`CombatantInfo queried for ${candidate.code}#${candidate.fightId} but returned no events.`)
       }
     } catch {
-      // Non-fatal — fall through to wclActor or unknown
+      warnings.push(`CombatantInfo fetch failed for ${candidate.code}#${candidate.fightId}.`)
     }
   }
 
-  if (detectedContext.confidence === 'low' && detectedClassName) {
-    detectedContext = { className: detectedClassName, source: 'wclActor', confidence: 'medium' }
+  if (detectedContext.confidence !== 'high') {
+    if (detectedClassName) {
+      detectedContext = { className: detectedClassName, source: 'wclActor', confidence: 'medium' }
+      if (diag.fightsAttempted > 0) {
+        warnings.push(`Only class "${detectedClassName}" could be detected from actor data; spec could not be determined from ${diag.fightsAttempted} fight(s) tried.`)
+      }
+    } else if (diag.fightsAttempted === 0) {
+      warnings.push('No eligible boss fights found to attempt spec detection.')
+    }
   }
 
   const userCtx = request.playerContext
@@ -558,7 +646,8 @@ export async function getExportPreview(
       sourceIdsByReport,
       detectedContext,
       specId: detectedContext.specId,
-      warnings: detectedContext.className ? [] : [`Class not found for ${playerName} in scanned reports`],
+      warnings: detectedContext.className ? [] : [`Class not found for ${playerName} in scanned reports.`],
+      detectionDiagnostics: diag,
     },
     includedReports,
     estimatedExport: {
@@ -589,8 +678,7 @@ type FightContext = {
   fightStartTime: number // report-relative ms, for computing relative timestamps
 }
 
-function buildEventBaseRow(ctx: FightContext, event: RawEvent, actorById: Map<number, { name?: string | null }>) {
-  const ts = typeof event.timestamp === 'number' ? event.timestamp : ctx.fightStartTime
+function fightContextFields(ctx: FightContext) {
   return {
     exportId: ctx.exportId,
     subjectType: ctx.subjectType,
@@ -602,15 +690,6 @@ function buildEventBaseRow(ctx: FightContext, event: RawEvent, actorById: Map<nu
     difficulty: ctx.difficulty,
     kill: ctx.kill,
     fightDurationMs: ctx.fightDurationMs,
-    sourceId: event.sourceID ?? '',
-    sourceName: actorById.get(event.sourceID ?? -1)?.name ?? '',
-    targetId: event.targetID ?? '',
-    targetName: actorById.get(event.targetID ?? -1)?.name ?? '',
-    abilityGameId: event.ability?.gameID ?? '',
-    abilityName: event.ability?.name ?? '',
-    timestampMs: ts,
-    relativeTimestampMs: Math.max(0, Math.floor(ts - ctx.fightStartTime)),
-    eventType: event.type ?? '',
   }
 }
 
@@ -627,12 +706,15 @@ export function startExportJob(config: WclConfig, request: PlayerAnalysisExportR
     30
   )
   const viewCount = request.views.length
+  const selectedCandidateCount = request.benchmark?.selectedCandidates?.length ?? 0
   const benchmarkSteps = request.includeBenchmark
     ? request.benchmark?.manualTarget
       ? viewCount + 2
-      : request.benchmark?.autoConfig
-        ? viewCount + 3
-        : 0
+      : selectedCandidateCount > 0
+        ? selectedCandidateCount * Math.max(0, viewCount - 2)
+        : request.benchmark?.autoConfig
+          ? viewCount + 3
+          : 0
     : 0
   const totalSteps = 2 + estimatedFights * viewCount + benchmarkSteps + 3 // scan + fights + benchmark + write/zip
 
@@ -656,7 +738,7 @@ export function startExportJob(config: WclConfig, request: PlayerAnalysisExportR
 // Export job: async runner (background, never touches HTTP response)
 // ---------------------------------------------------------------------------
 
-async function getActorMap(config: WclConfig, code: string): Promise<Map<number, { name?: string | null; subType?: string | null }>> {
+async function getActorMap(config: WclConfig, code: string): Promise<ActorMap> {
   try {
     const response = await queryWclGraphQl<ReportPlayersQueryResponse>({
       config,
@@ -664,9 +746,7 @@ async function getActorMap(config: WclConfig, code: string): Promise<Map<number,
       variables: { code },
     })
     const actors = response.reportData?.report?.masterData?.actors ?? []
-    const map = new Map<number, { name?: string | null; subType?: string | null }>()
-    actors.forEach((a) => { if (a.id > 0) map.set(a.id, a) })
-    return map
+    return buildActorMapFromList(actors)
   } catch {
     return new Map()
   }
@@ -858,28 +938,23 @@ async function runExportJob(
 
         // Map events to CSV rows
         for (const event of result.events) {
-          const base = buildEventBaseRow(ctx, event, actorMap as Map<number, { name?: string | null }>)
+          const enriched = enrichWclEvent(event, ctx.fightStartTime, actorMap)
+          const ctxFields = fightContextFields(ctx)
 
           if (view === 'deaths') {
-            // Find pre-death damage window (10s before death)
             const deathTs = typeof event.timestamp === 'number' ? event.timestamp : 0
             playerRows[view].push({
-              ...base,
+              ...ctxFields,
+              ...enriched,
               deathTimestampMs: deathTs,
-              deathRelativeTimestampMs: Math.max(0, Math.floor(deathTs - fight.startTime)),
-              killingBlowAbility: event.ability?.name ?? '',
-              killingBlowSource: base.sourceName,
-              lastDamageEventsJson: '[]', // pre-death window requires separate query; stub
-              rawJson: JSON.stringify(event),
+              deathRelativeTimestampMs: Math.max(0, Math.floor(deathTs - ctx.fightStartTime)),
+              killingBlowAbility: enriched.abilityName || enriched.abilityGameId || '',
+              killingBlowSource: enriched.sourceName,
+              lastDamageEventsJson: '[]',
+              rawJson: enriched.rawEventJson,
             })
           } else {
-            playerRows[view].push({
-              ...base,
-              amount: event.amount ?? '',
-              absorbed: event.absorbed ?? '',
-              overkill: event.overkill ?? '',
-              overheal: event.overheal ?? '',
-            })
+            playerRows[view].push({ ...ctxFields, ...enriched })
           }
         }
 
@@ -963,14 +1038,23 @@ async function runExportJob(
         allWarnings.push(...result.warnings)
 
         for (const event of result.events) {
-          const base = buildEventBaseRow(benchCtx, event, benchActorMap as Map<number, { name?: string | null }>)
-          benchmarkRows[view].push({
-            ...base,
-            amount: event.amount ?? '',
-            absorbed: event.absorbed ?? '',
-            overkill: event.overkill ?? '',
-            overheal: event.overheal ?? '',
-          })
+          const enriched = enrichWclEvent(event, benchCtx.fightStartTime, benchActorMap)
+          const ctxFields = fightContextFields(benchCtx)
+          if (view === 'deaths') {
+            const deathTs = typeof event.timestamp === 'number' ? event.timestamp : 0
+            benchmarkRows[view].push({
+              ...ctxFields,
+              ...enriched,
+              deathTimestampMs: deathTs,
+              deathRelativeTimestampMs: Math.max(0, Math.floor(deathTs - benchCtx.fightStartTime)),
+              killingBlowAbility: enriched.abilityName || enriched.abilityGameId || '',
+              killingBlowSource: enriched.sourceName,
+              lastDamageEventsJson: '[]',
+              rawJson: enriched.rawEventJson,
+            })
+          } else {
+            benchmarkRows[view].push({ ...ctxFields, ...enriched })
+          }
         }
 
         JobStore.advance(exportId)
@@ -978,103 +1062,209 @@ async function runExportJob(
 
       benchmarkEnabled = true
     }
+  } else if (request.includeBenchmark && request.benchmark?.selectedCandidates?.length) {
+    // Pre-resolved path: use candidates already discovered in the UI
+    const selectedCandidates = request.benchmark.selectedCandidates
+
+    for (const sc of selectedCandidates) {
+      if (!sc.benchmarkPlayerName || sc.benchmarkPlayerName.toLowerCase() === 'anonymous') {
+        allWarnings.push(`Benchmark candidate for "${sc.baselineEncounterName}" has no usable player name — skipped. Use manual benchmark mode.`)
+        continue
+      }
+      if (!sc.benchmarkReportCode || typeof sc.benchmarkFightId !== 'number') {
+        allWarnings.push(`Benchmark candidate for "${sc.baselineEncounterName}" is missing report code or fight ID — skipped.`)
+        continue
+      }
+
+      const benchReportDetails = await WclService.getReportDetails(config, sc.benchmarkReportCode).catch(() => null)
+      if (!benchReportDetails) {
+        allWarnings.push(`Could not load benchmark report ${sc.benchmarkReportCode} for "${sc.baselineEncounterName}" — skipped.`)
+        continue
+      }
+
+      const benchFight = benchReportDetails.fights.find((f) => f.id === sc.benchmarkFightId)
+      if (!benchFight) {
+        allWarnings.push(`Fight ${sc.benchmarkFightId} not found in benchmark report ${sc.benchmarkReportCode} — skipped.`)
+        continue
+      }
+
+      const benchActorMap = await getActorMap(config, sc.benchmarkReportCode)
+      const benchActorsResponse = await queryWclGraphQl<ReportPlayersQueryResponse>({
+        config,
+        query: REPORT_PLAYERS_QUERY,
+        variables: { code: sc.benchmarkReportCode },
+      }).catch(() => null)
+
+      const scActors = benchActorsResponse?.reportData?.report?.masterData?.actors ?? []
+      const benchActor = scActors.find(
+        (a) => a.type === 'Player' && a.name?.toLowerCase() === sc.benchmarkPlayerName.toLowerCase()
+      )
+
+      if (!benchActor) {
+        allWarnings.push(`Could not find player "${sc.benchmarkPlayerName}" in benchmark report ${sc.benchmarkReportCode} — skipped.`)
+        continue
+      }
+
+      const benchSourceId = benchActor.id
+      const benchDurationMs = Math.max(benchFight.endTime - benchFight.startTime, 0)
+
+      const scBenchCtx: FightContext = {
+        exportId,
+        subjectType: 'benchmark',
+        reportCode: sc.benchmarkReportCode,
+        reportTitle: benchReportDetails.title ?? sc.benchmarkReportCode,
+        fightId: sc.benchmarkFightId,
+        encounterId: benchFight.encounterId,
+        encounterName: benchFight.encounterName,
+        difficulty: benchFight.difficulty,
+        kill: benchFight.kill,
+        fightDurationMs: benchDurationMs,
+        fightStartTime: benchFight.startTime,
+      }
+
+      for (const view of request.views) {
+        if (view === 'fightMetadata' || view === 'combatantInfo') continue
+
+        JobStore.setStep(exportId, `Fetching benchmark — ${VIEW_LABELS[view]}...`, { view })
+
+        const scFetchParams = {
+          config,
+          code: sc.benchmarkReportCode,
+          fightId: sc.benchmarkFightId,
+          startTime: benchFight.startTime,
+          endTime: benchFight.endTime,
+          sourceId: benchSourceId,
+          targetId: benchSourceId,
+          maxEvents: limits.maxEventsPerFightPerView,
+        }
+
+        let scResult = { events: [] as RawEvent[], truncated: false, warnings: [] as string[] }
+
+        if (view === 'damageDone') scResult = await fetchDamageDoneEvents(scFetchParams)
+        else if (view === 'damageTaken') scResult = await fetchDamageTakenEvents({ ...scFetchParams, sourceId: undefined })
+        else if (view === 'casts') scResult = await fetchCastEvents({ ...scFetchParams, targetId: undefined })
+        else if (view === 'buffs') scResult = await fetchBuffEvents({ ...scFetchParams, targetId: undefined })
+        else if (view === 'healing') scResult = await fetchHealingEvents({ ...scFetchParams, targetId: undefined })
+        else if (view === 'deaths') {
+          const allDeaths = await fetchDeathEvents({ ...scFetchParams, sourceId: undefined, targetId: undefined })
+          scResult = { ...allDeaths, events: allDeaths.events.filter((e) => e.targetID === benchSourceId) }
+        }
+
+        allWarnings.push(...scResult.warnings)
+
+        for (const event of scResult.events) {
+          const enriched = enrichWclEvent(event, scBenchCtx.fightStartTime, benchActorMap)
+          const ctxFields = fightContextFields(scBenchCtx)
+          if (view === 'deaths') {
+            const deathTs = typeof event.timestamp === 'number' ? event.timestamp : 0
+            benchmarkRows[view].push({
+              ...ctxFields,
+              ...enriched,
+              deathTimestampMs: deathTs,
+              deathRelativeTimestampMs: Math.max(0, Math.floor(deathTs - scBenchCtx.fightStartTime)),
+              killingBlowAbility: enriched.abilityName || enriched.abilityGameId || '',
+              killingBlowSource: enriched.sourceName,
+              lastDamageEventsJson: '[]',
+              rawJson: enriched.rawEventJson,
+            })
+          } else {
+            benchmarkRows[view].push({ ...ctxFields, ...enriched })
+          }
+        }
+
+        JobStore.advance(exportId)
+      }
+
+      benchmarkEnabled = true
+      benchmarkWarnings = allWarnings.filter((w) => w.toLowerCase().includes('benchmark'))
+
+      benchmarkCandidatesPerFight.push({
+        encounterId: sc.baselineEncounterId,
+        difficulty: sc.baselineDifficulty,
+        candidates: [],
+        selected: {
+          source: 'wclRankings',
+          characterName: sc.benchmarkPlayerName,
+          encounterId: sc.benchmarkEncounterId,
+          difficulty: sc.benchmarkDifficulty,
+          reportCode: sc.benchmarkReportCode,
+          fightId: sc.benchmarkFightId,
+          className: sc.benchmarkClassName,
+          specName: sc.benchmarkSpecName,
+          percentile: sc.benchmarkPercentile,
+          itemLevel: sc.benchmarkItemLevel,
+          durationMs: sc.benchmarkDurationMs,
+          validation: {
+            sameEncounter: true,
+            sameDifficulty: true,
+            sameClass: true,
+            sameSpec: true,
+            hasReportCode: true,
+            hasFightId: true,
+            hasUsableExportTarget: true,
+          },
+          score: 0,
+          warnings: [],
+        },
+        warnings: [],
+      })
+    }
   } else if (request.includeBenchmark && request.benchmark?.autoConfig) {
     const { PlayerAnalysisBenchmarkService } = await import('./player-analysis-benchmark.service')
     const autoConfig = request.benchmark.autoConfig
-    const playerClassName = preview.detectedPlayer?.className
-    const playerSpecName = preview.detectedPlayer?.specName
+    const baselines = autoConfig.baselines ?? []
 
-    if (!playerClassName || playerClassName === 'unknown' || !playerSpecName || playerSpecName === 'unknown') {
-      allWarnings.push(
-        'Automated benchmark discovery skipped — player class/spec could not be detected. Use manual benchmark mode or ensure the player appears in at least one CombatantInfo event.'
-      )
+    if (baselines.length === 0) {
+      allWarnings.push('Automated benchmark: no baseline fights selected — benchmark data will not be included.')
     } else {
-      // Collect unique encounter+difficulty combos from included fights
-      const seenEncounterKeys = new Set<string>()
-      const fightContextsForBenchmark: Array<{
-        encounterId: number
-        difficulty: number
-        durationMs: number
-        encounterName: string
-      }> = []
-      for (const reportPreview of preview.includedReports) {
-        for (const f of reportPreview.includedFights) {
-          const key = `${f.encounterId ?? 0}:${f.difficulty}`
-          if (!seenEncounterKeys.has(key) && (f.encounterId ?? 0) > 0) {
-            seenEncounterKeys.add(key)
-            fightContextsForBenchmark.push({
-              encounterId: f.encounterId ?? 0,
-              difficulty: f.difficulty,
-              durationMs: f.durationMs,
-              encounterName: f.encounterName,
-            })
-          }
-        }
-      }
-
       JobStore.setStep(exportId, 'Discovering benchmark candidates...')
 
-      let apiSupportedOverall = true
-      for (const fightCtx of fightContextsForBenchmark) {
-        const candidateRequest: PlayerBenchmarkCandidatesRequest = {
-          playerName,
-          encounterId: fightCtx.encounterId,
-          encounterName: fightCtx.encounterName,
-          difficulty: fightCtx.difficulty,
-          className: playerClassName,
-          specName: playerSpecName,
-          itemLevel: null,
-          durationMs: fightCtx.durationMs,
-          targetPercentile: autoConfig.targetPercentile,
-          metric: autoConfig.metric,
-          maxCandidates: autoConfig.maxCandidates ?? 10,
-          itemLevelWindow: autoConfig.itemLevelWindow,
-          killDurationWindowPct: autoConfig.durationWindowPercent,
-        }
+      const candidateResult = await PlayerAnalysisBenchmarkService.findBenchmarkCandidates(config, {
+        baselines,
+        targetPercentile: autoConfig.targetPercentile,
+        metric: autoConfig.metric,
+        itemLevelWindow: autoConfig.itemLevelWindow,
+        durationWindowPercent: autoConfig.durationWindowPercent,
+        maxCandidatesPerFight: autoConfig.maxCandidates ?? 10,
+      })
 
-        const candidateResult = await PlayerAnalysisBenchmarkService.findBenchmarkCandidates(config, candidateRequest)
+      benchmarkCandidatesPerFight.push(
+        ...candidateResult.groups.map((g) => ({
+          encounterId: g.baseline.encounterId,
+          difficulty: g.baseline.difficulty,
+          candidates: g.candidates,
+          selected: g.selectedCandidate,
+          warnings: g.warnings,
+        }))
+      )
 
-        benchmarkCandidatesPerFight.push({
-          encounterId: fightCtx.encounterId,
-          difficulty: fightCtx.difficulty,
-          candidates: candidateResult.candidates,
-          selected: candidateResult.selectedCandidate,
-          warnings: candidateResult.warnings,
-        })
+      const usableGroup = candidateResult.groups.find((g) => g.selectedCandidate?.validation.hasUsableExportTarget)
+      const selectedCandidate = usableGroup?.selectedCandidate
 
-        if (!candidateResult.apiSupported) {
-          allWarnings.push(`WCL characterRankings API not supported for encounter ${fightCtx.encounterId} — auto benchmark disabled.`)
-          apiSupportedOverall = false
-          break
-        }
-      }
+      if (selectedCandidate?.reportCode && typeof selectedCandidate.fightId === 'number') {
+        const benchReportCode = selectedCandidate.reportCode
+        const benchFightId = selectedCandidate.fightId
 
-      if (apiSupportedOverall) {
-        // Select the first encounter that has a usable candidate
-        const usableEntry = benchmarkCandidatesPerFight.find((e) => e.selected?.validation.hasUsableExportTarget)
-        const selectedCandidate = usableEntry?.selected
-
-        if (selectedCandidate?.reportCode && typeof selectedCandidate.fightId === 'number') {
-          const benchReportCode = selectedCandidate.reportCode
-          const benchFightId = selectedCandidate.fightId
-
-          const benchReportDetails = await WclService.getReportDetails(config, benchReportCode).catch(() => null)
-          if (!benchReportDetails) {
-            allWarnings.push(`Could not load benchmark report ${benchReportCode} — benchmark data will not be included.`)
+        const benchReportDetails = await WclService.getReportDetails(config, benchReportCode).catch(() => null)
+        if (!benchReportDetails) {
+          allWarnings.push(`Could not load benchmark report ${benchReportCode} — benchmark data will not be included.`)
+        } else {
+          const benchFightDetails = benchReportDetails.fights.find((f) => f.id === benchFightId)
+          if (!benchFightDetails) {
+            allWarnings.push(`Fight ${benchFightId} not found in benchmark report ${benchReportCode} — benchmark data will not be included.`)
           } else {
-            const benchFightDetails = benchReportDetails.fights.find((f) => f.id === benchFightId)
-            if (!benchFightDetails) {
-              allWarnings.push(`Fight ${benchFightId} not found in benchmark report ${benchReportCode} — benchmark data will not be included.`)
-            } else {
-              // Find the benchmark player actor by character name
-              const benchActorMap = await getActorMap(config, benchReportCode)
-              const benchActors = await queryWclGraphQl<ReportPlayersQueryResponse>({
-                config,
-                query: REPORT_PLAYERS_QUERY,
-                variables: { code: benchReportCode },
-              }).catch(() => null)
+            const benchActorMap = await getActorMap(config, benchReportCode)
+            const benchActors = await queryWclGraphQl<ReportPlayersQueryResponse>({
+              config,
+              query: REPORT_PLAYERS_QUERY,
+              variables: { code: benchReportCode },
+            }).catch(() => null)
 
-              const actors = benchActors?.reportData?.report?.masterData?.actors ?? []
+            const actors = benchActors?.reportData?.report?.masterData?.actors ?? []
+
+            if (!selectedCandidate.characterName || selectedCandidate.characterName.toLowerCase() === 'anonymous') {
+              allWarnings.push(`Benchmark candidate has no usable player name (got "${selectedCandidate.characterName ?? 'none'}") — benchmark data will not be included. Use manual benchmark mode to specify a player directly.`)
+            } else {
               const benchActor = actors.find(
                 (a) => a.type === 'Player' && a.name?.toLowerCase() === selectedCandidate.characterName.toLowerCase()
               )
@@ -1130,14 +1320,23 @@ async function runExportJob(
                   allWarnings.push(...result.warnings)
 
                   for (const event of result.events) {
-                    const base = buildEventBaseRow(benchCtx, event, benchActorMap as Map<number, { name?: string | null }>)
-                    benchmarkRows[view].push({
-                      ...base,
-                      amount: event.amount ?? '',
-                      absorbed: event.absorbed ?? '',
-                      overkill: event.overkill ?? '',
-                      overheal: event.overheal ?? '',
-                    })
+                    const enriched = enrichWclEvent(event, benchCtx.fightStartTime, benchActorMap)
+                    const ctxFields = fightContextFields(benchCtx)
+                    if (view === 'deaths') {
+                      const deathTs = typeof event.timestamp === 'number' ? event.timestamp : 0
+                      benchmarkRows[view].push({
+                        ...ctxFields,
+                        ...enriched,
+                        deathTimestampMs: deathTs,
+                        deathRelativeTimestampMs: Math.max(0, Math.floor(deathTs - benchCtx.fightStartTime)),
+                        killingBlowAbility: enriched.abilityName || enriched.abilityGameId || '',
+                        killingBlowSource: enriched.sourceName,
+                        lastDamageEventsJson: '[]',
+                        rawJson: enriched.rawEventJson,
+                      })
+                    } else {
+                      benchmarkRows[view].push({ ...ctxFields, ...enriched })
+                    }
                   }
 
                   JobStore.advance(exportId)
@@ -1148,11 +1347,18 @@ async function runExportJob(
               }
             }
           }
-        } else {
-          allWarnings.push('No usable benchmark candidate found with a valid report code and fight ID — benchmark data will not be included.')
         }
+      } else {
+        allWarnings.push('No usable benchmark candidate found with a valid report code and fight ID — benchmark data will not be included.')
       }
     }
+  }
+
+  // Data quality
+  const dataQualityStats: DataQualityStats[] = []
+  for (const view of request.views) {
+    if (view === 'fightMetadata' || view === 'combatantInfo') continue
+    dataQualityStats.push(computeDataQuality(view, playerRows[view]))
   }
 
   // Write CSV files
@@ -1240,6 +1446,7 @@ async function runExportJob(
     userContext: request.playerContext ?? null,
     benchmarkEnabled,
     benchmarkMode: benchmarkEnabled ? (request.benchmark?.autoConfig ? 'automatic' : 'manual') : 'none',
+    dataQuality: dataQualityStats,
     warnings: allWarnings,
     files: writtenFiles.map((f) => f.filename),
   }
@@ -1265,6 +1472,7 @@ async function runExportJob(
     warnings: allWarnings,
     detectedContext: preview.detectedPlayer?.detectedContext,
     userContext: request.playerContext,
+    dataQuality: dataQualityStats,
   })
   writeExportFile(exportId, 'README.md', readme)
   writtenFiles.push({

@@ -58,31 +58,11 @@ export const COMBATANT_INFO_CSV_HEADERS = [
   'rawJson',
 ]
 
-export const DAMAGE_DONE_CSV_HEADERS = [
-  'exportId',
-  'subjectType',
-  'reportCode',
-  'reportTitle',
-  'fightId',
-  'encounterId',
-  'encounterName',
-  'difficulty',
-  'kill',
-  'fightDurationMs',
-  'sourceId',
-  'sourceName',
-  'targetId',
-  'targetName',
-  'abilityGameId',
-  'abilityName',
-  'amount',
-  'absorbed',
-  'overkill',
-  'timestampMs',
-  'relativeTimestampMs',
-]
+// ---------------------------------------------------------------------------
+// Common enriched event prefix — shared by all event-based views
+// ---------------------------------------------------------------------------
 
-export const DAMAGE_TAKEN_CSV_HEADERS = [
+const ENRICHED_EVENT_PREFIX = [
   'exportId',
   'subjectType',
   'reportCode',
@@ -93,85 +73,76 @@ export const DAMAGE_TAKEN_CSV_HEADERS = [
   'difficulty',
   'kill',
   'fightDurationMs',
-  'sourceId',
-  'sourceName',
-  'targetId',
-  'targetName',
-  'abilityGameId',
-  'abilityName',
-  'amount',
-  'absorbed',
-  'timestampMs',
-  'relativeTimestampMs',
-]
-
-export const CASTS_CSV_HEADERS = [
-  'exportId',
-  'subjectType',
-  'reportCode',
-  'reportTitle',
-  'fightId',
-  'encounterId',
-  'encounterName',
-  'difficulty',
-  'kill',
-  'fightDurationMs',
-  'sourceId',
-  'sourceName',
-  'targetId',
-  'targetName',
-  'abilityGameId',
-  'abilityName',
-  'timestampMs',
-  'relativeTimestampMs',
-]
-
-export const BUFFS_CSV_HEADERS = [
-  'exportId',
-  'subjectType',
-  'reportCode',
-  'reportTitle',
-  'fightId',
-  'encounterId',
-  'encounterName',
-  'difficulty',
-  'kill',
-  'fightDurationMs',
-  'sourceId',
-  'sourceName',
-  'targetId',
-  'targetName',
-  'abilityGameId',
-  'abilityName',
   'eventType',
   'timestampMs',
   'relativeTimestampMs',
-]
-
-export const DEBUFFS_CSV_HEADERS = BUFFS_CSV_HEADERS
-
-export const HEALING_CSV_HEADERS = [
-  'exportId',
-  'subjectType',
-  'reportCode',
-  'reportTitle',
-  'fightId',
-  'encounterId',
-  'encounterName',
-  'difficulty',
-  'kill',
-  'fightDurationMs',
   'sourceId',
   'sourceName',
+  'sourceType',
+  'sourceSubType',
+  'sourceOwnerId',
+  'sourceOwnerName',
   'targetId',
   'targetName',
+  'targetType',
+  'targetSubType',
+  'targetOwnerId',
+  'targetOwnerName',
   'abilityGameId',
   'abilityName',
+  'abilityType',
+]
+
+export const DAMAGE_DONE_CSV_HEADERS = [
+  ...ENRICHED_EVENT_PREFIX,
+  'amount',
+  'absorbed',
+  'mitigated',
+  'blocked',
+  'resisted',
+  'overkill',
+  'critical',
+  'hitType',
+  'rawEventJson',
+]
+
+export const DAMAGE_TAKEN_CSV_HEADERS = [
+  ...ENRICHED_EVENT_PREFIX,
+  'amount',
+  'absorbed',
+  'mitigated',
+  'blocked',
+  'resisted',
+  'critical',
+  'hitType',
+  'rawEventJson',
+]
+
+export const CASTS_CSV_HEADERS = [
+  ...ENRICHED_EVENT_PREFIX,
+  'rawEventJson',
+]
+
+export const BUFFS_CSV_HEADERS = [
+  ...ENRICHED_EVENT_PREFIX,
+  'stack',
+  'rawEventJson',
+]
+
+export const DEBUFFS_CSV_HEADERS = [
+  ...ENRICHED_EVENT_PREFIX,
+  'stack',
+  'rawEventJson',
+]
+
+export const HEALING_CSV_HEADERS = [
+  ...ENRICHED_EVENT_PREFIX,
   'amount',
   'overheal',
   'absorbed',
-  'timestampMs',
-  'relativeTimestampMs',
+  'critical',
+  'hitType',
+  'rawEventJson',
 ]
 
 export const DEATHS_CSV_HEADERS = [
@@ -195,27 +166,20 @@ export const DEATHS_CSV_HEADERS = [
   'rawJson',
 ]
 
-export const INTERRUPTS_CSV_HEADERS = CASTS_CSV_HEADERS
-export const DISPELS_CSV_HEADERS = CASTS_CSV_HEADERS
+export const INTERRUPTS_CSV_HEADERS = [
+  ...ENRICHED_EVENT_PREFIX,
+  'rawEventJson',
+]
+
+export const DISPELS_CSV_HEADERS = [
+  ...ENRICHED_EVENT_PREFIX,
+  'rawEventJson',
+]
 
 export const RESOURCES_CSV_HEADERS = [
-  'exportId',
-  'subjectType',
-  'reportCode',
-  'reportTitle',
-  'fightId',
-  'encounterId',
-  'encounterName',
-  'difficulty',
-  'kill',
-  'fightDurationMs',
-  'sourceId',
-  'sourceName',
-  'abilityGameId',
-  'abilityName',
+  ...ENRICHED_EVENT_PREFIX,
   'amount',
-  'timestampMs',
-  'relativeTimestampMs',
+  'rawEventJson',
 ]
 
 export const COMPARISON_SUMMARY_CSV_HEADERS = [

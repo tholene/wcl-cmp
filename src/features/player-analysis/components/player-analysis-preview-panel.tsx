@@ -72,6 +72,23 @@ export const PlayerAnalysisPreviewPanel: FC<Props> = ({ preview, onGenerateExpor
             <p className="text-amber-400">Spec could not be detected from WCL data.</p>
           )}
 
+          {player.detectionDiagnostics && player.detectedContext?.confidence !== 'high' && (
+            <div className="mt-0.5 space-y-0.5 text-xs text-slate-500">
+              {!player.detectionDiagnostics.playerActorFound && (
+                <p>Player actor not found in report masterData.</p>
+              )}
+              {player.detectionDiagnostics.combatantInfoQueried && player.detectionDiagnostics.combatantInfoEventsFound === 0 && (
+                <p>CombatantInfo queried but returned no events for checked fight(s).</p>
+              )}
+              {player.detectionDiagnostics.matchingCombatantInfoFound && !player.detectionDiagnostics.specIdMapped && (
+                <p>specID {player.detectionDiagnostics.rawSpecIdFound} found but not in spec map.</p>
+              )}
+              {player.detectionDiagnostics.fightsAttempted > 0 && (
+                <p>{player.detectionDiagnostics.fightsAttempted} fight(s) checked for spec detection.</p>
+              )}
+            </div>
+          )}
+
           {player.itemLevel !== null && (
             <p className="text-slate-400">Item level: <span className="text-slate-200">{player.itemLevel}</span></p>
           )}

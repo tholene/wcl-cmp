@@ -1,5 +1,7 @@
 import type { FC } from 'react'
 import type { BenchmarkCandidatesResponse, NormalizedBenchmarkCandidate } from '../types/player-analysis.types'
+import type { AvailableBaseline, ClassSpecOverride } from '../containers/player-analysis-page'
+import { CLASS_NAMES, getSpecsForClass, getRoleForSpec } from '../types/wow-class-spec'
 
 type ManualConfig = {
   reportCode: string
@@ -21,6 +23,12 @@ type Props = {
   candidatesResult?: BenchmarkCandidatesResponse | null
   isFindingCandidates?: boolean
   canFindCandidates?: boolean
+  availableBaselines?: AvailableBaseline[]
+  selectedBaselineKeys?: Set<string>
+  specDetectionFailed?: boolean
+  playerUserContext?: ClassSpecOverride | null
+  onBaselineSelectionChange?: (keys: Set<string>) => void
+  onClassSpecOverrideChange?: (ctx: ClassSpecOverride | null) => void
   onBenchmarkModeChange: (mode: 'none' | 'manual' | 'auto') => void
   onBenchmarkConfigChange: (config: ManualConfig) => void
   onAutoConfigChange: (config: AutoConfig) => void
@@ -77,12 +85,20 @@ export const PlayerAnalysisBenchmarkForm: FC<Props> = ({
   candidatesResult,
   isFindingCandidates,
   canFindCandidates,
+  availableBaselines = [],
+  selectedBaselineKeys,
+  specDetectionFailed = false,
+  playerUserContext,
+  onBaselineSelectionChange,
+  onClassSpecOverrideChange,
   onBenchmarkModeChange,
   onBenchmarkConfigChange,
   onAutoConfigChange,
   onFindCandidates,
 }) => {
   const includeBenchmark = benchmarkMode !== 'none'
+  // hasPreview: preview ran but produced no boss fight candidates — different from "no preview yet"
+  const hasPreview = availableBaselines.length > 0 || specDetectionFailed
 
   return (
     <section className="rounded-xl border border-slate-800 bg-slate-900/70 p-4">
@@ -162,6 +178,124 @@ export const PlayerAnalysisBenchmarkForm: FC<Props> = ({
           {/* Auto mode */}
           {benchmarkMode === 'auto' && (
             <div className="space-y-3">
+              {/* Fight selection */}
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-slate-400">Boss fights to benchmark</span>
+                  {availableBaselines.length > 0 && (
+                    <span className="flex gap-2 text-slate-500">
+                      <button
+                        type="button"
+                        className="hover:text-slate-300"
+                        onClick={() => onBaselineSelectionChange?.(new Set(availableBaselines.map((b) => b.key)))}
+                      >
+                        All
+                      </button>
+                      <button
+                        type="button"
+                        className="hover:text-slate-300"
+                        onClick={() => onBaselineSelectionChange?.(new Set())}
+                      >
+                        None
+                      </button>
+                    </span>
+                  )}
+                </div>
+
+                {availableBaselines.length === 0 && !hasPreview && (
+                  <p className="text-xs text-slate-500">
+                    Preview an export first so benchmark discovery can use the player's actual boss fights.
+                  </p>
+                )}
+
+                {availableBaselines.length === 0 && hasPreview && (
+                  <p className="text-xs text-amber-400">
+                    No eligible boss fights found in preview (need encounterId &gt; 0, duration ≥ 60s, player present).
+                  </p>
+                )}
+
+                {availableBaselines.map((b) => {
+                  const checked = selectedBaselineKeys?.has(b.key) ?? false
+                  return (
+                    <label
+                      key={b.key}
+                      className="flex cursor-pointer items-center gap-2 rounded px-1.5 py-1 text-xs hover:bg-slate-800/40"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        onChange={(e) => {
+                          const next = new Set(selectedBaselineKeys)
+                          if (e.target.checked) next.add(b.key)
+                          else next.delete(b.key)
+                          onBaselineSelectionChange?.(next)
+                        }}
+                      />
+                      <span className="min-w-0 flex-1 truncate font-medium text-slate-200">{b.encounterName}</span>
+                      <span className={b.kill ? 'text-emerald-400' : 'text-rose-400'}>
+                        {b.kill ? 'kill' : 'wipe'}
+                      </span>
+                      <span className="text-slate-500">{Math.round(b.durationMs / 1000)}s</span>
+                      <span className="text-slate-600">
+                        {b.reportCode}#{b.fightId}
+                      </span>
+                    </label>
+                  )
+                })}
+              </div>
+
+              {/* Class/spec override when WCL detection failed */}
+              {specDetectionFailed && (
+                <div className="rounded border border-amber-700/30 bg-amber-950/20 p-2 text-xs space-y-2">
+                  <p className="text-amber-300">
+                    WCL did not detect a spec for this player. Select class and spec to enable benchmark discovery.
+                  </p>
+                  <div className="flex gap-2">
+                    <select
+                      className="flex-1 rounded border border-slate-700 bg-slate-950 px-2 py-1 text-xs text-slate-100"
+                      value={playerUserContext?.className ?? ''}
+                      onChange={(e) => {
+                        const cls = e.target.value
+                        if (!cls) {
+                          onClassSpecOverrideChange?.(null)
+                          return
+                        }
+                        onClassSpecOverrideChange?.({ className: cls, specName: '', role: 'dps' })
+                      }}
+                    >
+                      <option value="">Select class…</option>
+                      {CLASS_NAMES.map((c) => (
+                        <option key={c} value={c}>{c}</option>
+                      ))}
+                    </select>
+                    <select
+                      className="flex-1 rounded border border-slate-700 bg-slate-950 px-2 py-1 text-xs text-slate-100 disabled:opacity-50"
+                      value={playerUserContext?.specName ?? ''}
+                      disabled={!playerUserContext?.className}
+                      onChange={(e) => {
+                        const spec = e.target.value
+                        if (!spec || !playerUserContext?.className) return
+                        const role = getRoleForSpec(playerUserContext.className, spec) ?? 'dps'
+                        onClassSpecOverrideChange?.({ ...playerUserContext, specName: spec, role })
+                      }}
+                    >
+                      <option value="">Select spec…</option>
+                      {getSpecsForClass(playerUserContext?.className ?? '').map((s) => (
+                        <option key={s.specName} value={s.specName}>{s.specName}</option>
+                      ))}
+                    </select>
+                  </div>
+                  {playerUserContext?.specName && (
+                    <p className="text-slate-400">
+                      Using user-provided:{' '}
+                      <span className="text-slate-200">{playerUserContext.specName} {playerUserContext.className}</span>
+                      {' '}({playerUserContext.role})
+                    </p>
+                  )}
+                </div>
+              )}
+
+              {/* Percentile */}
               <div>
                 <label className="block text-xs text-slate-400">Target percentile</label>
                 <div className="mt-1 flex gap-1.5">
@@ -229,38 +363,109 @@ export const PlayerAnalysisBenchmarkForm: FC<Props> = ({
                 {isFindingCandidates ? 'Searching…' : 'Find benchmark candidates'}
               </button>
 
-              {!canFindCandidates && (
-                <p className="text-xs text-slate-500">Preview an export first to enable candidate search.</p>
+              {/* Context-sensitive disabled hint */}
+              {!canFindCandidates && !hasPreview && (
+                <p className="text-xs text-slate-500">
+                  Preview an export first so benchmark discovery can use the player's actual boss fights.
+                </p>
+              )}
+              {!canFindCandidates && hasPreview && (selectedBaselineKeys?.size ?? 0) === 0 && !specDetectionFailed && (
+                <p className="text-xs text-slate-500">
+                  Select at least one boss fight from the preview to find benchmark candidates.
+                </p>
+              )}
+              {!canFindCandidates && hasPreview && specDetectionFailed && (
+                <p className="text-xs text-slate-500">
+                  WCL did not detect a spec for this player. Select class and spec above to enable benchmark discovery.
+                </p>
+              )}
+              {canFindCandidates && specDetectionFailed && playerUserContext?.specName && (
+                <p className="text-xs text-slate-400">
+                  Benchmark discovery will use user-provided{' '}
+                  <span className="text-slate-200">{playerUserContext.specName} {playerUserContext.className}</span> context.
+                </p>
               )}
 
-              {/* Results */}
+              {/* Export summary — what will actually be included */}
+              {candidatesResult && (() => {
+                const willExport = (candidatesResult.groups ?? []).flatMap((g) =>
+                  g.candidates
+                    .filter((c) => c.validation.hasUsableExportTarget)
+                    .slice(0, 1)
+                    .map((c) => ({ baseline: g.baseline, candidate: c }))
+                )
+                return (
+                  <div className="rounded border border-slate-700 bg-slate-950/50 p-2 text-xs space-y-1">
+                    <p className="font-medium text-slate-300">
+                      Will export {willExport.length} benchmark fight{willExport.length !== 1 ? 's' : ''}:
+                    </p>
+                    {willExport.length === 0 && (
+                      <p className="text-amber-300">No usable benchmark candidates found — benchmark data will not be included in the export.</p>
+                    )}
+                    {willExport.map((e, i) => (
+                      <p key={i} className="text-slate-400">
+                        <span className="text-slate-300">{e.baseline.encounterName}</span>
+                        {' → '}
+                        <span className="text-slate-200">{e.candidate.characterName}</span>
+                        {' '}
+                        <span className="text-slate-500">{e.candidate.reportCode}#{e.candidate.fightId}</span>
+                        {e.candidate.percentile !== undefined && (
+                          <span className="ml-1 text-slate-500">{e.candidate.percentile}th pct</span>
+                        )}
+                      </p>
+                    ))}
+                  </div>
+                )
+              })()}
+
+              {/* Grouped results */}
               {candidatesResult && (
-                <div className="space-y-1.5">
-                  {!candidatesResult.apiSupported && (
-                    <div className="rounded border border-amber-700/30 bg-amber-950/20 p-2 text-xs text-amber-300">
-                      WCL characterRankings API could not return candidates for this encounter. Use manual benchmark
-                      mode instead.
-                    </div>
-                  )}
-
-                  {candidatesResult.apiSupported && candidatesResult.candidates.length === 0 && (
-                    <div className="rounded border border-slate-700 bg-slate-950/40 p-2 text-xs text-slate-400">
-                      No matching candidates found for this encounter and spec.
-                    </div>
-                  )}
-
-                  {candidatesResult.candidates.length > 0 && (
-                    <div className="space-y-1">
-                      <p className="text-xs text-slate-500">{candidatesResult.candidates.length} candidate{candidatesResult.candidates.length > 1 ? 's' : ''} found</p>
-                      {candidatesResult.candidates.slice(0, 5).map((c, i) => (
-                        <CandidateRow
-                          key={`${c.reportCode ?? i}-${c.fightId ?? i}`}
-                          candidate={c}
-                          isSelected={i === 0 && c.validation.hasUsableExportTarget}
-                        />
-                      ))}
-                    </div>
-                  )}
+                <div className="space-y-3">
+                  {(candidatesResult.warnings ?? []).map((w, i) => (
+                    <p key={i} className="rounded bg-amber-950/20 px-2 py-1 text-xs text-amber-300">{w}</p>
+                  ))}
+                  {(candidatesResult.groups ?? []).map((group) => {
+                    const groupWarnings = group.warnings ?? []
+                    const groupCandidates = group.candidates ?? []
+                    return (
+                      <div key={`${group.baseline.reportCode}-${group.baseline.fightId}`} className="space-y-1">
+                        <p className="text-xs font-medium text-slate-300">
+                          {group.baseline.encounterName}
+                          <span className="ml-2 font-normal text-slate-500">
+                            {group.baseline.reportCode}#{group.baseline.fightId}
+                          </span>
+                        </p>
+                        {!group.apiSupported && (
+                          <p className="text-xs text-amber-300">
+                            WCL API not supported — use manual benchmark mode.
+                          </p>
+                        )}
+                        {groupWarnings.map((w, i) => (
+                          <p key={i} className="text-xs text-amber-300">{w}</p>
+                        ))}
+                        {groupCandidates.length > 0 && (
+                          <>
+                            <p className="text-xs text-slate-500">
+                              {groupCandidates.filter((c) => c.validation.hasUsableExportTarget).length} usable
+                              {' '}/ {groupCandidates.length} total
+                            </p>
+                            {groupCandidates.map((c, i) => (
+                              <CandidateRow
+                                key={`${c.reportCode ?? i}-${c.fightId ?? i}`}
+                                candidate={c}
+                                isSelected={i === 0 && c.validation.hasUsableExportTarget}
+                              />
+                            ))}
+                          </>
+                        )}
+                        {groupCandidates.length === 0 && group.apiSupported && (
+                          <p className="text-xs text-slate-400">
+                            No rankings returned from WCL for this encounter and spec.
+                          </p>
+                        )}
+                      </div>
+                    )
+                  })}
                 </div>
               )}
             </div>

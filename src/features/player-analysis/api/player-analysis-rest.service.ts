@@ -4,7 +4,7 @@ import type {
   PlayerAnalysisExportPreview,
   PlayerAnalysisExportRequest,
   PlayerAnalysisExportStartResponse,
-  PlayerBenchmarkCandidatesRequest,
+  BenchmarkCandidatesRequest,
   BenchmarkCandidatesResponse,
 } from '../types/player-analysis.types'
 
@@ -55,7 +55,7 @@ export const PlayerAnalysisRestService = {
     return safeParseResponse<PlayerAnalysisExportJob>(response)
   },
 
-  getBenchmarkCandidates: async (request: PlayerBenchmarkCandidatesRequest): Promise<BenchmarkCandidatesResponse> => {
+  getBenchmarkCandidates: async (request: BenchmarkCandidatesRequest): Promise<BenchmarkCandidatesResponse> => {
     const response = await fetch('/api/player-analysis/benchmark-candidates', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },

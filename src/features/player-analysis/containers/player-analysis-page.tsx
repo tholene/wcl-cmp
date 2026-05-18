@@ -1,5 +1,6 @@
 import { useState, type FC } from 'react'
 import { useRecentReports } from '@/features/reports/hooks/use-recent-reports'
+import { BenchmarkErrorBoundary } from '../components/benchmark-error-boundary'
 import { PlayerAnalysisBenchmarkForm } from '../components/player-analysis-benchmark-form'
 import { PlayerAnalysisExportProgress } from '../components/player-analysis-export-progress'
 import { PlayerAnalysisExportResults } from '../components/player-analysis-export-results'
@@ -10,7 +11,8 @@ import { useBenchmarkCandidates } from '../hooks/use-benchmark-candidates'
 import { usePlayerAnalysisExportJob } from '../hooks/use-player-analysis-export-job'
 import { usePlayerAnalysisPreview } from '../hooks/use-player-analysis-preview'
 import { useRecentPlayers } from '../hooks/use-recent-players'
-import { STABLE_EXPORT_VIEWS, type PlayerAnalysisExportView, type PlayerAnalysisTimeframePreset } from '../types/player-analysis.types'
+import { STABLE_EXPORT_VIEWS, type BenchmarkCandidatesResponse, type PlayerAnalysisExportView, type PlayerAnalysisTimeframePreset, type SelectedBenchmarkCandidate } from '../types/player-analysis.types'
+import type { WowRole } from '../types/wow-class-spec'
 
 type ManualBenchmarkConfig = {
   reportCode: string
@@ -23,6 +25,64 @@ type AutoBenchmarkConfig = {
   metric: string
   itemLevelWindow: number
   durationWindowPercent: number
+}
+
+export type ClassSpecOverride = {
+  className: string
+  specName: string
+  role: WowRole
+}
+
+export type AvailableBaseline = {
+  key: string // `${reportCode}:${fightId}`
+  reportCode: string
+  reportTitle: string
+  fightId: number
+  encounterId: number
+  encounterName: string
+  difficulty: number
+  durationMs: number
+  kill: boolean
+  playerName: string
+  className: string
+  specName: string
+  itemLevel: number | null
+}
+
+function buildSelectedCandidates(
+  baselines: AvailableBaseline[],
+  candidatesResult: BenchmarkCandidatesResponse | null,
+  selectedKeys: Set<string>
+): SelectedBenchmarkCandidate[] {
+  if (!candidatesResult) return []
+  const result: SelectedBenchmarkCandidate[] = []
+  for (const group of candidatesResult.groups ?? []) {
+    const baseline = baselines.find(
+      (b) => b.reportCode === group.baseline.reportCode && b.fightId === group.baseline.fightId
+    )
+    if (!baseline || !selectedKeys.has(baseline.key)) continue
+    const candidate = group.candidates.find((c) => c.validation.hasUsableExportTarget)
+    if (!candidate || !candidate.reportCode || typeof candidate.fightId !== 'number') continue
+    result.push({
+      baselineReportCode: baseline.reportCode,
+      baselineFightId: baseline.fightId,
+      baselineEncounterId: baseline.encounterId,
+      baselineEncounterName: baseline.encounterName,
+      baselineDifficulty: baseline.difficulty,
+      baselineDurationMs: baseline.durationMs,
+      benchmarkPlayerName: candidate.characterName,
+      benchmarkReportCode: candidate.reportCode,
+      benchmarkFightId: candidate.fightId,
+      benchmarkEncounterId: candidate.encounterId,
+      benchmarkDifficulty: candidate.difficulty ?? baseline.difficulty,
+      benchmarkClassName: candidate.className ?? '',
+      benchmarkSpecName: candidate.specName ?? '',
+      benchmarkPercentile: candidate.percentile,
+      benchmarkItemLevel: candidate.itemLevel ?? undefined,
+      benchmarkDurationMs: candidate.durationMs ?? undefined,
+    })
+  }
+  return result
 }
 
 export const PlayerAnalysisPage: FC = () => {
@@ -53,9 +113,46 @@ export const PlayerAnalysisPage: FC = () => {
     itemLevelWindow: 10,
     durationWindowPercent: 35,
   })
+  const [selectedBaselineKeys, setSelectedBaselineKeys] = useState<Set<string>>(new Set())
+  const [playerUserContext, setPlayerUserContext] = useState<ClassSpecOverride | null>(null)
 
   const preview = previewMutation.data ?? null
   const job = exportJob.jobStatus
+
+  // Effective class/spec: prefer WCL-detected, fall back to user-provided
+  const wclClassName = preview?.detectedPlayer?.className !== 'unknown' ? (preview?.detectedPlayer?.className ?? null) : null
+  const wclSpecName = preview?.detectedPlayer?.specName !== 'unknown' ? (preview?.detectedPlayer?.specName ?? null) : null
+  const effectiveClassName = wclClassName ?? playerUserContext?.className ?? null
+  const effectiveSpecName = wclSpecName ?? playerUserContext?.specName ?? null
+  // true when preview exists but WCL failed to detect spec
+  const specDetectionFailed = !!preview && wclSpecName === null
+
+  // Boss fights where the player was present, duration ≥ 60s — available for baseline selection
+  const availableBaselines: AvailableBaseline[] = preview
+    ? preview.includedReports
+        .filter((r) => r.playerPresent)
+        .flatMap((r) =>
+          r.includedFights
+            .filter((f) => (f.encounterId ?? 0) > 0 && f.playerPresent && f.durationMs >= 60000)
+            .map((f): AvailableBaseline => ({
+              key: `${r.code}:${f.fightId}`,
+              reportCode: r.code,
+              reportTitle: r.title,
+              fightId: f.fightId,
+              encounterId: f.encounterId ?? 0,
+              encounterName: f.encounterName,
+              difficulty: f.difficulty,
+              durationMs: f.durationMs,
+              kill: f.kill,
+              playerName: preview.detectedPlayer?.characterName ?? '',
+              className: effectiveClassName ?? 'unknown',
+              specName: effectiveSpecName ?? 'unknown',
+              itemLevel: preview.detectedPlayer?.itemLevel ?? null,
+            }))
+        )
+    : []
+
+  const contextSource = wclSpecName ? ('wclDetected' as const) : ('userProvided' as const)
 
   const buildRequest = () => ({
     playerName,
@@ -66,6 +163,14 @@ export const PlayerAnalysisPage: FC = () => {
     includeTrash,
     onlyPlayerPresent,
     views: selectedViews,
+    playerContext: playerUserContext
+      ? {
+          className: playerUserContext.className,
+          specName: playerUserContext.specName,
+          role: playerUserContext.role,
+          source: 'userProvided' as const,
+        }
+      : undefined,
     ...(benchmarkMode !== 'none'
       ? {
           includeBenchmark: true,
@@ -88,8 +193,28 @@ export const PlayerAnalysisPage: FC = () => {
               : {}),
             ...(benchmarkMode === 'auto'
               ? {
+                  selectedCandidates: buildSelectedCandidates(
+                    availableBaselines,
+                    benchmarkCandidatesMutation.data ?? null,
+                    selectedBaselineKeys
+                  ),
                   autoConfig: {
                     mode: 'auto' as const,
+                    baselines: availableBaselines
+                      .filter((b) => selectedBaselineKeys.has(b.key))
+                      .map((b) => ({
+                        reportCode: b.reportCode,
+                        fightId: b.fightId,
+                        encounterId: b.encounterId,
+                        encounterName: b.encounterName,
+                        difficulty: b.difficulty,
+                        durationMs: b.durationMs,
+                        playerName: b.playerName,
+                        className: b.className,
+                        specName: b.specName,
+                        itemLevel: b.itemLevel,
+                        contextSource,
+                      })),
                     targetPercentile: autoBenchmarkConfig.targetPercentile,
                     metric: autoBenchmarkConfig.metric,
                     itemLevelWindow: autoBenchmarkConfig.itemLevelWindow,
@@ -103,7 +228,23 @@ export const PlayerAnalysisPage: FC = () => {
   })
 
   const handlePreview = () => {
-    previewMutation.mutate(buildRequest())
+    setSelectedBaselineKeys(new Set())
+    setPlayerUserContext(null)
+    previewMutation.mutate(buildRequest(), {
+      onSuccess: (data) => {
+        // Auto-select kills by default
+        const defaultKeys = new Set(
+          data.includedReports
+            .filter((r) => r.playerPresent)
+            .flatMap((r) =>
+              r.includedFights
+                .filter((f) => (f.encounterId ?? 0) > 0 && f.kill && f.playerPresent && f.durationMs >= 60000)
+                .map((f) => `${r.code}:${f.fightId}`)
+            )
+        )
+        setSelectedBaselineKeys(defaultKeys)
+      },
+    })
   }
 
   const handleGenerateExport = async () => {
@@ -112,31 +253,41 @@ export const PlayerAnalysisPage: FC = () => {
   }
 
   const handleFindCandidates = () => {
-    if (!preview) return
-    const firstFight = preview.includedReports[0]?.includedFights[0]
-    if (!firstFight || !preview.detectedPlayer) return
+    if (!preview || selectedBaselineKeys.size === 0 || !preview.detectedPlayer) return
+    const baselines = availableBaselines
+      .filter((b) => selectedBaselineKeys.has(b.key))
+      .map((b) => ({
+        reportCode: b.reportCode,
+        fightId: b.fightId,
+        encounterId: b.encounterId,
+        encounterName: b.encounterName,
+        difficulty: b.difficulty,
+        durationMs: b.durationMs,
+        playerName: b.playerName,
+        className: b.className,
+        specName: b.specName,
+        itemLevel: b.itemLevel,
+        contextSource,
+      }))
     benchmarkCandidatesMutation.mutate({
-      playerName: preview.detectedPlayer.characterName,
-      encounterId: firstFight.encounterId ?? 0,
-      encounterName: firstFight.encounterName,
-      difficulty: firstFight.difficulty,
-      className: preview.detectedPlayer.className,
-      specName: preview.detectedPlayer.specName,
-      itemLevel: preview.detectedPlayer.itemLevel,
-      durationMs: firstFight.durationMs,
+      baselines,
       targetPercentile: autoBenchmarkConfig.targetPercentile,
       metric: autoBenchmarkConfig.metric,
       itemLevelWindow: autoBenchmarkConfig.itemLevelWindow,
-      killDurationWindowPct: autoBenchmarkConfig.durationWindowPercent,
+      durationWindowPercent: autoBenchmarkConfig.durationWindowPercent,
+      maxCandidatesPerFight: 10,
+      playerContext: playerUserContext
+        ? { ...playerUserContext, source: 'userProvided' as const }
+        : undefined,
     })
   }
 
   const canFindCandidates =
     !!preview &&
-    (preview.includedReports[0]?.includedFights.length ?? 0) > 0 &&
+    selectedBaselineKeys.size > 0 &&
     !!preview.detectedPlayer &&
-    preview.detectedPlayer.className !== 'unknown' &&
-    preview.detectedPlayer.specName !== 'unknown'
+    !!effectiveClassName &&
+    !!effectiveSpecName
 
   const showProgress = exportJob.isStarting || job !== null
   const showResults = job?.status === 'complete' || job?.status === 'partial'
@@ -177,18 +328,26 @@ export const PlayerAnalysisPage: FC = () => {
             selectedViews={selectedViews}
             onSelectedViewsChange={setSelectedViews}
           />
-          <PlayerAnalysisBenchmarkForm
-            benchmarkMode={benchmarkMode}
-            benchmarkConfig={manualBenchmarkConfig}
-            autoConfig={autoBenchmarkConfig}
-            candidatesResult={benchmarkCandidatesMutation.data ?? null}
-            isFindingCandidates={benchmarkCandidatesMutation.isPending}
-            canFindCandidates={canFindCandidates}
-            onBenchmarkModeChange={setBenchmarkMode}
-            onBenchmarkConfigChange={setManualBenchmarkConfig}
-            onAutoConfigChange={setAutoBenchmarkConfig}
-            onFindCandidates={handleFindCandidates}
-          />
+          <BenchmarkErrorBoundary>
+            <PlayerAnalysisBenchmarkForm
+              benchmarkMode={benchmarkMode}
+              benchmarkConfig={manualBenchmarkConfig}
+              autoConfig={autoBenchmarkConfig}
+              candidatesResult={benchmarkCandidatesMutation.data ?? null}
+              isFindingCandidates={benchmarkCandidatesMutation.isPending}
+              canFindCandidates={canFindCandidates}
+              availableBaselines={availableBaselines}
+              selectedBaselineKeys={selectedBaselineKeys}
+              specDetectionFailed={specDetectionFailed}
+              playerUserContext={playerUserContext}
+              onBaselineSelectionChange={setSelectedBaselineKeys}
+              onClassSpecOverrideChange={setPlayerUserContext}
+              onBenchmarkModeChange={setBenchmarkMode}
+              onBenchmarkConfigChange={setManualBenchmarkConfig}
+              onAutoConfigChange={setAutoBenchmarkConfig}
+              onFindCandidates={handleFindCandidates}
+            />
+          </BenchmarkErrorBoundary>
         </div>
 
         <div className="space-y-4">
