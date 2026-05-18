@@ -16,6 +16,19 @@ export type ActorInfo = {
 
 export type ActorMap = Map<number, ActorInfo>
 
+export type AbilityInfo = {
+  id?: number
+  gameId?: number
+  name?: string
+  type?: number | string
+  icon?: string
+}
+
+export type AbilityMaps = {
+  byGameId: Map<number, AbilityInfo>
+  byAbilityId: Map<number, AbilityInfo>
+}
+
 // ---------------------------------------------------------------------------
 // Enriched event output type
 // ---------------------------------------------------------------------------
@@ -40,8 +53,13 @@ export type EnrichedEvent = {
   targetOwnerName: string
 
   abilityGameId: number | string
+  abilityId: number | string
   abilityName: string
   abilityType: number | string
+  rawAbilityGameId: number | string
+  rawAbilityId: number | string
+  rawAbilityName: string
+  abilityResolutionSource: 'event' | 'masterData' | 'unresolved'
 
   amount: number | string
   overheal: number | string
@@ -63,15 +81,20 @@ export type EnrichedEvent = {
 
 export type DataQualityStats = {
   view: string
+  rowCount: number
   totalRows: number
   rowsWithAbilityGameId: number
   rowsWithAbilityName: number
   rowsWithSourceName: number
   rowsWithTargetName: number
+  rowsWithAbilityNameFromEvent: number
+  rowsWithAbilityNameFromMasterData: number
   abilityGameIdPct: number
   abilityNamePct: number
   sourceNamePct: number
   targetNamePct: number
+  rawEventJsonIncluded: 'yes' | 'no'
+  lowAbilityNameReason?: string
 }
 
 // ---------------------------------------------------------------------------
@@ -115,30 +138,101 @@ export function buildActorMapFromList(
 }
 
 // ---------------------------------------------------------------------------
-// Ability resolution — WCL uses multiple casing conventions depending on
-// event type and API version. Check all known variants in priority order.
+// Build ability maps from WCL masterData.abilities.
+// WCL shape can vary across endpoints and payload versions.
 // ---------------------------------------------------------------------------
 
-export function resolveAbilityGameId(event: RawEvent): number | undefined {
-  if (typeof event.ability?.gameID === 'number') return event.ability.gameID
-  if (typeof event.ability?.guid === 'number') return event.ability.guid
-  if (typeof event.ability?.id === 'number') return event.ability.id
+function asNumber(value: unknown): number | undefined {
+  if (typeof value === 'number') return value
+  if (typeof value === 'string') {
+    const parsed = Number(value)
+    if (Number.isFinite(parsed)) return parsed
+  }
+  return undefined
+}
+
+function asString(value: unknown): string | undefined {
+  return typeof value === 'string' ? value : undefined
+}
+
+export function buildAbilityMapsFromList(abilities: Array<Record<string, unknown>>): AbilityMaps {
+  const byGameId: Map<number, AbilityInfo> = new Map()
+  const byAbilityId: Map<number, AbilityInfo> = new Map()
+
+  for (const ability of abilities) {
+    // Ability identifiers can be exposed as gameID/gameId/guid and id.
+    const gameId =
+      asNumber(ability.gameID) ??
+      asNumber(ability.gameId) ??
+      asNumber(ability.guid)
+    const id = asNumber(ability.id)
+    const name = asString(ability.name)
+    const icon = asString(ability.icon) ?? asString(ability.abilityIcon)
+
+    const typeValue = ability.type
+    const type =
+      typeof typeValue === 'number' || typeof typeValue === 'string'
+        ? typeValue
+        : undefined
+
+    const info: AbilityInfo = { id, gameId, name, type, icon }
+
+    if (typeof gameId === 'number' && gameId > 0) {
+      byGameId.set(gameId, info)
+    }
+    if (typeof id === 'number' && id > 0) {
+      byAbilityId.set(id, info)
+    }
+  }
+
+  return { byGameId, byAbilityId }
+}
+
+function resolveRawAbilityGameId(event: RawEvent): number | undefined {
+  const nested = event.ability as Record<string, unknown> | null | undefined
+  if (nested) {
+    const nestedGameId =
+      asNumber(nested.gameID) ??
+      asNumber(nested.gameId) ??
+      asNumber(nested.guid)
+    if (nestedGameId !== undefined) return nestedGameId
+  }
+
   if (typeof event.abilityGameID === 'number') return event.abilityGameID
   if (typeof event.abilityGameId === 'number') return event.abilityGameId
+  return undefined
+}
+
+function resolveRawAbilityId(event: RawEvent): number | undefined {
+  const nested = event.ability as Record<string, unknown> | null | undefined
+  if (nested) {
+    const nestedId = asNumber(nested.id)
+    if (nestedId !== undefined) return nestedId
+  }
+
   if (typeof event.abilityID === 'number') return event.abilityID
   if (typeof event.abilityId === 'number') return event.abilityId
   return undefined
 }
 
-export function resolveAbilityName(event: RawEvent): string | undefined {
-  if (typeof event.ability?.name === 'string') return event.ability.name
+function resolveRawAbilityName(event: RawEvent): string | undefined {
+  const nested = event.ability as Record<string, unknown> | null | undefined
+  if (nested) {
+    const nestedName = asString(nested.name)
+    if (nestedName) return nestedName
+  }
   if (typeof event.abilityName === 'string') return event.abilityName
   return undefined
 }
 
-export function resolveAbilityType(event: RawEvent): number | string | undefined {
-  const t = event.ability?.type
-  if (t !== null && t !== undefined) return t as number | string
+function resolveRawAbilityType(event: RawEvent): number | string | undefined {
+  const nested = event.ability as Record<string, unknown> | null | undefined
+  if (nested) {
+    const nestedType = nested.type
+    if (typeof nestedType === 'number' || typeof nestedType === 'string') return nestedType
+  }
+  const flatType = (event as Record<string, unknown>).abilityType
+  if (typeof flatType === 'number' || typeof flatType === 'string') return flatType
   return undefined
 }
 
@@ -146,7 +240,12 @@ export function resolveAbilityType(event: RawEvent): number | string | undefined
 // Main enrichment function
 // ---------------------------------------------------------------------------
 
-export function enrichWclEvent(event: RawEvent, fightStartTime: number, actorMap: ActorMap): EnrichedEvent {
+export function enrichWclEvent(
+  event: RawEvent,
+  fightStartTime: number,
+  actorMap: ActorMap,
+  abilityMaps: AbilityMaps
+): EnrichedEvent {
   const ts = typeof event.timestamp === 'number' ? event.timestamp : fightStartTime
   const relTs = Math.max(0, Math.floor(ts - fightStartTime))
 
@@ -156,9 +255,25 @@ export function enrichWclEvent(event: RawEvent, fightStartTime: number, actorMap
   const srcActor = srcId !== undefined ? actorMap.get(srcId) : undefined
   const tgtActor = tgtId !== undefined ? actorMap.get(tgtId) : undefined
 
-  const abilityGameId = resolveAbilityGameId(event)
-  const abilityName = resolveAbilityName(event) ?? ''
-  const abilityType = resolveAbilityType(event)
+  // Resolution order:
+  // 1) event nested ability object
+  // 2) event flat ability fields
+  // 3) report masterData.abilities map by gameID/id
+  const rawAbilityGameId = resolveRawAbilityGameId(event)
+  const rawAbilityId = resolveRawAbilityId(event)
+  const rawAbilityName = resolveRawAbilityName(event)
+  const rawAbilityType = resolveRawAbilityType(event)
+
+  const mappedAbility =
+    (rawAbilityGameId !== undefined ? abilityMaps.byGameId.get(rawAbilityGameId) : undefined) ??
+    (rawAbilityId !== undefined ? abilityMaps.byAbilityId.get(rawAbilityId) : undefined)
+
+  const abilityGameId = rawAbilityGameId ?? mappedAbility?.gameId
+  const abilityId = rawAbilityId ?? mappedAbility?.id
+  const abilityName = rawAbilityName ?? mappedAbility?.name ?? ''
+  const abilityType = rawAbilityType ?? mappedAbility?.type
+  const abilityResolutionSource: EnrichedEvent['abilityResolutionSource'] =
+    rawAbilityName ? 'event' : abilityName ? 'masterData' : 'unresolved'
 
   // hitType 2 = critical hit in WCL combat log conventions
   const hitType = typeof event.hitType === 'number' ? event.hitType : ''
@@ -185,8 +300,13 @@ export function enrichWclEvent(event: RawEvent, fightStartTime: number, actorMap
     targetOwnerName: tgtActor?.ownerName ?? '',
 
     abilityGameId: abilityGameId ?? '',
+    abilityId: abilityId ?? '',
     abilityName,
     abilityType: abilityType ?? '',
+    rawAbilityGameId: rawAbilityGameId ?? '',
+    rawAbilityId: rawAbilityId ?? '',
+    rawAbilityName: rawAbilityName ?? '',
+    abilityResolutionSource,
 
     amount: event.amount ?? '',
     overheal: event.overheal ?? '',
@@ -210,9 +330,11 @@ export function enrichWclEvent(event: RawEvent, fightStartTime: number, actorMap
 export function computeDataQuality(view: string, rows: Array<Record<string, unknown>>): DataQualityStats {
   const total = rows.length
   const empty: DataQualityStats = {
-    view, totalRows: 0,
+    view, rowCount: 0, totalRows: 0,
     rowsWithAbilityGameId: 0, rowsWithAbilityName: 0, rowsWithSourceName: 0, rowsWithTargetName: 0,
+    rowsWithAbilityNameFromEvent: 0, rowsWithAbilityNameFromMasterData: 0,
     abilityGameIdPct: 0, abilityNamePct: 0, sourceNamePct: 0, targetNamePct: 0,
+    rawEventJsonIncluded: 'no',
   }
   if (total === 0) return empty
 
@@ -222,14 +344,34 @@ export function computeDataQuality(view: string, rows: Array<Record<string, unkn
   const withAbilityName = rows.filter((r) => nonBlank(r['abilityName'])).length
   const withSourceName = rows.filter((r) => nonBlank(r['sourceName'])).length
   const withTargetName = rows.filter((r) => nonBlank(r['targetName'])).length
+  const withAbilityNameFromEvent = rows.filter((r) => r['abilityResolutionSource'] === 'event').length
+  const withAbilityNameFromMasterData = rows.filter((r) => r['abilityResolutionSource'] === 'masterData').length
+  const withRawEventJson = rows.filter((r) => nonBlank(r['rawEventJson'])).length
 
   const pct = (n: number) => Math.round((n / total) * 100)
 
+  let lowAbilityNameReason: string | undefined
+  if (withAbilityName < total / 2) {
+    if (withAbilityGameId === 0) {
+      lowAbilityNameReason = 'event payloads lacked recognizable ability identifiers for most rows'
+    } else if (withAbilityNameFromMasterData === 0 && withAbilityNameFromEvent > 0) {
+      lowAbilityNameReason = 'some rows had event ability names, but remaining ability IDs did not match report masterData abilities'
+    } else if (withAbilityNameFromMasterData > 0) {
+      lowAbilityNameReason = 'masterData abilities recovered some names, but many rows still had no event or mapped ability name'
+    } else {
+      lowAbilityNameReason = 'ability IDs existed, but neither event fields nor report masterData abilities provided names'
+    }
+  }
+
   return {
-    view, totalRows: total,
+    view, rowCount: total, totalRows: total,
     rowsWithAbilityGameId: withAbilityGameId, rowsWithAbilityName: withAbilityName,
     rowsWithSourceName: withSourceName, rowsWithTargetName: withTargetName,
+    rowsWithAbilityNameFromEvent: withAbilityNameFromEvent,
+    rowsWithAbilityNameFromMasterData: withAbilityNameFromMasterData,
     abilityGameIdPct: pct(withAbilityGameId), abilityNamePct: pct(withAbilityName),
     sourceNamePct: pct(withSourceName), targetNamePct: pct(withTargetName),
+    rawEventJsonIncluded: withRawEventJson === total ? 'yes' : 'no',
+    lowAbilityNameReason,
   }
 }

@@ -44,9 +44,11 @@ import {
 import {
   enrichWclEvent,
   buildActorMapFromList,
+  buildAbilityMapsFromList,
   computeDataQuality,
   type DataQualityStats,
   type ActorMap,
+  type AbilityMaps,
 } from './player-analysis-event-enrichment'
 import { WOW_SPEC_MAP } from './wow-spec-map'
 import type {
@@ -78,6 +80,7 @@ type ReportPlayersQueryResponse = {
           icon?: string | null
           petOwner?: number | null
         }>
+        abilities?: Array<Record<string, unknown>>
       } | null
     } | null
   }
@@ -95,6 +98,10 @@ const REPORT_PLAYERS_QUERY = `
             subType
             icon
             petOwner
+          }
+          abilities {
+            gameID
+            name
           }
         }
       }
@@ -466,16 +473,16 @@ function buildReadme(params: {
       ? [
           '## Data Quality',
           '',
-          '| View | Rows | abilityGameId% | abilityName% | sourceName% | targetName% |',
-          '|---|---|---|---|---|---|',
+          '| View | Rows | abilityGameId% | abilityName% | sourceName% | targetName% | rawEventJsonIncluded |',
+          '|---|---|---|---|---|---|---|',
           ...params.dataQuality.map(
             (dq) =>
-              `| ${dq.view} | ${dq.totalRows} | ${dq.abilityGameIdPct}% | ${dq.abilityNamePct}% | ${dq.sourceNamePct}% | ${dq.targetNamePct}% |`
+              `| ${dq.view} | ${dq.rowCount} | ${dq.abilityGameIdPct}% | ${dq.abilityNamePct}% | ${dq.sourceNamePct}% | ${dq.targetNamePct}% | ${dq.rawEventJsonIncluded} |`
           ),
           '',
           ...params.dataQuality
             .filter((dq) => dq.abilityNamePct < 50 && dq.totalRows > 0)
-            .map((dq) => `Warning: ${dq.view} — only ${dq.abilityNamePct}% of rows have abilityName; rawEventJson included for debugging.`),
+            .map((dq) => `Warning: ${dq.view} — only ${dq.abilityNamePct}% of rows have abilityName (${dq.lowAbilityNameReason ?? 'limited ability mapping coverage'}).`),
           '',
         ]
       : []),
@@ -485,6 +492,11 @@ function buildReadme(params: {
     '- Kill time, assignments, talents, gear, externals, PI/aug buffs, deaths, and strategy can skew comparisons.',
     '- Absence from a fight is not poor performance.',
     '- Unknown role/spec/class means unknown; do not guess.',
+    ...(params.dataQuality && params.dataQuality.some((dq) => dq.abilityNamePct < 50 && dq.totalRows > 0)
+      ? [
+          '- Low ability-name coverage checks inspect event ability fields first, then report-level masterData abilities.',
+        ]
+      : []),
     '',
     '## Warnings',
     ...(params.warnings.length ? params.warnings.map((w) => `- ${w}`) : ['None']),
@@ -871,7 +883,10 @@ export function startExportJob(config: WclConfig, request: PlayerAnalysisExportR
 // Export job: async runner (background, never touches HTTP response)
 // ---------------------------------------------------------------------------
 
-async function getActorMap(config: WclConfig, code: string): Promise<ActorMap> {
+async function getActorAndAbilityMaps(
+  config: WclConfig,
+  code: string
+): Promise<{ actorMap: ActorMap; abilityMaps: AbilityMaps }> {
   try {
     const response = await queryWclGraphQl<ReportPlayersQueryResponse>({
       config,
@@ -879,9 +894,16 @@ async function getActorMap(config: WclConfig, code: string): Promise<ActorMap> {
       variables: { code },
     })
     const actors = response.reportData?.report?.masterData?.actors ?? []
-    return buildActorMapFromList(actors)
+    const abilities = response.reportData?.report?.masterData?.abilities ?? []
+    return {
+      actorMap: buildActorMapFromList(actors),
+      abilityMaps: buildAbilityMapsFromList(abilities),
+    }
   } catch {
-    return new Map()
+    return {
+      actorMap: new Map(),
+      abilityMaps: { byGameId: new Map(), byAbilityId: new Map() },
+    }
   }
 }
 
@@ -916,7 +938,7 @@ async function runExportJob(
 
   // Process each included fight
   for (const reportPreview of preview.includedReports) {
-    const actorMap = await getActorMap(config, reportPreview.code)
+    const { actorMap, abilityMaps } = await getActorAndAbilityMaps(config, reportPreview.code)
     const reportDetails = await WclService.getReportDetails(config, reportPreview.code).catch(() => null)
     if (!reportDetails) {
       allWarnings.push(`Could not load report details for ${reportPreview.code}`)
@@ -1071,7 +1093,7 @@ async function runExportJob(
 
         // Map events to CSV rows
         for (const event of result.events) {
-          const enriched = enrichWclEvent(event, ctx.fightStartTime, actorMap)
+          const enriched = enrichWclEvent(event, ctx.fightStartTime, actorMap, abilityMaps)
           const ctxFields = fightContextFields(ctx)
 
           if (view === 'deaths') {
@@ -1084,6 +1106,7 @@ async function runExportJob(
               killingBlowAbility: enriched.abilityName || enriched.abilityGameId || '',
               killingBlowSource: enriched.sourceName,
               lastDamageEventsJson: '[]',
+              rawEventJson: enriched.rawEventJson,
               rawJson: enriched.rawEventJson,
             })
           } else {
@@ -1123,7 +1146,7 @@ async function runExportJob(
     if (benchmarkResult.fight && benchmarkResult.sourceId) {
       const benchFight = benchmarkResult.fight
       const benchReportCode = request.benchmark.manualTarget.reportCode
-      const benchActorMap = await getActorMap(config, benchReportCode)
+      const { actorMap: benchActorMap, abilityMaps: benchAbilityMaps } = await getActorAndAbilityMaps(config, benchReportCode)
       const benchReportDetails = await WclService.getReportDetails(config, benchReportCode).catch(() => null)
 
       const benchCtx: FightContext = {
@@ -1171,7 +1194,7 @@ async function runExportJob(
         allWarnings.push(...result.warnings)
 
         for (const event of result.events) {
-          const enriched = enrichWclEvent(event, benchCtx.fightStartTime, benchActorMap)
+          const enriched = enrichWclEvent(event, benchCtx.fightStartTime, benchActorMap, benchAbilityMaps)
           const ctxFields = fightContextFields(benchCtx)
           if (view === 'deaths') {
             const deathTs = typeof event.timestamp === 'number' ? event.timestamp : 0
@@ -1183,6 +1206,7 @@ async function runExportJob(
               killingBlowAbility: enriched.abilityName || enriched.abilityGameId || '',
               killingBlowSource: enriched.sourceName,
               lastDamageEventsJson: '[]',
+              rawEventJson: enriched.rawEventJson,
               rawJson: enriched.rawEventJson,
             })
           } else {
@@ -1221,7 +1245,7 @@ async function runExportJob(
         continue
       }
 
-      const benchActorMap = await getActorMap(config, sc.benchmarkReportCode)
+      const { actorMap: benchActorMap, abilityMaps: benchAbilityMaps } = await getActorAndAbilityMaps(config, sc.benchmarkReportCode)
       const benchActorsResponse = await queryWclGraphQl<ReportPlayersQueryResponse>({
         config,
         query: REPORT_PLAYERS_QUERY,
@@ -1286,7 +1310,7 @@ async function runExportJob(
         allWarnings.push(...scResult.warnings)
 
         for (const event of scResult.events) {
-          const enriched = enrichWclEvent(event, scBenchCtx.fightStartTime, benchActorMap)
+          const enriched = enrichWclEvent(event, scBenchCtx.fightStartTime, benchActorMap, benchAbilityMaps)
           const ctxFields = fightContextFields(scBenchCtx)
           if (view === 'deaths') {
             const deathTs = typeof event.timestamp === 'number' ? event.timestamp : 0
@@ -1298,6 +1322,7 @@ async function runExportJob(
               killingBlowAbility: enriched.abilityName || enriched.abilityGameId || '',
               killingBlowSource: enriched.sourceName,
               lastDamageEventsJson: '[]',
+              rawEventJson: enriched.rawEventJson,
               rawJson: enriched.rawEventJson,
             })
           } else {
@@ -1386,7 +1411,7 @@ async function runExportJob(
           if (!benchFightDetails) {
             allWarnings.push(`Fight ${benchFightId} not found in benchmark report ${benchReportCode} — benchmark data will not be included.`)
           } else {
-            const benchActorMap = await getActorMap(config, benchReportCode)
+            const { actorMap: benchActorMap, abilityMaps: benchAbilityMaps } = await getActorAndAbilityMaps(config, benchReportCode)
             const benchActors = await queryWclGraphQl<ReportPlayersQueryResponse>({
               config,
               query: REPORT_PLAYERS_QUERY,
@@ -1453,7 +1478,7 @@ async function runExportJob(
                   allWarnings.push(...result.warnings)
 
                   for (const event of result.events) {
-                    const enriched = enrichWclEvent(event, benchCtx.fightStartTime, benchActorMap)
+                    const enriched = enrichWclEvent(event, benchCtx.fightStartTime, benchActorMap, benchAbilityMaps)
                     const ctxFields = fightContextFields(benchCtx)
                     if (view === 'deaths') {
                       const deathTs = typeof event.timestamp === 'number' ? event.timestamp : 0
@@ -1465,6 +1490,7 @@ async function runExportJob(
                         killingBlowAbility: enriched.abilityName || enriched.abilityGameId || '',
                         killingBlowSource: enriched.sourceName,
                         lastDamageEventsJson: '[]',
+                        rawEventJson: enriched.rawEventJson,
                         rawJson: enriched.rawEventJson,
                       })
                     } else {
@@ -1492,6 +1518,13 @@ async function runExportJob(
   for (const view of request.views) {
     if (view === 'fightMetadata' || view === 'combatantInfo') continue
     dataQualityStats.push(computeDataQuality(view, playerRows[view]))
+  }
+  for (const dq of dataQualityStats) {
+    if (dq.abilityNamePct < 50 && dq.totalRows > 0) {
+      allWarnings.push(
+        `Low abilityName coverage in ${dq.view}: ${dq.abilityNamePct}% (${dq.lowAbilityNameReason ?? 'limited ability mapping coverage'}).`
+      )
+    }
   }
 
   // Write CSV files

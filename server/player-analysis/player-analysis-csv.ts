@@ -89,8 +89,12 @@ const ENRICHED_EVENT_PREFIX = [
   'targetOwnerId',
   'targetOwnerName',
   'abilityGameId',
+  'abilityId',
   'abilityName',
   'abilityType',
+  'rawAbilityGameId',
+  'rawAbilityId',
+  'rawAbilityName',
 ]
 
 export const DAMAGE_DONE_CSV_HEADERS = [
@@ -146,23 +150,13 @@ export const HEALING_CSV_HEADERS = [
 ]
 
 export const DEATHS_CSV_HEADERS = [
-  'exportId',
-  'subjectType',
-  'reportCode',
-  'reportTitle',
-  'fightId',
-  'encounterId',
-  'encounterName',
-  'difficulty',
-  'kill',
-  'fightDurationMs',
-  'sourceId',
-  'sourceName',
+  ...ENRICHED_EVENT_PREFIX,
   'deathTimestampMs',
   'deathRelativeTimestampMs',
   'killingBlowAbility',
   'killingBlowSource',
   'lastDamageEventsJson',
+  'rawEventJson',
   'rawJson',
 ]
 
