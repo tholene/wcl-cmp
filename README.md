@@ -1,6 +1,11 @@
-# Warcraft Logs Guild Analyzer (POC)
+# Player Analysis Export
 
-A local TypeScript + React app for reviewing recent Warcraft Logs reports for your guild.
+A local-first Warcraft Logs export workbench for officer workflows.
+
+Primary workflow:
+- select player and scope
+- preview exportable Warcraft Logs data
+- generate ZIP/CSV/JSON export bundles for manual analysis
 
 ## Stack
 
@@ -51,12 +56,19 @@ npm run dev
 
 - `GET /api/health`
 - `GET /api/config/status`
-- `GET /api/reports/recent`
-- `GET /api/reports/:code`
+- `GET /api/players/recent`
+- `POST /api/player-analysis/export-preview`
+- `POST /api/player-analysis/export`
+- `GET /api/player-analysis/exports/:exportId/status`
+- `GET /api/player-analysis/exports/:exportId/:filename`
+- `POST /api/player-analysis/benchmark-candidates`
+
+Legacy endpoints remain callable for compatibility but are sunset and not part of the primary workflow.
+See [`docs/legacy-sunset.md`](docs/legacy-sunset.md).
 
 ## Troubleshooting
 
-If `GET /api/reports/recent` returns an env config error:
+If API calls return an env config error:
 
 1. Ensure `.env` is in the project root (same folder as `package.json`).
 2. Ensure values are `KEY=value` format (no `:` separators).
@@ -78,13 +90,13 @@ curl http://localhost:5781/api/config/status
 
 (or replace `5781` with your configured `API_PORT`).
 
-## Current POC Features
+## Current Features
 
-- Dashboard with recent guild reports
-- Links to open reports in Warcraft Logs
-- Report details screen with encounter list
-- Kill/Wipe status + fight duration display
-- Loading/error/empty states
+- Player Analysis Export page at `/` and `/player-analysis`
+- Player lookup from recent guild logs
+- Export scope preview before export
+- ZIP/CSV/JSON export output with local file download endpoints
+- Structured warnings for partial/incomplete data
 
 ## Scripts
 

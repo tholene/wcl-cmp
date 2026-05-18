@@ -281,7 +281,8 @@ app.get('/api/players/recent', async (_req: Request, res: Response) => {
   }
 })
 
-// TODO: deprecated — replaced by /api/player-analysis/export
+// Deprecated (WP0 sunset): kept for compatibility/deep links only.
+// Replacement primary workflow: /api/player-analysis/export
 app.post('/api/player-reviews/snapshot', async (req: Request, res: Response) => {
   try {
     const config = getWclConfig()
@@ -297,7 +298,8 @@ app.post('/api/player-reviews/snapshot', async (req: Request, res: Response) => 
   }
 })
 
-// TODO: deprecated — replaced by /api/player-analysis/export-preview
+// Deprecated (WP0 sunset): kept for compatibility/deep links only.
+// Replacement primary workflow: /api/player-analysis/export-preview
 app.post('/api/player-reviews/scope-preview', async (req: Request, res: Response) => {
   try {
     const config = getWclConfig()
@@ -312,7 +314,8 @@ app.post('/api/player-reviews/scope-preview', async (req: Request, res: Response
   }
 })
 
-// TODO: deprecated — prompt workflow removed; no replacement
+// Deprecated (WP0 sunset): prompt-first workflow removed from primary product shape.
+// Kept callable only for compatibility while legacy clients are retired.
 app.post('/api/player-reviews/prompt', async (req: Request, res: Response) => {
   try {
     const config = getWclConfig()

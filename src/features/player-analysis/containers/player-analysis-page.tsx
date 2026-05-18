@@ -299,7 +299,7 @@ export const PlayerAnalysisPage: FC = () => {
     <div className="space-y-4">
       <div>
         <h1 className="text-lg font-semibold text-slate-100">Player Analysis Export</h1>
-        <p className="mt-0.5 text-xs text-slate-400">Export Warcraft Logs data for a player without manually opening WCL tabs.</p>
+        <p className="mt-0.5 text-xs text-slate-400">Export Warcraft Logs data without manually opening every WCL view.</p>
       </div>
 
       <div className="grid gap-4 lg:grid-cols-3">

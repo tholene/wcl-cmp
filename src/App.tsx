@@ -12,14 +12,14 @@ import { PATHS } from '@/lib/routes'
 export const App: FC = () => (
   <AppLayout>
     <Routes>
-      <Route path={PATHS.HOME} element={<Navigate to={PATHS.PLAYER_ANALYSIS} replace />} />
+      <Route path={PATHS.HOME} element={<PlayerAnalysisPage />} />
       <Route path={PATHS.PLAYER_ANALYSIS} element={<PlayerAnalysisPage />} />
       <Route path={PATHS.BOSSES} element={<BossesOverviewContainer />} />
       <Route path={PATHS.BOSS_DETAILS} element={<BossDetailsContainer />} />
       <Route path={PATHS.REPORT_DETAILS} element={<ReportDetailsContainer />} />
       <Route path={PATHS.FIGHT_REVIEW} element={<FightReviewContainer />} />
       <Route path={PATHS.PLAYER_FIGHT_REVIEW} element={<PlayerFightReviewContainer />} />
-      <Route path="*" element={<Navigate to={PATHS.PLAYER_ANALYSIS} replace />} />
+      <Route path="*" element={<Navigate to={PATHS.HOME} replace />} />
     </Routes>
   </AppLayout>
 )
