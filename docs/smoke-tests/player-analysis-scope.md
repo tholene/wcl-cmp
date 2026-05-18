@@ -106,6 +106,29 @@ Expected:
 - [ ] Verify `fightIdsByReport` exists and includes only currently selected fights per report code.
 - [ ] Verify deselected fights are absent from payload.
 
+## WP3 Class/Spec Override Checks
+
+- [ ] Trigger preview where WCL does not return complete class/spec (or mock preview with missing spec).
+- [ ] In Benchmark Comparison (auto mode), confirm WCL-detected context block is visible with class/spec/role/confidence/source fields.
+- [ ] If class/spec missing, confirm message appears exactly:
+  `WCL did not detect class/spec for this player. Select class/spec manually to enable benchmark discovery.`
+- [ ] Select class first, then spec (filtered by selected class); confirm role display updates from selected spec.
+- [ ] Confirm benchmark discovery button remains disabled until:
+  - preview exists
+  - at least one baseline fight is selected
+  - class/spec available via WCL-detected or user-provided context
+- [ ] If class/spec still unavailable, confirm message appears exactly:
+  `Benchmark discovery requires class and spec. WCL did not detect spec, so select it manually.`
+- [ ] If WCL and user-provided context differ, confirm warning is shown in UI.
+- [ ] Inspect `POST /api/player-analysis/export-preview` request and verify `playerContext` is included when manually selected.
+- [ ] Inspect `POST /api/player-analysis/export` request and verify `playerContext` is included when manually selected.
+- [ ] Run an export and confirm `manifest.json` includes:
+  - `detectedContext`
+  - `userContext`
+  - `effectiveContext`
+  - `contextWarnings`
+- [ ] Confirm `README.md` Player Context section includes WCL-detected, user-provided, and benchmark/export context used.
+
 ## Empty/Missing Array Safety
 
 Validate each view handles empty arrays safely (no React crash):
@@ -159,4 +182,3 @@ Record each smoke run for repeatability.
 - Adding `test:smoke` scripts.
 - Changing benchmark selection logic.
 - Changing export enrichment behavior.
-- Changing manual class/spec override behavior.

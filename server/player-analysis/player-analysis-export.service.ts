@@ -57,6 +57,8 @@ import type {
   PlayerAnalysisExportView,
   PlayerAnalysisTimeframePreset,
   PlayerDetectedContext,
+  PlayerUserContext,
+  EffectivePlayerContext,
   NormalizedBenchmarkCandidate,
 } from './player-analysis.types'
 
@@ -233,6 +235,74 @@ function extractCombatantDetails(events: RawEvent[], sourceId: number): Combatan
   }
 }
 
+function buildContextWarnings(
+  detectedContext: PlayerDetectedContext,
+  userContext?: PlayerUserContext | null
+): string[] {
+  if (!userContext) return []
+  const warnings: string[] = []
+  const hasDetectedClass = !!detectedContext.className
+  const hasDetectedSpec = !!detectedContext.specName
+  const hasDetectedRole = !!detectedContext.role
+
+  if (hasDetectedClass && userContext.className &&
+    userContext.className.toLowerCase() !== detectedContext.className!.toLowerCase()) {
+    warnings.push(`User-provided class ${userContext.className} differs from WCL-detected ${detectedContext.className}.`)
+  }
+  if (hasDetectedSpec && userContext.specName &&
+    userContext.specName.toLowerCase() !== detectedContext.specName!.toLowerCase()) {
+    warnings.push(`User-provided spec ${userContext.specName} differs from WCL-detected ${detectedContext.specName}.`)
+  }
+  if (hasDetectedRole && userContext.role && userContext.role !== detectedContext.role) {
+    warnings.push(
+      `User-provided role ${userContext.role.toUpperCase()} differs from WCL-detected ${detectedContext.role!.toUpperCase()}.`
+    )
+  }
+
+  return warnings
+}
+
+function resolveEffectiveContext(
+  detectedContext: PlayerDetectedContext,
+  userContext?: PlayerUserContext | null,
+  benchmarkContextSource?: 'wclDetected' | 'userProvided'
+): EffectivePlayerContext {
+  const hasDetectedClassSpec = !!detectedContext.className && !!detectedContext.specName
+  const hasUserClassSpec = !!userContext?.className && !!userContext?.specName
+
+  if (benchmarkContextSource === 'userProvided') {
+    if (hasUserClassSpec) {
+      return {
+        className: userContext?.className,
+        specName: userContext?.specName,
+        role: userContext?.role ?? 'unknown',
+        source: 'userProvided',
+      }
+    }
+    return { source: 'unknown', role: 'unknown' }
+  }
+
+  if (hasDetectedClassSpec) {
+    return {
+      className: detectedContext.className,
+      specName: detectedContext.specName,
+      role: detectedContext.role ?? 'unknown',
+      source: 'wclDetected',
+    }
+  }
+
+  if (hasUserClassSpec) {
+    return {
+      className: userContext?.className,
+      specName: userContext?.specName,
+      role: userContext?.role ?? 'unknown',
+      source: 'userProvided',
+    }
+  }
+
+  return { source: 'unknown', role: 'unknown' }
+}
+
 // ---------------------------------------------------------------------------
 // View label for status messages
 // ---------------------------------------------------------------------------
@@ -292,12 +362,15 @@ function buildReadme(params: {
   benchmarkWarnings: string[]
   warnings: string[]
   detectedContext?: PlayerDetectedContext
-  userContext?: { role?: string; className?: string; specName?: string }
+  userContext?: PlayerUserContext | null
+  effectiveContext?: EffectivePlayerContext
+  contextWarnings?: string[]
   dataQuality?: DataQualityStats[]
 }): string {
   const scope = params.scope
   const dc = params.detectedContext
   const uc = params.userContext
+  const ec = params.effectiveContext
 
   const detectedLines =
     dc && dc.confidence === 'high'
@@ -318,10 +391,23 @@ function buildReadme(params: {
           ]
         : ['- Source: unavailable', '- Confidence: low', '- Class: unknown', '- Spec: unknown', '- Role: unknown']
 
-  const benchmarkClass = dc?.confidence === 'high' ? (dc.className ?? 'unknown') : (uc?.className ?? 'unknown')
-  const benchmarkSpec = dc?.confidence === 'high' ? (dc.specName ?? 'unknown') : (uc?.specName ?? 'unknown')
-  const benchmarkRole = dc?.confidence === 'high' ? (dc.role?.toUpperCase() ?? 'unknown') : (uc?.role?.toUpperCase() ?? 'unknown')
-  const benchmarkSource = dc?.confidence === 'high' ? 'WCL-detected' : uc?.className ? 'user-provided' : 'unavailable'
+  const benchmarkClass = ec?.className ?? 'unknown'
+  const benchmarkSpec = ec?.specName ?? 'unknown'
+  const benchmarkRole = ec?.role ? ec.role.toUpperCase() : 'unknown'
+  const benchmarkSource =
+    ec?.source === 'wclDetected'
+      ? 'WCL-detected'
+      : ec?.source === 'userProvided'
+        ? 'user-provided'
+        : 'unknown'
+  const benchmarkSourceReason =
+    ec?.source === 'userProvided'
+      ? (dc?.specName
+        ? 'because user-selected benchmark context source is user-provided'
+        : 'because WCL spec detection failed')
+      : ec?.source === 'wclDetected'
+        ? 'from WCL-detected context'
+        : 'no class/spec context available'
 
   const lines: string[] = [
     '# Player Analysis Export',
@@ -330,19 +416,25 @@ function buildReadme(params: {
     `- Requested player: ${params.playerName}`,
     `- Item level: ${params.itemLevel ?? 'unknown'}`,
     '',
-    '## Player context (WCL-detected)',
+    '## Player Context',
+    '',
+    'WCL-detected:',
     ...detectedLines,
     '',
-    '## Player context (user-provided)',
+    'User-provided:',
     `- Class: ${uc?.className ?? '(not provided)'}`,
     `- Spec: ${uc?.specName ?? '(not provided)'}`,
     `- Role: ${uc?.role?.toUpperCase() ?? '(not provided)'}`,
     '',
-    '## Benchmark context used',
-    `- Class: ${benchmarkClass} (${benchmarkSource})`,
-    `- Spec: ${benchmarkSpec} (${benchmarkSource})`,
-    `- Role: ${benchmarkRole} (${benchmarkSource})`,
+    'Benchmark/export context used:',
+    `- Class: ${benchmarkClass}`,
+    `- Spec: ${benchmarkSpec}`,
+    `- Role: ${benchmarkRole}`,
+    `- Source: ${benchmarkSource} ${benchmarkSourceReason}`,
     '- Note: Benchmark will only be marked valid if class and spec match.',
+    ...(params.contextWarnings?.length
+      ? ['', 'Context warnings:', ...params.contextWarnings.map((warning) => `- ${warning}`)]
+      : []),
     '',
     '## Scope',
     `- Timeframe preset: ${scope.timeframePreset ?? 'manual'}`,
@@ -648,14 +740,16 @@ export async function getExportPreview(
   }
 
   const userCtx = request.playerContext
-  if (userCtx && detectedContext.confidence === 'high') {
-    const classConflict = userCtx.className && userCtx.className.toLowerCase() !== (detectedContext.className ?? '').toLowerCase()
-    const specConflict = userCtx.specName && userCtx.specName.toLowerCase() !== (detectedContext.specName ?? '').toLowerCase()
-    const roleConflict = userCtx.role && userCtx.role !== detectedContext.role
-    if (classConflict || specConflict || roleConflict) {
-      warnings.push('User-provided context differs from WCL-detected context. Using WCL-detected context for benchmark matching.')
-    }
+  const contextWarnings = buildContextWarnings(detectedContext, userCtx)
+  if (request.benchmarkContextSource === 'userProvided' && (!userCtx?.className || !userCtx?.specName)) {
+    contextWarnings.push('User-provided benchmark context source selected, but class/spec is incomplete.')
   }
+  warnings.push(...contextWarnings)
+  const effectiveContext = resolveEffectiveContext(
+    detectedContext,
+    userCtx,
+    request.benchmarkContextSource
+  )
 
   const estimatedCsvFiles = request.views.length + (request.includeBenchmark ? request.views.length + 1 : 0)
   const estimatedSizeLevel: 'small' | 'medium' | 'large' | 'veryLarge' =
@@ -692,6 +786,9 @@ export async function getExportPreview(
       estimatedSizeLevel,
       warnings: [],
     },
+    userContext: userCtx ?? null,
+    effectiveContext,
+    contextWarnings,
     warnings,
   }
 }
@@ -1017,7 +1114,7 @@ async function runExportJob(
     const benchmarkResult = await PlayerAnalysisBenchmarkService.fetchManualBenchmarkTarget(
       config,
       request.benchmark.manualTarget,
-      preview.detectedPlayer?.className ?? null,
+      preview.effectiveContext?.className ?? null,
     )
     benchmarkWarnings = benchmarkResult.warnings
     allWarnings.push(...benchmarkWarnings)
@@ -1480,6 +1577,9 @@ async function runExportJob(
     scope: preview.scope,
     detectedContext: preview.detectedPlayer?.detectedContext ?? null,
     userContext: request.playerContext ?? null,
+    effectiveContext: preview.effectiveContext ?? null,
+    contextWarnings: preview.contextWarnings ?? [],
+    benchmarkContextSource: request.benchmarkContextSource ?? null,
     benchmarkEnabled,
     benchmarkMode: benchmarkEnabled ? (request.benchmark?.autoConfig ? 'automatic' : 'manual') : 'none',
     dataQuality: dataQualityStats,
@@ -1508,6 +1608,8 @@ async function runExportJob(
     warnings: allWarnings,
     detectedContext: preview.detectedPlayer?.detectedContext,
     userContext: request.playerContext,
+    effectiveContext: preview.effectiveContext,
+    contextWarnings: preview.contextWarnings,
     dataQuality: dataQualityStats,
   })
   writeExportFile(exportId, 'README.md', readme)

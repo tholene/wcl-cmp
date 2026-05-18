@@ -504,10 +504,68 @@ export const PlayerAnalysisBenchmarkService = {
     request: BenchmarkCandidatesRequest
   ): Promise<BenchmarkCandidatesResponse> {
     const groups: BenchmarkCandidateGroup[] = []
+    const userClassName = request.playerContext?.className
+    const userSpecName = request.playerContext?.specName
+    const hasUserClassSpec = !!userClassName && !!userSpecName
 
     for (const baseline of request.baselines) {
-      if (!baseline.className || baseline.className === 'unknown' ||
-        !baseline.specName || baseline.specName === 'unknown') {
+      let baselineForQuery: BenchmarkBaseline = { ...baseline }
+      const baselineWarnings: string[] = []
+
+      if (request.benchmarkContextSource === 'userProvided' && !hasUserClassSpec) {
+        groups.push({
+          baseline,
+          candidates: [],
+          warnings: [
+            'Benchmark discovery requires class and spec. WCL did not detect spec, so select it manually.',
+          ],
+          apiSupported: false,
+        })
+        continue
+      }
+
+      if (request.benchmarkContextSource === 'userProvided' && hasUserClassSpec) {
+        const selectedClassName = userClassName as string
+        const selectedSpecName = userSpecName as string
+        baselineForQuery = {
+          ...baselineForQuery,
+          className: selectedClassName,
+          specName: selectedSpecName,
+          contextSource: 'userProvided',
+        }
+
+        if (
+          baseline.className &&
+          baseline.className !== 'unknown' &&
+          baseline.specName &&
+          baseline.specName !== 'unknown' &&
+          (baseline.className.toLowerCase() !== selectedClassName.toLowerCase() ||
+            baseline.specName.toLowerCase() !== selectedSpecName.toLowerCase())
+        ) {
+          baselineWarnings.push(
+            `Using user-provided context ${selectedClassName} ${selectedSpecName} for benchmark discovery; WCL-detected baseline context was ${baseline.className} ${baseline.specName}.`
+          )
+        }
+      } else if (
+        (!baselineForQuery.className || baselineForQuery.className === 'unknown' ||
+          !baselineForQuery.specName || baselineForQuery.specName === 'unknown') &&
+        hasUserClassSpec
+      ) {
+        const selectedClassName = userClassName as string
+        const selectedSpecName = userSpecName as string
+        baselineForQuery = {
+          ...baselineForQuery,
+          className: selectedClassName,
+          specName: selectedSpecName,
+          contextSource: 'userProvided',
+        }
+        baselineWarnings.push(
+          `WCL class/spec missing for baseline; using user-provided context ${selectedClassName} ${selectedSpecName}.`
+        )
+      }
+
+      if (!baselineForQuery.className || baselineForQuery.className === 'unknown' ||
+        !baselineForQuery.specName || baselineForQuery.specName === 'unknown') {
         groups.push({
           baseline,
           candidates: [],
@@ -540,11 +598,15 @@ export const PlayerAnalysisBenchmarkService = {
         continue
       }
 
-      const group = await findCandidatesForBaseline(config, baseline, {
+      const group = await findCandidatesForBaseline(config, baselineForQuery, {
         targetPercentile: request.targetPercentile,
         metric: request.metric,
         maxCandidates: request.maxCandidatesPerFight ?? 10,
       })
+      group.baseline = baselineForQuery
+      if (baselineWarnings.length > 0) {
+        group.warnings = [...baselineWarnings, ...group.warnings]
+      }
       groups.push(group)
     }
 

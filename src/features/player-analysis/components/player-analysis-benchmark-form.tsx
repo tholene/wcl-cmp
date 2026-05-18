@@ -1,5 +1,9 @@
 import type { FC } from 'react'
-import type { BenchmarkCandidatesResponse, NormalizedBenchmarkCandidate } from '../types/player-analysis.types'
+import type {
+  BenchmarkCandidatesResponse,
+  NormalizedBenchmarkCandidate,
+  PlayerDetectedContext,
+} from '../types/player-analysis.types'
 import type { AvailableBaseline, ClassSpecOverride } from '../containers/player-analysis-page'
 import { CLASS_NAMES, getSpecsForClass, getRoleForSpec } from '../types/wow-class-spec'
 
@@ -23,12 +27,17 @@ type Props = {
   candidatesResult?: BenchmarkCandidatesResponse | null
   isFindingCandidates?: boolean
   canFindCandidates?: boolean
+  hasPreview?: boolean
   availableBaselines?: AvailableBaseline[]
   selectedBaselineKeys?: Set<string>
   specDetectionFailed?: boolean
+  detectedContext?: PlayerDetectedContext
+  contextWarnings?: string[]
+  benchmarkContextSource?: 'wclDetected' | 'userProvided'
   playerUserContext?: ClassSpecOverride | null
   onBaselineSelectionChange?: (keys: Set<string>) => void
   onClassSpecOverrideChange?: (ctx: ClassSpecOverride | null) => void
+  onBenchmarkContextSourceChange?: (source: 'wclDetected' | 'userProvided') => void
   onBenchmarkModeChange: (mode: 'none' | 'manual' | 'auto') => void
   onBenchmarkConfigChange: (config: ManualConfig) => void
   onAutoConfigChange: (config: AutoConfig) => void
@@ -85,20 +94,25 @@ export const PlayerAnalysisBenchmarkForm: FC<Props> = ({
   candidatesResult,
   isFindingCandidates,
   canFindCandidates,
+  hasPreview = false,
   availableBaselines = [],
   selectedBaselineKeys,
   specDetectionFailed = false,
+  detectedContext,
+  contextWarnings = [],
+  benchmarkContextSource = 'wclDetected',
   playerUserContext,
   onBaselineSelectionChange,
   onClassSpecOverrideChange,
+  onBenchmarkContextSourceChange,
   onBenchmarkModeChange,
   onBenchmarkConfigChange,
   onAutoConfigChange,
   onFindCandidates,
 }) => {
   const includeBenchmark = benchmarkMode !== 'none'
-  // hasPreview: preview ran but produced no boss fight candidates — different from "no preview yet"
-  const hasPreview = availableBaselines.length > 0 || specDetectionFailed
+  const hasWclClassSpec = !!detectedContext?.className && !!detectedContext?.specName
+  const hasUserClassSpec = !!playerUserContext?.className && !!playerUserContext?.specName
 
   return (
     <section className="rounded-xl border border-slate-800 bg-slate-900/70 p-4">
@@ -244,54 +258,106 @@ export const PlayerAnalysisBenchmarkForm: FC<Props> = ({
                 })}
               </div>
 
-              {/* Class/spec override when WCL detection failed */}
-              {specDetectionFailed && (
-                <div className="rounded border border-amber-700/30 bg-amber-950/20 p-2 text-xs space-y-2">
-                  <p className="text-amber-300">
-                    WCL did not detect a spec for this player. Select class and spec to enable benchmark discovery.
-                  </p>
-                  <div className="flex gap-2">
+              {/* Context model + manual class/spec override */}
+              {hasPreview && (
+                <div className="rounded border border-slate-700 bg-slate-950/50 p-2 text-xs space-y-2">
+                  <div className="space-y-0.5">
+                    <p className="text-slate-300">WCL-detected context</p>
+                    <p className="text-slate-500">
+                      Class: <span className="text-slate-300">{detectedContext?.className ?? 'unknown'}</span>
+                      {' '}· Spec: <span className="text-slate-300">{detectedContext?.specName ?? 'unknown'}</span>
+                      {' '}· Role: <span className="text-slate-300">{detectedContext?.role?.toUpperCase() ?? 'unknown'}</span>
+                    </p>
+                    <p className="text-slate-500">
+                      Confidence: {detectedContext?.confidence ?? 'low'} · Source: {detectedContext?.source ?? 'unknown'}
+                    </p>
+                    {specDetectionFailed && (
+                      <p className="text-amber-300">
+                        WCL did not detect class/spec for this player. Select class/spec manually to enable benchmark discovery.
+                      </p>
+                    )}
+                  </div>
+
+                  <div className="space-y-1">
+                    <p className="text-slate-300">User-provided context</p>
+                    <div className="flex gap-2">
+                      <select
+                        className="flex-1 rounded border border-slate-700 bg-slate-950 px-2 py-1 text-xs text-slate-100"
+                        value={playerUserContext?.className ?? ''}
+                        onChange={(e) => {
+                          const nextClass = e.target.value
+                          if (!nextClass) {
+                            onClassSpecOverrideChange?.(null)
+                            return
+                          }
+                          const retainedSpec = playerUserContext?.className === nextClass
+                            ? playerUserContext?.specName ?? ''
+                            : ''
+                          const nextRole = retainedSpec ? getRoleForSpec(nextClass, retainedSpec) ?? undefined : undefined
+                          onClassSpecOverrideChange?.({
+                            className: nextClass,
+                            specName: retainedSpec,
+                            role: nextRole,
+                          })
+                        }}
+                      >
+                        <option value="">Select class…</option>
+                        {CLASS_NAMES.map((c) => (
+                          <option key={c} value={c}>{c}</option>
+                        ))}
+                      </select>
+                      <select
+                        className="flex-1 rounded border border-slate-700 bg-slate-950 px-2 py-1 text-xs text-slate-100 disabled:opacity-50"
+                        value={playerUserContext?.specName ?? ''}
+                        disabled={!playerUserContext?.className}
+                        onChange={(e) => {
+                          if (!playerUserContext?.className) return
+                          const nextSpec = e.target.value
+                          if (!nextSpec) {
+                            onClassSpecOverrideChange?.({
+                              className: playerUserContext.className,
+                              specName: '',
+                              role: undefined,
+                            })
+                            return
+                          }
+                          const role = getRoleForSpec(playerUserContext.className, nextSpec) ?? undefined
+                          onClassSpecOverrideChange?.({
+                            className: playerUserContext.className,
+                            specName: nextSpec,
+                            role,
+                          })
+                        }}
+                      >
+                        <option value="">Select spec…</option>
+                        {getSpecsForClass(playerUserContext?.className ?? '').map((s) => (
+                          <option key={s.specName} value={s.specName}>{s.specName}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <p className="text-slate-500">
+                      Role:{' '}
+                      <span className="text-slate-300">
+                        {playerUserContext?.role?.toUpperCase() ?? 'unknown'}
+                      </span>
+                    </p>
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="block text-slate-300">Benchmark context source</label>
                     <select
-                      className="flex-1 rounded border border-slate-700 bg-slate-950 px-2 py-1 text-xs text-slate-100"
-                      value={playerUserContext?.className ?? ''}
-                      onChange={(e) => {
-                        const cls = e.target.value
-                        if (!cls) {
-                          onClassSpecOverrideChange?.(null)
-                          return
-                        }
-                        onClassSpecOverrideChange?.({ className: cls, specName: '', role: 'dps' })
-                      }}
+                      className="w-full rounded border border-slate-700 bg-slate-950 px-2 py-1 text-xs text-slate-100"
+                      value={benchmarkContextSource}
+                      onChange={(e) => onBenchmarkContextSourceChange?.(e.target.value as 'wclDetected' | 'userProvided')}
                     >
-                      <option value="">Select class…</option>
-                      {CLASS_NAMES.map((c) => (
-                        <option key={c} value={c}>{c}</option>
-                      ))}
-                    </select>
-                    <select
-                      className="flex-1 rounded border border-slate-700 bg-slate-950 px-2 py-1 text-xs text-slate-100 disabled:opacity-50"
-                      value={playerUserContext?.specName ?? ''}
-                      disabled={!playerUserContext?.className}
-                      onChange={(e) => {
-                        const spec = e.target.value
-                        if (!spec || !playerUserContext?.className) return
-                        const role = getRoleForSpec(playerUserContext.className, spec) ?? 'dps'
-                        onClassSpecOverrideChange?.({ ...playerUserContext, specName: spec, role })
-                      }}
-                    >
-                      <option value="">Select spec…</option>
-                      {getSpecsForClass(playerUserContext?.className ?? '').map((s) => (
-                        <option key={s.specName} value={s.specName}>{s.specName}</option>
-                      ))}
+                      <option value="wclDetected">WCL-detected</option>
+                      <option value="userProvided">User-provided</option>
                     </select>
                   </div>
-                  {playerUserContext?.specName && (
-                    <p className="text-slate-400">
-                      Using user-provided:{' '}
-                      <span className="text-slate-200">{playerUserContext.specName} {playerUserContext.className}</span>
-                      {' '}({playerUserContext.role})
-                    </p>
-                  )}
+
+                  {contextWarnings.map((warning) => (
+                    <p key={warning} className="text-amber-300">{warning}</p>
+                  ))}
                 </div>
               )}
 
@@ -369,17 +435,21 @@ export const PlayerAnalysisBenchmarkForm: FC<Props> = ({
                   Preview an export first so benchmark discovery can use the player's actual boss fights.
                 </p>
               )}
-              {!canFindCandidates && hasPreview && (selectedBaselineKeys?.size ?? 0) === 0 && !specDetectionFailed && (
+              {!canFindCandidates && hasPreview && (selectedBaselineKeys?.size ?? 0) === 0 && (
                 <p className="text-xs text-slate-500">
                   Select at least one boss fight from the preview to find benchmark candidates.
                 </p>
               )}
-              {!canFindCandidates && hasPreview && specDetectionFailed && (
+              {!canFindCandidates &&
+                hasPreview &&
+                (selectedBaselineKeys?.size ?? 0) > 0 &&
+                ((!hasWclClassSpec && !hasUserClassSpec) ||
+                  (benchmarkContextSource === 'userProvided' && !hasUserClassSpec)) && (
                 <p className="text-xs text-slate-500">
-                  WCL did not detect a spec for this player. Select class and spec above to enable benchmark discovery.
+                  Benchmark discovery requires class and spec. WCL did not detect spec, so select it manually.
                 </p>
               )}
-              {canFindCandidates && specDetectionFailed && playerUserContext?.specName && (
+              {canFindCandidates && benchmarkContextSource === 'userProvided' && hasUserClassSpec && (
                 <p className="text-xs text-slate-400">
                   Benchmark discovery will use user-provided{' '}
                   <span className="text-slate-200">{playerUserContext.specName} {playerUserContext.className}</span> context.

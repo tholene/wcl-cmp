@@ -136,6 +136,15 @@ export type PlayerUserContext = {
   source: 'userProvided'
 }
 
+export type PlayerContextSource = 'wclDetected' | 'userProvided' | 'unknown'
+
+export type EffectivePlayerContext = {
+  className?: string
+  specName?: string
+  role?: 'tank' | 'healer' | 'dps' | 'unknown'
+  source: PlayerContextSource
+}
+
 export type PlayerAnalysisExportRequest = {
   playerName: string
   timeframePreset?: PlayerAnalysisTimeframePreset
@@ -152,6 +161,7 @@ export type PlayerAnalysisExportRequest = {
   benchmark?: PlayerBenchmarkRequest
   limits?: Partial<PlayerAnalysisExportLimits>
   playerContext?: PlayerUserContext
+  benchmarkContextSource?: 'wclDetected' | 'userProvided'
 }
 
 export type PlayerAnalysisExportFile = {
@@ -225,6 +235,9 @@ export type PlayerAnalysisExportPreview = {
     estimatedSizeLevel: 'small' | 'medium' | 'large' | 'veryLarge'
     warnings: string[]
   }
+  userContext?: PlayerUserContext | null
+  effectiveContext?: EffectivePlayerContext
+  contextWarnings: string[]
   warnings: string[]
 }
 
@@ -265,6 +278,7 @@ export type BenchmarkCandidatesRequest = {
   durationWindowPercent?: number
   maxCandidatesPerFight?: number
   playerContext?: PlayerUserContext
+  benchmarkContextSource?: 'wclDetected' | 'userProvided'
 }
 
 export type NormalizedBenchmarkCandidate = {

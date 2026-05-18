@@ -38,7 +38,7 @@ type AutoBenchmarkConfig = {
 export type ClassSpecOverride = {
   className: string
   specName: string
-  role: WowRole
+  role?: WowRole
 }
 
 export type AvailableBaseline = {
@@ -172,18 +172,32 @@ export const PlayerAnalysisPage: FC = () => {
   })
   const [selectedBaselineKeys, setSelectedBaselineKeys] = useState<Set<string>>(new Set())
   const [playerUserContext, setPlayerUserContext] = useState<ClassSpecOverride | null>(null)
+  const [benchmarkContextSource, setBenchmarkContextSource] = useState<'wclDetected' | 'userProvided'>('wclDetected')
   const previewRequestSeq = useRef(0)
 
   const preview = previewMutation.data ?? null
   const job = exportJob.jobStatus
 
-  // Effective class/spec: prefer WCL-detected, fall back to user-provided
-  const wclClassName = preview?.detectedPlayer?.className !== 'unknown' ? (preview?.detectedPlayer?.className ?? null) : null
-  const wclSpecName = preview?.detectedPlayer?.specName !== 'unknown' ? (preview?.detectedPlayer?.specName ?? null) : null
-  const effectiveClassName = wclClassName ?? playerUserContext?.className ?? null
-  const effectiveSpecName = wclSpecName ?? playerUserContext?.specName ?? null
-  // true when preview exists but WCL failed to detect spec
-  const specDetectionFailed = !!preview && wclSpecName === null
+  const wclClassName = preview?.detectedPlayer?.className !== 'unknown' ? preview?.detectedPlayer?.className ?? null : null
+  const wclSpecName = preview?.detectedPlayer?.specName !== 'unknown' ? preview?.detectedPlayer?.specName ?? null : null
+  const hasWclClassSpec = !!wclClassName && !!wclSpecName
+  const hasUserClassSpec = !!playerUserContext?.className && !!playerUserContext?.specName
+  const selectedUserSource = benchmarkContextSource === 'userProvided'
+  const effectiveClassName = selectedUserSource
+    ? (hasUserClassSpec ? playerUserContext?.className ?? null : null)
+    : hasWclClassSpec
+      ? wclClassName
+      : hasUserClassSpec
+        ? playerUserContext?.className ?? null
+        : null
+  const effectiveSpecName = selectedUserSource
+    ? (hasUserClassSpec ? playerUserContext?.specName ?? null : null)
+    : hasWclClassSpec
+      ? wclSpecName
+      : hasUserClassSpec
+        ? playerUserContext?.specName ?? null
+        : null
+  const specDetectionFailed = !!preview && (!wclClassName || !wclSpecName)
 
   // Boss fights where the player was present, duration ≥ 60s — available for baseline selection
   const availableBaselines: AvailableBaseline[] = preview
@@ -210,14 +224,19 @@ export const PlayerAnalysisPage: FC = () => {
         )
     : []
 
-  const contextSource = wclSpecName ? ('wclDetected' as const) : ('userProvided' as const)
-  const invalidatePreviewState = () => {
+  const contextSource = hasWclClassSpec && benchmarkContextSource !== 'userProvided'
+    ? ('wclDetected' as const)
+    : ('userProvided' as const)
+  const invalidatePreviewState = (params?: { resetUserContext?: boolean }) => {
     previewRequestSeq.current += 1
     previewMutation.reset()
     setSelectedFightIdsByReport({})
     setSelectedBaselineKeys(new Set())
     benchmarkCandidatesMutation.reset()
-    setPlayerUserContext(null)
+    if (params?.resetUserContext) {
+      setPlayerUserContext(null)
+      setBenchmarkContextSource('wclDetected')
+    }
   }
 
   const buildRequest = (params?: { forExport?: boolean }): PlayerAnalysisExportRequest => {
@@ -240,12 +259,13 @@ export const PlayerAnalysisPage: FC = () => {
       views: selectedViews,
       playerContext: playerUserContext
         ? {
-            className: playerUserContext.className,
-            specName: playerUserContext.specName,
-            role: playerUserContext.role,
+            className: playerUserContext.className || undefined,
+            specName: playerUserContext.specName || undefined,
+            role: playerUserContext.specName ? playerUserContext.role : undefined,
             source: 'userProvided' as const,
           }
         : undefined,
+      benchmarkContextSource,
       ...(benchmarkMode !== 'none'
         ? {
             includeBenchmark: true,
@@ -305,7 +325,6 @@ export const PlayerAnalysisPage: FC = () => {
 
   const handlePreview = () => {
     setSelectedBaselineKeys(new Set())
-    setPlayerUserContext(null)
     const requestId = previewRequestSeq.current + 1
     previewRequestSeq.current = requestId
     previewMutation.mutate(buildRequest(), {
@@ -327,6 +346,12 @@ export const PlayerAnalysisPage: FC = () => {
             )
         )
         setSelectedBaselineKeys(defaultKeys)
+        if (
+          benchmarkContextSource === 'wclDetected' &&
+          data.effectiveContext?.source === 'userProvided'
+        ) {
+          setBenchmarkContextSource('userProvided')
+        }
       },
     })
   }
@@ -360,15 +385,16 @@ export const PlayerAnalysisPage: FC = () => {
       itemLevelWindow: autoBenchmarkConfig.itemLevelWindow,
       durationWindowPercent: autoBenchmarkConfig.durationWindowPercent,
       maxCandidatesPerFight: 10,
+      benchmarkContextSource,
       playerContext: playerUserContext
-        ? { ...playerUserContext, source: 'userProvided' as const }
+        ? { ...playerUserContext, role: playerUserContext.role, source: 'userProvided' as const }
         : undefined,
     })
   }
 
-  const handleScopeFieldChange = (applyChange: () => void) => {
+  const handleScopeFieldChange = (applyChange: () => void, options?: { resetUserContext?: boolean }) => {
     applyChange()
-    invalidatePreviewState()
+    invalidatePreviewState(options)
   }
 
   const handleFightSelectionChange = (reportCode: string, fightId: number, selected: boolean) => {
@@ -433,7 +459,7 @@ export const PlayerAnalysisPage: FC = () => {
             includeWipes={includeWipes}
             includeTrash={includeTrash}
             onlyPlayerPresent={onlyPlayerPresent}
-            onPlayerNameChange={(value) => handleScopeFieldChange(() => setPlayerName(value))}
+            onPlayerNameChange={(value) => handleScopeFieldChange(() => setPlayerName(value), { resetUserContext: true })}
             onTimeframePresetChange={(value) => handleScopeFieldChange(() => setTimeframePreset(value))}
             onSelectedReportsChange={(value) => handleScopeFieldChange(() => setSelectedReports(value))}
             onIncludeKillsChange={(value) => handleScopeFieldChange(() => setIncludeKills(value))}
@@ -455,12 +481,17 @@ export const PlayerAnalysisPage: FC = () => {
               candidatesResult={benchmarkCandidatesMutation.data ?? null}
               isFindingCandidates={benchmarkCandidatesMutation.isPending}
               canFindCandidates={canFindCandidates}
+              hasPreview={!!preview}
               availableBaselines={availableBaselines}
               selectedBaselineKeys={selectedBaselineKeys}
               specDetectionFailed={specDetectionFailed}
+              detectedContext={preview?.detectedPlayer?.detectedContext}
+              contextWarnings={preview?.contextWarnings ?? []}
+              benchmarkContextSource={benchmarkContextSource}
               playerUserContext={playerUserContext}
               onBaselineSelectionChange={setSelectedBaselineKeys}
               onClassSpecOverrideChange={setPlayerUserContext}
+              onBenchmarkContextSourceChange={setBenchmarkContextSource}
               onBenchmarkModeChange={setBenchmarkMode}
               onBenchmarkConfigChange={setManualBenchmarkConfig}
               onAutoConfigChange={setAutoBenchmarkConfig}
