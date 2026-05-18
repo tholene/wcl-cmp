@@ -170,6 +170,10 @@ export const PlayerAnalysisBenchmarkForm: FC<Props> = ({
   const includeBenchmark = benchmarkMode !== 'none'
   const hasWclClassSpec = !!detectedContext?.className && !!detectedContext?.specName
   const hasUserClassSpec = !!playerUserContext?.className && !!playerUserContext?.specName
+  const safeBaselines = availableBaselines ?? []
+  const safeSelectedBaselineKeys = selectedBaselineKeys ?? new Set<string>()
+  const candidateWarnings = candidatesResult?.warnings ?? []
+  const candidateGroups = candidatesResult?.groups ?? []
 
   return (
     <section className="rounded-xl border border-slate-800 bg-slate-900/70 p-4">
@@ -253,12 +257,12 @@ export const PlayerAnalysisBenchmarkForm: FC<Props> = ({
               <div className="space-y-1.5">
                 <div className="flex items-center justify-between text-xs">
                   <span className="text-slate-400">Boss fights to benchmark</span>
-                  {availableBaselines.length > 0 && (
+                  {safeBaselines.length > 0 && (
                     <span className="flex gap-2 text-slate-500">
                       <button
                         type="button"
                         className="hover:text-slate-300"
-                        onClick={() => onBaselineSelectionChange?.(new Set(availableBaselines.map((b) => b.key)))}
+                        onClick={() => onBaselineSelectionChange?.(new Set(safeBaselines.map((b) => b.key)))}
                       >
                         All
                       </button>
@@ -273,20 +277,20 @@ export const PlayerAnalysisBenchmarkForm: FC<Props> = ({
                   )}
                 </div>
 
-                {availableBaselines.length === 0 && !hasPreview && (
+                {safeBaselines.length === 0 && !hasPreview && (
                   <p className="text-xs text-slate-500">
                     Preview an export first so benchmark discovery can use the player's actual boss fights.
                   </p>
                 )}
 
-                {availableBaselines.length === 0 && hasPreview && (
+                {safeBaselines.length === 0 && hasPreview && (
                   <p className="text-xs text-amber-400">
                     No eligible boss fights found in preview (need encounterId &gt; 0, duration ≥ 60s, player present).
                   </p>
                 )}
 
-                {availableBaselines.map((b) => {
-                  const checked = selectedBaselineKeys?.has(b.key) ?? false
+                {safeBaselines.map((b) => {
+                  const checked = safeSelectedBaselineKeys.has(b.key)
                   return (
                     <label
                       key={b.key}
@@ -296,7 +300,7 @@ export const PlayerAnalysisBenchmarkForm: FC<Props> = ({
                         type="checkbox"
                         checked={checked}
                         onChange={(e) => {
-                          const next = new Set(selectedBaselineKeys)
+                          const next = new Set(safeSelectedBaselineKeys)
                           if (e.target.checked) next.add(b.key)
                           else next.delete(b.key)
                           onBaselineSelectionChange?.(next)
@@ -499,7 +503,7 @@ export const PlayerAnalysisBenchmarkForm: FC<Props> = ({
               )}
               {!canFindCandidates &&
                 hasPreview &&
-                (selectedBaselineKeys?.size ?? 0) > 0 &&
+                safeSelectedBaselineKeys.size > 0 &&
                 ((!hasWclClassSpec && !hasUserClassSpec) ||
                   (benchmarkContextSource === 'userProvided' && !hasUserClassSpec)) && (
                 <p className="text-xs text-slate-500">
@@ -509,13 +513,13 @@ export const PlayerAnalysisBenchmarkForm: FC<Props> = ({
               {canFindCandidates && benchmarkContextSource === 'userProvided' && hasUserClassSpec && (
                 <p className="text-xs text-slate-400">
                   Benchmark discovery will use user-provided{' '}
-                  <span className="text-slate-200">{playerUserContext.specName} {playerUserContext.className}</span> context.
+                  <span className="text-slate-200">{playerUserContext?.specName ?? 'unknown'} {playerUserContext?.className ?? 'unknown'}</span> context.
                 </p>
               )}
 
               {/* Export summary — what will actually be included */}
               {candidatesResult && (() => {
-                const willExport = (candidatesResult.groups ?? []).flatMap((g) =>
+                const willExport = candidateGroups.flatMap((g) =>
                   g.selectedCandidate && g.selectedCandidate.validation.hasUsableExportTarget
                     ? [{ baseline: g.baseline, candidate: g.selectedCandidate }]
                     : []
@@ -547,10 +551,10 @@ export const PlayerAnalysisBenchmarkForm: FC<Props> = ({
               {/* Grouped results */}
               {candidatesResult && (
                 <div className="space-y-3">
-                  {(candidatesResult.warnings ?? []).map((w, i) => (
+                  {candidateWarnings.map((w, i) => (
                     <p key={i} className="rounded bg-amber-950/20 px-2 py-1 text-xs text-amber-300">{w}</p>
                   ))}
-                  {(candidatesResult.groups ?? []).map((group) => {
+                  {candidateGroups.map((group) => {
                     const groupWarnings = group.warnings ?? []
                     const groupCandidates = group.candidates ?? []
                     return (

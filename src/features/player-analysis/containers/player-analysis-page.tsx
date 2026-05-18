@@ -451,7 +451,7 @@ export const PlayerAnalysisPage: FC = () => {
     benchmarkBlockedReason && !allowSubjectOnlyWithoutBenchmark ? benchmarkBlockedReason : null
 
   const showProgress = exportJob.isStarting || job !== null
-  const showResults = job?.status === 'complete' || job?.status === 'partial'
+  const showResults = !!job && (job.status === 'complete' || job.status === 'partial' || ((job.status === 'failed') && (job.files?.length ?? 0) > 0))
 
   const players = recentPlayersQuery.data?.players ?? []
   const reports = recentReportsQuery.data?.reports ?? []
@@ -560,6 +560,12 @@ export const PlayerAnalysisPage: FC = () => {
           {exportJob.startError && (
             <div className="rounded border border-rose-700/40 bg-rose-950/20 p-3 text-xs text-rose-200">
               {exportJob.startError}
+            </div>
+          )}
+
+          {exportJob.pollError && (
+            <div className="rounded border border-amber-700/40 bg-amber-950/20 p-3 text-xs text-amber-200">
+              {exportJob.pollError}
             </div>
           )}
 

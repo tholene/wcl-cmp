@@ -27,17 +27,42 @@ export const PlayerAnalysisExportResults: FC<Props> = ({ job, exportId, onReset 
   const files = job.files ?? []
   const zipFile = files.find((f) => f.kind === 'zip')
   const otherFiles = files.filter((f) => f.kind !== 'zip')
+  const skippedViews = job.viewSummary?.skippedViews ?? []
+  const truncatedViews = job.viewSummary?.truncatedViews ?? []
+  const skippedCandidates = job.benchmarkSummary?.skippedCandidates ?? []
+  const benchmarkOmittedReason = job.benchmarkSummary?.omittedReason ?? null
+  const subjectOnlyOverrideMessage =
+    job.benchmarkSummary?.requested &&
+    !job.benchmarkSummary.included &&
+    benchmarkOmittedReason
+      ? `Subject-only export: benchmark was requested but not included. ${benchmarkOmittedReason}`
+      : null
 
   const downloadUrl = (filename: string) => `/api/player-analysis/exports/${exportId}/${filename}`
 
   return (
     <div className="rounded-xl border border-slate-800 bg-slate-900/70 p-4 space-y-4">
       <div className="flex items-center justify-between">
-        <h2 className="text-sm font-semibold text-slate-200">Export Ready</h2>
+        <h2 className="text-sm font-semibold text-slate-200">Export Files</h2>
         {job.status === 'partial' && (
           <span className="rounded px-2 py-0.5 text-xs font-medium bg-amber-900/40 text-amber-300">partial</span>
         )}
+        {job.status === 'failed' && (
+          <span className="rounded px-2 py-0.5 text-xs font-medium bg-rose-900/40 text-rose-300">failed</span>
+        )}
       </div>
+
+      {job.status === 'partial' && (
+        <div className="rounded border border-amber-700/30 bg-amber-950/20 p-2 text-xs text-amber-200">
+          ZIP is usable but incomplete.
+        </div>
+      )}
+
+      {subjectOnlyOverrideMessage && (
+        <div className="rounded border border-amber-700/30 bg-amber-950/20 p-2 text-xs text-amber-200">
+          {subjectOnlyOverrideMessage}
+        </div>
+      )}
 
       {zipFile && (
         <a
@@ -48,6 +73,12 @@ export const PlayerAnalysisExportResults: FC<Props> = ({ job, exportId, onReset 
           <span>Download bundle.zip</span>
           <span className="text-xs text-violet-300/70">{formatBytes(zipFile.sizeBytes)}</span>
         </a>
+      )}
+
+      {job.status === 'failed' && !zipFile && (
+        <div className="rounded border border-rose-700/40 bg-rose-950/20 p-2 text-xs text-rose-200">
+          No downloadable files were produced.
+        </div>
       )}
 
       {otherFiles.length > 0 && (
@@ -72,11 +103,40 @@ export const PlayerAnalysisExportResults: FC<Props> = ({ job, exportId, onReset 
         </div>
       )}
 
+      {(skippedCandidates.length > 0 || skippedViews.length > 0 || truncatedViews.length > 0) && (
+        <div className="rounded border border-amber-700/30 bg-amber-950/20 p-2 space-y-1 text-xs text-amber-200 max-h-40 overflow-y-auto">
+          {skippedCandidates.length > 0 && (
+            <p className="font-medium">Skipped benchmark candidates</p>
+          )}
+          {skippedCandidates.map((candidate, index) => (
+            <p key={`candidate-${index}`}>
+              {candidate.benchmarkPlayerName ?? 'unknown player'} ({candidate.benchmarkReportCode ?? 'n/a'}#{candidate.benchmarkFightId ?? 'n/a'}): {candidate.reason}
+            </p>
+          ))}
+          {skippedViews.length > 0 && (
+            <p className="font-medium mt-1">Skipped views</p>
+          )}
+          {skippedViews.map((entry, index) => (
+            <p key={`skip-${index}`}>
+              {entry.subjectType} {entry.view} ({entry.reportCode ?? 'n/a'}#{entry.fightId ?? 'n/a'}): {entry.reason}
+            </p>
+          ))}
+          {truncatedViews.length > 0 && (
+            <p className="font-medium mt-1">Truncated views</p>
+          )}
+          {truncatedViews.map((entry, index) => (
+            <p key={`truncated-${index}`}>
+              {entry.subjectType} {entry.view} ({entry.reportCode}#{entry.fightId}) capped at {entry.rowLimit} rows.
+            </p>
+          ))}
+        </div>
+      )}
+
       {job.warnings.length > 0 && (
         <div className="rounded border border-amber-700/30 bg-amber-950/20 p-2 space-y-1 text-xs text-amber-200 max-h-32 overflow-y-auto">
           <p className="font-medium text-amber-400">Warnings ({job.warnings.length})</p>
           {job.warnings.map((w, i) => (
-            <p key={i}>⚠ {w}</p>
+            <p key={i}>Warning: {w}</p>
           ))}
         </div>
       )}

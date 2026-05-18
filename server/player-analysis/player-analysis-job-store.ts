@@ -1,8 +1,11 @@
 import type {
+  PlayerAnalysisBenchmarkSummary,
   PlayerAnalysisExportFile,
   PlayerAnalysisExportJob,
   PlayerAnalysisExportView,
   PlayerAnalysisJobStatus,
+  PlayerAnalysisViewSummary,
+  PlayerAnalysisWarningGroups,
 } from './player-analysis.types'
 
 const exportJobs = new Map<string, PlayerAnalysisExportJob>()
@@ -24,6 +27,8 @@ export const JobStore = {
       totalSteps,
       percentComplete: 0,
       warnings: [],
+      errors: [],
+      warningGroups: {},
       createdAt: now(),
       updatedAt: now(),
     }
@@ -71,34 +76,84 @@ export const JobStore = {
     job.updatedAt = now()
   },
 
-  complete(exportId: string, files: PlayerAnalysisExportFile[]): void {
+  complete(
+    exportId: string,
+    files: PlayerAnalysisExportFile[],
+    details?: {
+      warnings?: string[]
+      errors?: string[]
+      warningGroups?: PlayerAnalysisWarningGroups
+      benchmarkSummary?: PlayerAnalysisBenchmarkSummary
+      viewSummary?: PlayerAnalysisViewSummary
+      currentStep?: string
+    }
+  ): void {
     const job = exportJobs.get(exportId)
     if (!job) return
     job.status = 'complete'
     job.files = files
+    if (details?.warnings) job.warnings = [...job.warnings, ...details.warnings]
+    if (details?.errors) job.errors = [...job.errors, ...details.errors]
+    if (details?.warningGroups) job.warningGroups = details.warningGroups
+    if (details?.benchmarkSummary) job.benchmarkSummary = details.benchmarkSummary
+    if (details?.viewSummary) job.viewSummary = details.viewSummary
     job.completedSteps = job.totalSteps
     job.percentComplete = 100
-    job.currentStep = 'Export complete.'
+    job.currentStep = details?.currentStep ?? 'Export complete.'
     job.updatedAt = now()
   },
 
-  partial(exportId: string, files: PlayerAnalysisExportFile[], warnings: string[]): void {
+  partial(
+    exportId: string,
+    files: PlayerAnalysisExportFile[],
+    details?: {
+      warnings?: string[]
+      errors?: string[]
+      warningGroups?: PlayerAnalysisWarningGroups
+      benchmarkSummary?: PlayerAnalysisBenchmarkSummary
+      viewSummary?: PlayerAnalysisViewSummary
+      currentStep?: string
+    }
+  ): void {
     const job = exportJobs.get(exportId)
     if (!job) return
     job.status = 'partial'
     job.files = files
-    job.warnings = [...job.warnings, ...warnings]
+    if (details?.warnings) job.warnings = [...job.warnings, ...details.warnings]
+    if (details?.errors) job.errors = [...job.errors, ...details.errors]
+    if (details?.warningGroups) job.warningGroups = details.warningGroups
+    if (details?.benchmarkSummary) job.benchmarkSummary = details.benchmarkSummary
+    if (details?.viewSummary) job.viewSummary = details.viewSummary
     job.completedSteps = job.totalSteps
     job.percentComplete = 100
-    job.currentStep = 'Export complete with warnings.'
+    job.currentStep = details?.currentStep ?? 'Export complete with partial data.'
     job.updatedAt = now()
   },
 
-  fail(exportId: string, error: string): void {
+  fail(
+    exportId: string,
+    error: string,
+    details?: {
+      files?: PlayerAnalysisExportFile[]
+      warnings?: string[]
+      errors?: string[]
+      warningGroups?: PlayerAnalysisWarningGroups
+      benchmarkSummary?: PlayerAnalysisBenchmarkSummary
+      viewSummary?: PlayerAnalysisViewSummary
+      currentStep?: string
+    }
+  ): void {
     const job = exportJobs.get(exportId)
     if (!job) return
     job.status = 'failed'
     job.error = error
+    if (details?.files) job.files = details.files
+    if (details?.warnings) job.warnings = [...job.warnings, ...details.warnings]
+    if (details?.errors) job.errors = [...job.errors, ...details.errors]
+    if (details?.warningGroups) job.warningGroups = details.warningGroups
+    if (details?.benchmarkSummary) job.benchmarkSummary = details.benchmarkSummary
+    if (details?.viewSummary) job.viewSummary = details.viewSummary
+    if (details?.currentStep) job.currentStep = details.currentStep
     job.updatedAt = now()
   },
 

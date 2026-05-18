@@ -52,6 +52,8 @@ import {
 } from './player-analysis-event-enrichment'
 import { WOW_SPEC_MAP } from './wow-spec-map'
 import type {
+  PlayerAnalysisBenchmarkSkippedCandidate,
+  PlayerAnalysisBenchmarkSummary,
   PlayerAnalysisExportRequest,
   PlayerAnalysisExportPreview,
   PlayerAnalysisExportStartResponse,
@@ -62,6 +64,9 @@ import type {
   PlayerUserContext,
   EffectivePlayerContext,
   SelectedBenchmarkCandidate,
+  PlayerAnalysisViewSummary,
+  PlayerAnalysisWarningGroupKey,
+  PlayerAnalysisWarningGroups,
 } from './player-analysis.types'
 
 // ---------------------------------------------------------------------------
@@ -506,6 +511,10 @@ function buildReadme(params: {
   effectiveContext?: EffectivePlayerContext
   contextWarnings?: string[]
   dataQuality?: DataQualityStats[]
+  warningGroups?: PlayerAnalysisWarningGroups
+  errors?: string[]
+  benchmarkSummary?: PlayerAnalysisBenchmarkSummary
+  viewSummary?: PlayerAnalysisViewSummary
 }): string {
   const scope = params.scope
   const dc = params.detectedContext
@@ -658,8 +667,61 @@ function buildReadme(params: {
         ]
       : []),
     '',
+    '## Runtime Summary',
+    `- Errors: ${params.errors?.length ?? 0}`,
+    `- Requested views: ${params.viewSummary?.selectedViews.length ?? params.views.length}`,
+    `- Exported subject views: ${params.viewSummary?.exportedViews.length ?? params.views.length}`,
+    `- Skipped view outcomes: ${params.viewSummary?.skippedViews.length ?? 0}`,
+    `- Truncated view outcomes: ${params.viewSummary?.truncatedViews.length ?? 0}`,
+    ...(params.benchmarkSummary
+      ? [
+          `- Benchmark requested/included: ${params.benchmarkSummary.requested ? 'yes' : 'no'} / ${params.benchmarkSummary.included ? 'yes' : 'no'}`,
+          `- Benchmark selected/exported/skipped candidates: ${params.benchmarkSummary.selectedCount}/${params.benchmarkSummary.exportedCount}/${params.benchmarkSummary.skippedCount}`,
+          ...(params.benchmarkSummary.omittedReason ? [`- Benchmark omission reason: ${params.benchmarkSummary.omittedReason}`] : []),
+        ]
+      : []),
+    ...(params.viewSummary && params.viewSummary.skippedViews.length > 0
+      ? [
+          '- Skipped views:',
+          ...params.viewSummary.skippedViews.map(
+            (entry) =>
+              `  - ${entry.subjectType} ${VIEW_LABELS[entry.view]} (${entry.reportCode ?? 'n/a'}#${entry.fightId ?? 'n/a'}): ${entry.reason}`
+          ),
+        ]
+      : []),
+    ...(params.viewSummary && params.viewSummary.truncatedViews.length > 0
+      ? [
+          '- Truncated views:',
+          ...params.viewSummary.truncatedViews.map(
+            (entry) =>
+              `  - ${entry.subjectType} ${VIEW_LABELS[entry.view]} (${entry.reportCode}#${entry.fightId}) capped at ${entry.rowLimit} rows.`
+          ),
+        ]
+      : []),
+    ...(params.benchmarkSummary && params.benchmarkSummary.skippedCandidates.length > 0
+      ? [
+          '- Skipped benchmark candidates:',
+          ...params.benchmarkSummary.skippedCandidates.map(
+            (candidate) =>
+              `  - ${candidate.benchmarkPlayerName ?? 'unknown player'} (${candidate.benchmarkReportCode ?? 'n/a'}#${candidate.benchmarkFightId ?? 'n/a'}): ${candidate.reason}`
+          ),
+        ]
+      : []),
+    '',
     '## Warnings',
     ...(params.warnings.length ? params.warnings.map((w) => `- ${w}`) : ['None']),
+    '',
+    '### Warning Groups',
+    ...(params.warningGroups && Object.keys(params.warningGroups).length > 0
+      ? (Object.entries(params.warningGroups)
+        .flatMap(([group, warnings]) => [
+          `- ${group}:`,
+          ...(warnings?.map((warning) => `  - ${warning}`) ?? ['  - none']),
+        ]))
+      : ['- none']),
+    '',
+    '### Errors',
+    ...(params.errors && params.errors.length > 0 ? params.errors.map((error) => `- ${error}`) : ['None']),
     '',
     '## Optional analysis prompt',
     '',
@@ -1027,7 +1089,11 @@ export function startExportJob(config: WclConfig, request: PlayerAnalysisExportR
   setImmediate(() => {
     runExportJob(config, request, exportId).catch((error: unknown) => {
       const message = error instanceof Error ? error.message : 'Unexpected export error'
-      JobStore.fail(exportId, message)
+      JobStore.fail(exportId, message, {
+        errors: [message],
+        warningGroups: { runtimeApi: [message] },
+        currentStep: 'Export failed.',
+      })
     })
   })
 
@@ -1073,13 +1139,54 @@ async function runExportJob(
 ): Promise<void> {
   const playerName = request.playerName.trim()
   const allWarnings: string[] = []
+  const errors: string[] = []
+  const warningGroups: PlayerAnalysisWarningGroups = {}
+  const addGroupedWarning = (group: PlayerAnalysisWarningGroupKey, warning: string) => {
+    allWarnings.push(warning)
+    const current = warningGroups[group] ?? []
+    current.push(warning)
+    warningGroups[group] = current
+  }
+  const addError = (
+    error: string,
+    opts?: { group?: PlayerAnalysisWarningGroupKey; asWarning?: boolean }
+  ) => {
+    errors.push(error)
+    if (opts?.asWarning !== false) {
+      addGroupedWarning(opts?.group ?? 'runtimeApi', error)
+    }
+  }
+  const partialReasons = new Set<string>()
+  const markPartial = (reason: string) => partialReasons.add(reason)
+  const skippedViews: PlayerAnalysisViewSummary['skippedViews'] = []
+  const truncatedViews: PlayerAnalysisViewSummary['truncatedViews'] = []
+  const selectedViews = Array.from(new Set(request.views))
+  const exportedViews = new Set<PlayerAnalysisExportView>()
+  const addViewSkip = (entry: PlayerAnalysisViewSummary['skippedViews'][number]) => {
+    skippedViews.push(entry)
+    markPartial(`Missing requested view data: ${entry.subjectType} ${VIEW_LABELS[entry.view]} (${entry.reason})`)
+    addGroupedWarning(
+      'viewFetch',
+      `Skipped ${entry.subjectType} ${VIEW_LABELS[entry.view]} for ${entry.reportCode ?? 'unknown report'}#${entry.fightId ?? 'n/a'}: ${entry.reason}`
+    )
+  }
+  const addViewTruncation = (entry: PlayerAnalysisViewSummary['truncatedViews'][number]) => {
+    truncatedViews.push(entry)
+    markPartial(`Truncated requested view: ${entry.subjectType} ${VIEW_LABELS[entry.view]}`)
+    addGroupedWarning(
+      'viewFetch',
+      `Truncated ${entry.subjectType} ${VIEW_LABELS[entry.view]} for ${entry.reportCode}#${entry.fightId} at ${entry.rowLimit} rows.`
+    )
+  }
   const { limits } = clampLimits(request.limits)
 
   JobStore.setStep(exportId, 'Preparing export...', { playerName })
 
   // Re-derive scope (same logic as preview)
   const preview = await getExportPreview(config, request)
-  allWarnings.push(...preview.warnings)
+  for (const previewWarning of preview.warnings) {
+    addGroupedWarning('dataQuality', previewWarning)
+  }
 
   JobStore.setStep(exportId, 'Setting up export directory...')
   ensureExportDir(exportId)
@@ -1102,13 +1209,36 @@ async function runExportJob(
     const { actorMap, abilityMaps } = await getActorAndAbilityMaps(config, reportPreview.code)
     const reportDetails = await WclService.getReportDetails(config, reportPreview.code).catch(() => null)
     if (!reportDetails) {
-      allWarnings.push(`Could not load report details for ${reportPreview.code}`)
+      const warning = `Could not load report details for ${reportPreview.code}.`
+      addGroupedWarning('runtimeApi', warning)
+      addError(warning, { group: 'runtimeApi', asWarning: false })
+      markPartial(`Report ${reportPreview.code} was selected but report details could not be loaded.`)
+      for (const view of selectedViews) {
+        addViewSkip({
+          subjectType: 'player',
+          view,
+          reportCode: reportPreview.code,
+          reason: 'report details unavailable',
+        })
+      }
       continue
     }
 
     for (const fightPreview of reportPreview.includedFights) {
       const fight = reportDetails.fights.find((f) => f.id === fightPreview.fightId)
-      if (!fight) continue
+      if (!fight) {
+        markPartial(`Selected fight ${fightPreview.fightId} from ${reportPreview.code} was not found in report details.`)
+        for (const view of selectedViews) {
+          addViewSkip({
+            subjectType: 'player',
+            view,
+            reportCode: reportPreview.code,
+            fightId: fightPreview.fightId,
+            reason: 'fight not found in report details',
+          })
+        }
+        continue
+      }
 
       const fightDurationMs = Math.max(fight.endTime - fight.startTime, 0)
       const playerActor = reportPreview.playerPresent
@@ -1152,7 +1282,21 @@ async function runExportJob(
           endTime: fight.endTime,
           maxEvents: 50,
         })
-        allWarnings.push(...combatantResult.warnings)
+        for (const warning of combatantResult.warnings) {
+          addGroupedWarning('viewFetch', warning)
+        }
+        const combatantUnavailable = combatantResult.warnings.find((warning) =>
+          warning.toLowerCase().includes('not available')
+        )
+        if (combatantUnavailable) {
+          addViewSkip({
+            subjectType: 'player',
+            view: 'combatantInfo',
+            reportCode: reportPreview.code,
+            fightId: fight.id,
+            reason: combatantUnavailable,
+          })
+        }
 
         if (request.views.includes('combatantInfo') && sourceId) {
           const details = extractCombatantDetails(combatantResult.events, sourceId)
@@ -1201,7 +1345,19 @@ async function runExportJob(
       })
 
       if (!fightPreview.playerPresent || !sourceId) {
-        allWarnings.push(`Player ${playerName} not present in fight ${fight.id} of ${reportPreview.code} — event views skipped`)
+        const warning = `Player ${playerName} not present in fight ${fight.id} of ${reportPreview.code} — event views skipped.`
+        addGroupedWarning('viewFetch', warning)
+        markPartial(`Player absent or unresolved source ID for ${reportPreview.code}#${fight.id}; requested event views were skipped.`)
+        for (const view of selectedViews) {
+          if (view === 'fightMetadata' || view === 'combatantInfo') continue
+          addViewSkip({
+            subjectType: 'player',
+            view,
+            reportCode: reportPreview.code,
+            fightId: fight.id,
+            reason: 'player not present or source ID missing',
+          })
+        }
         JobStore.advance(exportId)
         continue
       }
@@ -1250,7 +1406,29 @@ async function runExportJob(
         else if (view === 'dispels') result = await fetchDispelEvents({ ...fetchParams, targetId: undefined })
         else if (view === 'resources') result = await fetchResourceEvents({ ...fetchParams, targetId: undefined })
 
-        allWarnings.push(...result.warnings)
+        for (const warning of result.warnings) {
+          addGroupedWarning('viewFetch', warning)
+        }
+        if (result.truncated) {
+          addViewTruncation({
+            subjectType: 'player',
+            view,
+            reportCode: reportPreview.code,
+            fightId: fight.id,
+            rowLimit: limits.maxEventsPerFightPerView,
+            context: `${playerName} ${VIEW_LABELS[view]}`,
+          })
+        }
+        const availabilityWarning = result.warnings.find((warning) => warning.toLowerCase().includes('not available'))
+        if (availabilityWarning) {
+          addViewSkip({
+            subjectType: 'player',
+            view,
+            reportCode: reportPreview.code,
+            fightId: fight.id,
+            reason: availabilityWarning,
+          })
+        }
 
         // Map events to CSV rows
         for (const event of result.events) {
@@ -1293,7 +1471,7 @@ async function runExportJob(
   let benchmarkIncluded = false
   const benchmarkWarnings: string[] = []
   let benchmarkCandidate: Record<string, unknown> | null = null
-  const skippedCandidates: Array<Record<string, unknown>> = []
+  const skippedCandidates: PlayerAnalysisBenchmarkSkippedCandidate[] = []
   const exportedCandidates: Array<Record<string, unknown>> = []
   const selectedCandidatesForManifest: Array<Record<string, unknown>> = []
 
@@ -1302,11 +1480,20 @@ async function runExportJob(
 
   const addBenchmarkWarning = (warning: string) => {
     benchmarkWarnings.push(warning)
-    allWarnings.push(warning)
+    addGroupedWarning('benchmark', warning)
   }
 
-  const pushSkippedCandidate = (candidate: Record<string, unknown>, reason: string) => {
-    skippedCandidates.push({ ...candidate, reason })
+  const pushSkippedCandidate = (candidate: SelectedBenchmarkCandidate, reason: string) => {
+    skippedCandidates.push({
+      reason,
+      benchmarkPlayerName: candidate.benchmarkPlayerName,
+      benchmarkReportCode: candidate.benchmarkReportCode,
+      benchmarkFightId: candidate.benchmarkFightId,
+      baselineReportCode: candidate.baselineReportCode,
+      baselineFightId: candidate.baselineFightId,
+    })
+    markPartial(`Benchmark candidate skipped: ${reason}`)
+    addGroupedWarning('candidateSkip', `Benchmark candidate skipped: ${reason}`)
     addBenchmarkWarning(`Benchmark skipped: ${reason}`)
   }
 
@@ -1335,16 +1522,34 @@ async function runExportJob(
     selectedCandidatesForManifest.push(candidate as unknown as Record<string, unknown>)
     const benchReportDetails = await WclService.getReportDetails(config, candidate.benchmarkReportCode).catch(() => null)
     if (!benchReportDetails) {
-      pushSkippedCandidate(candidate as unknown as Record<string, unknown>, `could not load benchmark report ${candidate.benchmarkReportCode}`)
+      pushSkippedCandidate(candidate, `could not load benchmark report ${candidate.benchmarkReportCode}`)
+      for (const view of selectedViews) {
+        addViewSkip({
+          subjectType: 'benchmark',
+          view,
+          reportCode: candidate.benchmarkReportCode,
+          fightId: candidate.benchmarkFightId,
+          reason: 'benchmark report unavailable',
+        })
+      }
       return
     }
 
     const benchFight = benchReportDetails.fights.find((f) => f.id === candidate.benchmarkFightId)
     if (!benchFight) {
       pushSkippedCandidate(
-        candidate as unknown as Record<string, unknown>,
+        candidate,
         `fight ${candidate.benchmarkFightId} not found in benchmark report ${candidate.benchmarkReportCode}`
       )
+      for (const view of selectedViews) {
+        addViewSkip({
+          subjectType: 'benchmark',
+          view,
+          reportCode: candidate.benchmarkReportCode,
+          fightId: candidate.benchmarkFightId,
+          reason: 'benchmark fight not found',
+        })
+      }
       return
     }
 
@@ -1360,9 +1565,19 @@ async function runExportJob(
     )
     if (!benchActor) {
       pushSkippedCandidate(
-        candidate as unknown as Record<string, unknown>,
+        candidate,
         `benchmark player "${candidate.benchmarkPlayerName}" not found in report masterData`
       )
+      for (const view of selectedViews) {
+        if (view === 'fightMetadata') continue
+        addViewSkip({
+          subjectType: 'benchmark',
+          view,
+          reportCode: candidate.benchmarkReportCode,
+          fightId: candidate.benchmarkFightId,
+          reason: 'benchmark player actor not found',
+        })
+      }
       return
     }
 
@@ -1421,7 +1636,21 @@ async function runExportJob(
         endTime: benchFight.endTime,
         maxEvents: 50,
       })
-      allWarnings.push(...combatantResult.warnings)
+      for (const warning of combatantResult.warnings) {
+        addGroupedWarning('viewFetch', warning)
+      }
+      const combatantUnavailable = combatantResult.warnings.find((warning) =>
+        warning.toLowerCase().includes('not available')
+      )
+      if (combatantUnavailable) {
+        addViewSkip({
+          subjectType: 'benchmark',
+          view: 'combatantInfo',
+          reportCode: candidate.benchmarkReportCode,
+          fightId: candidate.benchmarkFightId,
+          reason: combatantUnavailable,
+        })
+      }
       const details = extractCombatantDetails(combatantResult.events, benchSourceId)
       benchmarkCombatantRows.push({
         ...linkFields,
@@ -1472,7 +1701,29 @@ async function runExportJob(
       else if (view === 'dispels') result = await fetchDispelEvents({ ...fetchParams, targetId: undefined })
       else if (view === 'resources') result = await fetchResourceEvents({ ...fetchParams, targetId: undefined })
 
-      allWarnings.push(...result.warnings)
+      for (const warning of result.warnings) {
+        addGroupedWarning('viewFetch', warning)
+      }
+      if (result.truncated) {
+        addViewTruncation({
+          subjectType: 'benchmark',
+          view,
+          reportCode: candidate.benchmarkReportCode,
+          fightId: candidate.benchmarkFightId,
+          rowLimit: limits.maxEventsPerFightPerView,
+          context: `${candidate.benchmarkPlayerName} ${VIEW_LABELS[view]}`,
+        })
+      }
+      const availabilityWarning = result.warnings.find((warning) => warning.toLowerCase().includes('not available'))
+      if (availabilityWarning) {
+        addViewSkip({
+          subjectType: 'benchmark',
+          view,
+          reportCode: candidate.benchmarkReportCode,
+          fightId: candidate.benchmarkFightId,
+          reason: availabilityWarning,
+        })
+      }
 
       for (const event of result.events) {
         const enriched = enrichWclEvent(event, benchCtx.fightStartTime, benchActorMap, benchAbilityMaps)
@@ -1508,9 +1759,16 @@ async function runExportJob(
       if (!manualTarget) {
         if (benchmarkRequestedButNotIncludedReason) {
           skippedCandidates.push({
-            mode: 'manual',
             reason: benchmarkRequestedButNotIncludedReason,
           })
+          for (const view of selectedViews) {
+            addViewSkip({
+              subjectType: 'benchmark',
+              view,
+              reason: benchmarkRequestedButNotIncludedReason,
+            })
+          }
+          markPartial('Benchmark was requested but omitted because the manual target was incomplete.')
           addBenchmarkWarning(`Benchmark requested but not included: ${benchmarkRequestedButNotIncludedReason}`)
         }
       } else {
@@ -1535,9 +1793,16 @@ async function runExportJob(
       const selectedCandidates = benchmarkValidation.exportableSelectedCandidates
       if (selectedCandidates.length === 0 && benchmarkRequestedButNotIncludedReason) {
         skippedCandidates.push({
-          mode: 'auto',
           reason: benchmarkRequestedButNotIncludedReason,
         })
+        for (const view of selectedViews) {
+          addViewSkip({
+            subjectType: 'benchmark',
+            view,
+            reason: benchmarkRequestedButNotIncludedReason,
+          })
+        }
+        markPartial('Benchmark was requested but omitted because no exportable candidates were selected.')
         addBenchmarkWarning(`Benchmark requested but not included: ${benchmarkRequestedButNotIncludedReason}`)
       }
       for (const candidate of selectedCandidates) {
@@ -1546,7 +1811,13 @@ async function runExportJob(
     }
 
     if (!benchmarkIncluded && !allowSubjectOnlyWithoutBenchmark) {
-      throw new Error('Benchmark comparison was requested but no benchmark candidates could be exported.')
+      markPartial('Benchmark comparison was requested but no benchmark candidate could be exported.')
+      addError('Benchmark comparison was requested but no benchmark candidate could be exported.', {
+        group: 'benchmark',
+      })
+    }
+    if (benchmarkRequestedButNotIncludedReason) {
+      markPartial(`Benchmark omitted: ${benchmarkRequestedButNotIncludedReason}`)
     }
   }
 
@@ -1558,7 +1829,8 @@ async function runExportJob(
   }
   for (const dq of dataQualityStats) {
     if (dq.abilityNamePct < 50 && dq.totalRows > 0) {
-      allWarnings.push(
+      addGroupedWarning(
+        'dataQuality',
         `Low abilityName coverage in ${dq.view}: ${dq.abilityNamePct}% (${dq.lowAbilityNameReason ?? 'limited ability mapping coverage'}).`
       )
     }
@@ -1574,6 +1846,7 @@ async function runExportJob(
   if (request.views.includes('fightMetadata')) {
     const content = buildCsvFile(FIGHTS_CSV_HEADERS, fightRows)
     const { sizeBytes } = writeExportFile(exportId, 'player-fights.csv', content)
+    exportedViews.add('fightMetadata')
     writtenFiles.push({ filename: 'player-fights.csv', kind: 'csv', view: 'fightMetadata', sizeBytes, rowCount: fightRows.length, downloadUrl: `/api/player-analysis/exports/${exportId}/player-fights.csv` })
     if (benchmarkIncluded) {
       const benchContent = buildCsvFile(FIGHTS_CSV_HEADERS, benchmarkFightRows)
@@ -1594,6 +1867,7 @@ async function runExportJob(
   if (request.views.includes('combatantInfo')) {
     const content = buildCsvFile(COMBATANT_INFO_CSV_HEADERS, combatantRows)
     const { sizeBytes } = writeExportFile(exportId, 'player-combatant-info.csv', content)
+    exportedViews.add('combatantInfo')
     writtenFiles.push({ filename: 'player-combatant-info.csv', kind: 'csv', view: 'combatantInfo', sizeBytes, rowCount: combatantRows.length, downloadUrl: `/api/player-analysis/exports/${exportId}/player-combatant-info.csv` })
     if (benchmarkIncluded) {
       const benchContent = buildCsvFile(COMBATANT_INFO_CSV_HEADERS, benchmarkCombatantRows)
@@ -1631,6 +1905,7 @@ async function runExportJob(
     const filename = csvFilename(view, 'player')
     const content = buildCsvFile(headers, rows)
     const { sizeBytes } = writeExportFile(exportId, filename, content)
+    exportedViews.add(view)
     writtenFiles.push({ filename, kind: 'csv', view, sizeBytes, rowCount: rows.length, downloadUrl: `/api/player-analysis/exports/${exportId}/${filename}` })
 
     if (benchmarkIncluded) {
@@ -1687,6 +1962,31 @@ async function runExportJob(
   // Write manifest + README
   JobStore.setStep(exportId, 'Writing manifest and README...')
 
+  const benchmarkSummary: PlayerAnalysisBenchmarkSummary = {
+    requested: benchmarkRequested,
+    included: benchmarkIncluded,
+    mode: benchmarkMode,
+    selectedCount:
+      benchmarkMode === 'manual'
+        ? (benchmarkValidation.manualTarget ? 1 : 0)
+        : benchmarkMode === 'auto'
+          ? benchmarkValidation.exportableSelectedCandidates.length
+          : 0,
+    exportedCount: exportedCandidates.length,
+    skippedCount: skippedCandidates.length,
+    skippedCandidates,
+    omittedReason:
+      benchmarkRequested && !benchmarkIncluded
+        ? (benchmarkRequestedButNotIncludedReason ?? 'No benchmark candidates were exported.')
+        : null,
+  }
+  const viewSummary: PlayerAnalysisViewSummary = {
+    selectedViews,
+    exportedViews: Array.from(exportedViews),
+    skippedViews,
+    truncatedViews,
+  }
+
   const manifest = {
     exportId,
     createdAt: new Date().toISOString(),
@@ -1707,6 +2007,10 @@ async function runExportJob(
     skippedCandidates,
     benchmarkWarnings,
     benchmarkReason: benchmarkIncluded ? null : benchmarkRequestedButNotIncludedReason,
+    benchmarkSummary,
+    viewSummary,
+    warningGroups,
+    errors,
     dataQuality: dataQualityStats,
     warnings: allWarnings,
     files: writtenFiles.map((f) => f.filename),
@@ -1743,6 +2047,10 @@ async function runExportJob(
     effectiveContext: preview.effectiveContext,
     contextWarnings: preview.contextWarnings,
     dataQuality: dataQualityStats,
+    warningGroups,
+    errors,
+    benchmarkSummary,
+    viewSummary,
   })
   writeExportFile(exportId, 'README.md', readme)
   writtenFiles.push({
@@ -1763,12 +2071,52 @@ async function runExportJob(
     downloadUrl: `/api/player-analysis/exports/${exportId}/bundle.zip`,
   })
 
-  const hasWarnings = allWarnings.length > 0
-  if (hasWarnings) {
-    JobStore.partial(exportId, writtenFiles, allWarnings)
-  } else {
-    JobStore.complete(exportId, writtenFiles)
+  const hasZip = writtenFiles.some((file) => file.kind === 'zip')
+  const hasSubjectCsv = writtenFiles.some(
+    (file) => file.kind === 'csv' && (!file.filename.startsWith('benchmark-'))
+  )
+  const hasUsableSubjectBundle = hasZip && hasSubjectCsv
+  const hasPartialOutcome =
+    partialReasons.size > 0 ||
+    skippedViews.length > 0 ||
+    truncatedViews.length > 0 ||
+    (benchmarkRequested && !benchmarkIncluded)
+
+  if (!hasUsableSubjectBundle) {
+    const failureMessage = 'Export failed before a usable subject bundle could be produced.'
+    addError(failureMessage, { asWarning: false })
+    JobStore.fail(exportId, failureMessage, {
+      files: writtenFiles,
+      warnings: allWarnings,
+      errors,
+      warningGroups,
+      benchmarkSummary,
+      viewSummary,
+      currentStep: 'Export failed.',
+    })
+    return
   }
+
+  if (hasPartialOutcome) {
+    JobStore.partial(exportId, writtenFiles, {
+      warnings: allWarnings,
+      errors,
+      warningGroups,
+      benchmarkSummary,
+      viewSummary,
+      currentStep: 'Export completed with partial data.',
+    })
+    return
+  }
+
+  JobStore.complete(exportId, writtenFiles, {
+    warnings: allWarnings,
+    errors,
+    warningGroups,
+    benchmarkSummary,
+    viewSummary,
+    currentStep: 'Export complete.',
+  })
 }
 
 // ---------------------------------------------------------------------------

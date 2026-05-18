@@ -333,6 +333,59 @@ export type BenchmarkCandidatesResponse = {
 
 export type PlayerAnalysisJobStatus = 'queued' | 'running' | 'complete' | 'partial' | 'failed'
 
+export type PlayerAnalysisWarningGroupKey =
+  | 'dataQuality'
+  | 'benchmark'
+  | 'viewFetch'
+  | 'candidateSkip'
+  | 'runtimeApi'
+
+export type PlayerAnalysisWarningGroups = Partial<Record<PlayerAnalysisWarningGroupKey, string[]>>
+
+export type PlayerAnalysisBenchmarkSkippedCandidate = {
+  reason: string
+  benchmarkPlayerName?: string
+  benchmarkReportCode?: string
+  benchmarkFightId?: number
+  baselineReportCode?: string
+  baselineFightId?: number
+}
+
+export type PlayerAnalysisBenchmarkSummary = {
+  requested: boolean
+  included: boolean
+  mode: 'auto' | 'manual' | 'none'
+  selectedCount: number
+  exportedCount: number
+  skippedCount: number
+  skippedCandidates: PlayerAnalysisBenchmarkSkippedCandidate[]
+  omittedReason?: string | null
+}
+
+export type PlayerAnalysisViewSkip = {
+  subjectType: 'player' | 'benchmark'
+  view: PlayerAnalysisExportView
+  reportCode?: string
+  fightId?: number
+  reason: string
+}
+
+export type PlayerAnalysisViewTruncation = {
+  subjectType: 'player' | 'benchmark'
+  view: PlayerAnalysisExportView
+  reportCode: string
+  fightId: number
+  rowLimit: number
+  context?: string
+}
+
+export type PlayerAnalysisViewSummary = {
+  selectedViews: PlayerAnalysisExportView[]
+  exportedViews: PlayerAnalysisExportView[]
+  skippedViews: PlayerAnalysisViewSkip[]
+  truncatedViews: PlayerAnalysisViewTruncation[]
+}
+
 export type PlayerAnalysisExportJob = {
   exportId: string
   status: PlayerAnalysisJobStatus
@@ -345,6 +398,10 @@ export type PlayerAnalysisExportJob = {
   totalSteps: number
   percentComplete: number
   warnings: string[]
+  errors: string[]
+  warningGroups: PlayerAnalysisWarningGroups
+  benchmarkSummary?: PlayerAnalysisBenchmarkSummary
+  viewSummary?: PlayerAnalysisViewSummary
   files?: PlayerAnalysisExportFile[]
   error?: string
   createdAt: string

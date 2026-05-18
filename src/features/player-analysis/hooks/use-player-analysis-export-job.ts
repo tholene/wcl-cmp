@@ -7,7 +7,9 @@ export function usePlayerAnalysisExportJob() {
   const [jobStatus, setJobStatus] = useState<PlayerAnalysisExportJob | null>(null)
   const [isStarting, setIsStarting] = useState(false)
   const [startError, setStartError] = useState<string | null>(null)
+  const [pollError, setPollError] = useState<string | null>(null)
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const pollFailuresRef = useRef(0)
 
   const stopPolling = () => {
     if (pollingRef.current) {
@@ -20,8 +22,10 @@ export function usePlayerAnalysisExportJob() {
     stopPolling()
     setIsStarting(true)
     setStartError(null)
+    setPollError(null)
     setJobStatus(null)
     setExportId(null)
+    pollFailuresRef.current = 0
 
     try {
       const start = await PlayerAnalysisService.startExport(request)
@@ -30,12 +34,21 @@ export function usePlayerAnalysisExportJob() {
       pollingRef.current = setInterval(async () => {
         try {
           const status = await PlayerAnalysisService.getExportStatus(start.exportId)
+          pollFailuresRef.current = 0
+          setPollError(null)
           setJobStatus(status)
           if (status.status === 'complete' || status.status === 'partial' || status.status === 'failed') {
             stopPolling()
           }
-        } catch {
-          // Non-fatal poll failure — keep polling
+        } catch (error) {
+          pollFailuresRef.current += 1
+          if (pollFailuresRef.current >= 3) {
+            const message = error instanceof Error ? error.message : 'Status polling failed.'
+            setPollError(`Status polling is failing repeatedly: ${message}`)
+          }
+          if (pollFailuresRef.current >= 6) {
+            stopPolling()
+          }
         }
       }, 1500)
     } catch (error) {
@@ -51,9 +64,11 @@ export function usePlayerAnalysisExportJob() {
     setJobStatus(null)
     setIsStarting(false)
     setStartError(null)
+    setPollError(null)
+    pollFailuresRef.current = 0
   }
 
   useEffect(() => stopPolling, [])
 
-  return { startExport, exportId, jobStatus, isStarting, startError, reset }
+  return { startExport, exportId, jobStatus, isStarting, startError, pollError, reset }
 }
