@@ -102,18 +102,17 @@ export type SelectedBenchmarkCandidate = {
 }
 
 export type PlayerBenchmarkRequest = {
-  targetPercentile: PlayerBenchmarkTargetPercentile
-  requireSameClassSpec: true
-  itemLevelWindow?: number
-  killDurationWindowPct?: number
+  requested: boolean
+  mode: 'auto' | 'manual'
+  targetPercentile?: PlayerBenchmarkTargetPercentile
+  metric?: string
+  allowSubjectOnlyWithoutBenchmark?: boolean
   selectedCandidates?: SelectedBenchmarkCandidate[]
   manualTarget?: {
     reportCode: string
     fightId: number
     playerName: string
-    sourceId?: number
   }
-  autoConfig?: AutomatedBenchmarkConfig
 }
 
 export type PlayerDetectedContext = {
@@ -153,7 +152,6 @@ export type PlayerAnalysisExportRequest = {
   includeTrash?: boolean
   onlyPlayerPresent?: boolean
   views: PlayerAnalysisExportView[]
-  includeBenchmark?: boolean
   benchmark?: PlayerBenchmarkRequest
   limits?: {
     maxReports?: number

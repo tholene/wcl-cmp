@@ -4,7 +4,7 @@ import dotenv from 'dotenv'
 import express, { type Request, type Response } from 'express'
 import { getConfigStatus, getServerConfig, getWclConfig } from './warcraft-logs/wcl-config'
 import { WclService } from './warcraft-logs/wcl-service'
-import { getExportPreview, startExportJob } from './player-analysis/player-analysis-export.service'
+import { getExportPreview, startExportJob, validateExportStartRequest } from './player-analysis/player-analysis-export.service'
 import { PlayerAnalysisBenchmarkService } from './player-analysis/player-analysis-benchmark.service'
 import { JobStore } from './player-analysis/player-analysis-job-store'
 import { validateAndResolveExportFilePath } from './player-analysis/player-analysis-export-files'
@@ -374,6 +374,7 @@ app.post('/api/player-analysis/export', async (req: Request, res: Response) => {
   }
   try {
     const config = getWclConfig()
+    validateExportStartRequest(req.body)
     const jobStart = startExportJob(config, req.body)
     res.status(202).json(jobStart)
   } catch (error) {

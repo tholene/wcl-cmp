@@ -41,6 +41,10 @@ type Props = {
   onBenchmarkModeChange: (mode: 'none' | 'manual' | 'auto') => void
   onBenchmarkConfigChange: (config: ManualConfig) => void
   onAutoConfigChange: (config: AutoConfig) => void
+  benchmarkBlockedReason?: string | null
+  canUseSubjectOnlyOverride?: boolean
+  allowSubjectOnlyWithoutBenchmark?: boolean
+  onAllowSubjectOnlyWithoutBenchmarkChange?: (value: boolean) => void
   onFindCandidates: () => void
 }
 
@@ -157,6 +161,10 @@ export const PlayerAnalysisBenchmarkForm: FC<Props> = ({
   onBenchmarkModeChange,
   onBenchmarkConfigChange,
   onAutoConfigChange,
+  benchmarkBlockedReason,
+  canUseSubjectOnlyOverride = false,
+  allowSubjectOnlyWithoutBenchmark = false,
+  onAllowSubjectOnlyWithoutBenchmarkChange,
   onFindCandidates,
 }) => {
   const includeBenchmark = benchmarkMode !== 'none'
@@ -584,6 +592,23 @@ export const PlayerAnalysisBenchmarkForm: FC<Props> = ({
                       </div>
                     )
                   })}
+                </div>
+              )}
+
+              {canUseSubjectOnlyOverride && benchmarkBlockedReason && (
+                <div className="rounded border border-amber-700/40 bg-amber-950/20 p-2.5 text-xs text-amber-200 space-y-2">
+                  <p>{benchmarkBlockedReason}</p>
+                  <label className="flex items-center gap-2 text-amber-100">
+                    <input
+                      type="checkbox"
+                      checked={allowSubjectOnlyWithoutBenchmark}
+                      onChange={(e) => onAllowSubjectOnlyWithoutBenchmarkChange?.(e.target.checked)}
+                    />
+                    Export subject-only data without benchmark comparison.
+                  </label>
+                  <p className="text-amber-300">
+                    If enabled, the ZIP will omit benchmark files and README/manifest will record the omission reason.
+                  </p>
                 </div>
               )}
             </div>

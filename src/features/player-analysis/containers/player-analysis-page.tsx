@@ -171,6 +171,7 @@ export const PlayerAnalysisPage: FC = () => {
     itemLevelWindow: 10,
     durationWindowPercent: 35,
   })
+  const [allowSubjectOnlyWithoutBenchmark, setAllowSubjectOnlyWithoutBenchmark] = useState(false)
   const [selectedBaselineKeys, setSelectedBaselineKeys] = useState<Set<string>>(new Set())
   const [playerUserContext, setPlayerUserContext] = useState<ClassSpecOverride | null>(null)
   const [benchmarkContextSource, setBenchmarkContextSource] = useState<'wclDetected' | 'userProvided'>('wclDetected')
@@ -269,21 +270,22 @@ export const PlayerAnalysisPage: FC = () => {
       benchmarkContextSource,
       ...(benchmarkMode !== 'none'
         ? {
-            includeBenchmark: true,
             benchmark: {
-              targetPercentile: autoBenchmarkConfig.targetPercentile,
-              requireSameClassSpec: true as const,
-              itemLevelWindow: autoBenchmarkConfig.itemLevelWindow,
-              killDurationWindowPct: autoBenchmarkConfig.durationWindowPercent,
+              requested: true as const,
+              mode: benchmarkMode,
+              targetPercentile: benchmarkMode === 'auto' ? autoBenchmarkConfig.targetPercentile : undefined,
+              metric: benchmarkMode === 'auto' ? autoBenchmarkConfig.metric : undefined,
+              allowSubjectOnlyWithoutBenchmark:
+                benchmarkBlockedReason && allowSubjectOnlyWithoutBenchmark ? true : undefined,
               ...(benchmarkMode === 'manual' &&
-              manualBenchmarkConfig.reportCode &&
-              manualBenchmarkConfig.fightId &&
-              manualBenchmarkConfig.playerName
+              manualBenchmarkConfig.reportCode.trim() &&
+              manualBenchmarkConfig.fightId.trim() &&
+              manualBenchmarkConfig.playerName.trim()
                 ? {
                     manualTarget: {
-                      reportCode: manualBenchmarkConfig.reportCode,
+                      reportCode: manualBenchmarkConfig.reportCode.trim(),
                       fightId: Number(manualBenchmarkConfig.fightId),
-                      playerName: manualBenchmarkConfig.playerName,
+                      playerName: manualBenchmarkConfig.playerName.trim(),
                     },
                   }
                 : {}),
@@ -294,28 +296,6 @@ export const PlayerAnalysisPage: FC = () => {
                       benchmarkCandidatesMutation.data ?? null,
                       selectedBaselineKeys
                     ),
-                    autoConfig: {
-                      mode: 'auto' as const,
-                      baselines: availableBaselines
-                        .filter((b) => selectedBaselineKeys.has(b.key))
-                        .map((b) => ({
-                          reportCode: b.reportCode,
-                          fightId: b.fightId,
-                          encounterId: b.encounterId,
-                          encounterName: b.encounterName,
-                          difficulty: b.difficulty,
-                          durationMs: b.durationMs,
-                          playerName: b.playerName,
-                          className: b.className,
-                          specName: b.specName,
-                          itemLevel: b.itemLevel,
-                          contextSource,
-                        })),
-                      targetPercentile: autoBenchmarkConfig.targetPercentile,
-                      metric: autoBenchmarkConfig.metric,
-                      itemLevelWindow: autoBenchmarkConfig.itemLevelWindow,
-                      durationWindowPercent: autoBenchmarkConfig.durationWindowPercent,
-                    },
                   }
                 : {}),
             },
@@ -431,6 +411,11 @@ export const PlayerAnalysisPage: FC = () => {
     !!effectiveSpecName
 
   const selectedBaselineKeysList = [...selectedBaselineKeys]
+  const selectedAutoCandidates = buildSelectedCandidates(
+    availableBaselines,
+    benchmarkCandidatesMutation.data ?? null,
+    selectedBaselineKeys
+  )
   const selectedGroupCount =
     benchmarkCandidatesMutation.data?.groups.filter((group) =>
       selectedBaselineKeys.has(`${group.baseline.reportCode}:${group.baseline.fightId}`)
@@ -440,15 +425,30 @@ export const PlayerAnalysisPage: FC = () => {
       if (!selectedBaselineKeys.has(`${group.baseline.reportCode}:${group.baseline.fightId}`)) return false
       return !!group.selectedCandidate?.validation.hasUsableExportTarget
     }).length ?? 0
-  const benchmarkAutoNoExportableGuard =
-    benchmarkMode === 'auto' &&
-    selectedBaselineKeysList.length > 0 &&
-    selectedGroupCount > 0 &&
-    selectedExportableCount === 0
-  const benchmarkAutoGuardReason = benchmarkAutoNoExportableGuard
-    ? 'Auto benchmark is enabled, but none of the selected baseline fights has an exportable candidate. Switch to Manual log mode or adjust baseline/context and re-run candidate discovery.'
-    : null
-  const exportBlockedReason = benchmarkAutoGuardReason
+  const manualMissingFields: string[] = []
+  if (benchmarkMode === 'manual') {
+    if (!manualBenchmarkConfig.reportCode.trim()) manualMissingFields.push('report code')
+    if (!manualBenchmarkConfig.fightId.trim()) manualMissingFields.push('fight ID')
+    if (!manualBenchmarkConfig.playerName.trim()) manualMissingFields.push('player name')
+  }
+  const benchmarkAutoGuardReason =
+    benchmarkMode === 'auto' && selectedAutoCandidates.length === 0
+      ? selectedBaselineKeysList.length === 0
+        ? 'Auto benchmark is enabled, but no baseline fights are selected.'
+        : selectedGroupCount === 0
+          ? 'Auto benchmark is enabled, but no exportable candidates are selected yet. Find candidates first or switch to manual benchmark mode.'
+          : selectedExportableCount === 0
+            ? 'Auto benchmark is enabled, but none of the selected baseline fights has an exportable candidate. Switch to Manual log mode or adjust baseline/context and re-run candidate discovery.'
+            : 'Auto benchmark is enabled, but no exportable benchmark candidates are selected.'
+      : null
+  const benchmarkManualGuardReason =
+    benchmarkMode === 'manual' && manualMissingFields.length > 0
+      ? `Manual benchmark is enabled, but missing ${manualMissingFields.join(', ')}.`
+      : null
+  const benchmarkBlockedReason = benchmarkAutoGuardReason ?? benchmarkManualGuardReason
+  const canUseSubjectOnlyOverride = benchmarkMode !== 'none' && !!benchmarkBlockedReason
+  const exportBlockedReason =
+    benchmarkBlockedReason && !allowSubjectOnlyWithoutBenchmark ? benchmarkBlockedReason : null
 
   const showProgress = exportJob.isStarting || job !== null
   const showResults = job?.status === 'complete' || job?.status === 'partial'
@@ -517,6 +517,10 @@ export const PlayerAnalysisPage: FC = () => {
               onBenchmarkModeChange={setBenchmarkMode}
               onBenchmarkConfigChange={setManualBenchmarkConfig}
               onAutoConfigChange={setAutoBenchmarkConfig}
+              benchmarkBlockedReason={benchmarkBlockedReason}
+              canUseSubjectOnlyOverride={canUseSubjectOnlyOverride}
+              allowSubjectOnlyWithoutBenchmark={allowSubjectOnlyWithoutBenchmark}
+              onAllowSubjectOnlyWithoutBenchmarkChange={setAllowSubjectOnlyWithoutBenchmark}
               onFindCandidates={handleFindCandidates}
             />
           </BenchmarkErrorBoundary>
