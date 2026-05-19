@@ -55,11 +55,13 @@ import type {
   PlayerAnalysisBenchmarkSkippedCandidate,
   PlayerAnalysisBenchmarkSummary,
   PlayerAnalysisExportRequest,
+  PlayerAnalysisExportResultSummary,
   PlayerAnalysisExportPreview,
   PlayerAnalysisExportStartResponse,
   PlayerAnalysisExportFile,
   PlayerAnalysisExportView,
   PlayerAnalysisTimeframePreset,
+  PlayerAnalysisQualityCheck,
   PlayerDetectedContext,
   PlayerUserContext,
   EffectivePlayerContext,
@@ -527,6 +529,281 @@ const VIEW_LABELS: Record<PlayerAnalysisExportView, string> = {
   interrupts: 'Interrupts',
   dispels: 'Dispels',
   resources: 'Resources',
+}
+
+function getDifficultyLabel(difficulty?: number | null): string {
+  switch (difficulty) {
+    case 3:
+      return 'Normal'
+    case 4:
+      return 'Heroic'
+    case 5:
+      return 'Mythic'
+    default:
+      return typeof difficulty === 'number' ? `Difficulty ${difficulty}` : 'Unknown'
+  }
+}
+
+type ExportQualityGateContext = {
+  playerName: string
+  preview: PlayerAnalysisExportPreview
+  request: PlayerAnalysisExportRequest
+  files: PlayerAnalysisExportFile[]
+  fightRows: Record<string, unknown>[]
+  dataQuality: DataQualityStats[]
+  benchmarkSummary: PlayerAnalysisBenchmarkSummary
+  benchmarkRequestedButNotIncludedReason: string | null
+  exportedCandidates: Array<Record<string, unknown>>
+  partialReasons: Set<string>
+}
+
+function toComparableString(value: unknown): string {
+  return String(value ?? '').trim().toLowerCase()
+}
+
+function hasBenchmarkContextMatch(
+  mode: 'auto' | 'manual' | 'none',
+  exportedCandidates: Array<Record<string, unknown>>,
+  subjectClassName?: string,
+  subjectSpecName?: string
+): boolean {
+  if (exportedCandidates.length === 0) return false
+  if (mode === 'manual') {
+    return exportedCandidates.some((candidate) => {
+      const playerName = String(candidate['benchmarkPlayerName'] ?? '').trim()
+      const reportCode = String(candidate['benchmarkReportCode'] ?? '').trim()
+      const fightId = Number(candidate['benchmarkFightId'] ?? 0)
+      return playerName.length > 0 && reportCode.length > 0 && Number.isInteger(fightId) && fightId > 0
+    })
+  }
+
+  const subjectClass = toComparableString(subjectClassName)
+  const subjectSpec = toComparableString(subjectSpecName)
+  if (!subjectClass || !subjectSpec) return false
+
+  return exportedCandidates.some((candidate) => {
+    const baselineEncounterId = Number(candidate['baselineEncounterId'] ?? 0)
+    const benchmarkEncounterId = Number(candidate['benchmarkEncounterId'] ?? 0)
+    const baselineDifficulty = Number(candidate['baselineDifficulty'] ?? 0)
+    const benchmarkDifficulty = Number(candidate['benchmarkDifficulty'] ?? 0)
+    const benchmarkClass = toComparableString(candidate['benchmarkClassName'])
+    const benchmarkSpec = toComparableString(candidate['benchmarkSpecName'])
+    return (
+      baselineEncounterId > 0 &&
+      benchmarkEncounterId > 0 &&
+      baselineEncounterId === benchmarkEncounterId &&
+      baselineDifficulty > 0 &&
+      benchmarkDifficulty > 0 &&
+      baselineDifficulty === benchmarkDifficulty &&
+      benchmarkClass === subjectClass &&
+      benchmarkSpec === subjectSpec
+    )
+  })
+}
+
+function mapRecoverySuggestion(check: PlayerAnalysisQualityCheck | undefined): string {
+  if (!check) return 'Retry export. If it continues failing, reduce scope to one fight and stable views only.'
+  switch (check.code) {
+    case 'bundleExists':
+      return 'Retry export. If bundle creation still fails, reduce selected fights/views and re-run.'
+    case 'manifestExists':
+    case 'readmeExists':
+      return 'Retry export. If metadata files keep failing, check server write permissions and export directory health.'
+    case 'subjectPlayerExists':
+      return 'Verify the player name and run preview again before exporting.'
+    case 'selectedSubjectFightExists':
+      return 'Select at least one player-present boss fight and retry export.'
+    case 'subjectFilesExist':
+      return 'Ensure at least one subject data view is selected and try exporting again.'
+    default:
+      return 'Retry export with a smaller scope. If it repeats, inspect warning groups and server logs.'
+  }
+}
+
+function evaluateExportQualityGate(context: ExportQualityGateContext): {
+  resultSummary: PlayerAnalysisExportResultSummary
+  status: 'complete' | 'partial' | 'failed'
+} {
+  const {
+    playerName,
+    preview,
+    request,
+    files,
+    fightRows,
+    dataQuality,
+    benchmarkSummary,
+    benchmarkRequestedButNotIncludedReason,
+    exportedCandidates,
+    partialReasons,
+  } = context
+
+  const hasManifest = files.some((file) => file.filename === 'manifest.json')
+  const hasReadme = files.some((file) => file.filename === 'README.md')
+  const hasZip = files.some((file) => file.filename === 'bundle.zip')
+  const hasSubjectFiles = files.some(
+    (file) => file.kind === 'csv' && file.filename.startsWith('player-')
+  )
+  const hasSelectedSubjectFight = fightRows.length > 0
+  const hasSubjectPlayer = playerName.trim().length > 0
+  const benchmarkRequired = benchmarkSummary.requested && !benchmarkSummary.included && !(request.benchmark?.allowSubjectOnlyWithoutBenchmark === true)
+  const needsBenchmarkValidation = benchmarkSummary.requested && !(request.benchmark?.allowSubjectOnlyWithoutBenchmark === true)
+  const benchmarkFiles = files.filter(
+    (file) => file.kind === 'benchmarkCsv' || file.kind === 'benchmarkJson' || file.filename === 'comparison-summary.csv'
+  )
+  const hasBenchmarkFiles = benchmarkFiles.length > 0
+  const subjectClass = preview.effectiveContext?.className ?? preview.detectedPlayer?.className
+  const subjectSpec = preview.effectiveContext?.specName ?? preview.detectedPlayer?.specName
+  const benchmarkContextMatched = hasBenchmarkContextMatch(
+    benchmarkSummary.mode,
+    exportedCandidates,
+    subjectClass,
+    subjectSpec
+  )
+  const benchmarkOmittedReason =
+    benchmarkSummary.omittedReason ?? benchmarkRequestedButNotIncludedReason ?? null
+  const hasDataQuality = Array.isArray(dataQuality)
+
+  const checks: PlayerAnalysisQualityCheck[] = [
+    {
+      code: 'subjectPlayerExists',
+      label: 'Subject player resolved',
+      passed: hasSubjectPlayer,
+      severity: 'critical',
+      reason: hasSubjectPlayer ? undefined : 'Subject player name is empty.',
+    },
+    {
+      code: 'selectedSubjectFightExists',
+      label: 'Selected subject fight exists',
+      passed: hasSelectedSubjectFight,
+      severity: 'critical',
+      reason: hasSelectedSubjectFight ? undefined : 'No selected subject fight rows were exported.',
+    },
+    {
+      code: 'subjectFilesExist',
+      label: 'Subject files exist',
+      passed: hasSubjectFiles,
+      severity: 'critical',
+      reason: hasSubjectFiles ? undefined : 'No subject CSV files were generated.',
+    },
+    {
+      code: 'readmeExists',
+      label: 'README exists',
+      passed: hasReadme,
+      severity: 'critical',
+      reason: hasReadme ? undefined : 'README.md is missing.',
+    },
+    {
+      code: 'manifestExists',
+      label: 'Manifest exists',
+      passed: hasManifest,
+      severity: 'critical',
+      reason: hasManifest ? undefined : 'manifest.json is missing.',
+    },
+    {
+      code: 'bundleExists',
+      label: 'Bundle ZIP exists',
+      passed: hasZip,
+      severity: 'critical',
+      reason: hasZip ? undefined : 'bundle.zip is missing.',
+    },
+    {
+      code: 'benchmarkIncludedWhenRequired',
+      label: 'Benchmark included when required',
+      passed: !benchmarkRequired,
+      severity: 'warning',
+      reason: !benchmarkRequired
+        ? undefined
+        : 'Benchmark was requested without subject-only override, but benchmark data was not included.',
+    },
+    {
+      code: 'benchmarkFilesExistWhenRequired',
+      label: 'Benchmark files exist when benchmark included',
+      passed: !needsBenchmarkValidation || !benchmarkSummary.included || hasBenchmarkFiles,
+      severity: 'warning',
+      reason:
+        !needsBenchmarkValidation || !benchmarkSummary.included || hasBenchmarkFiles
+          ? undefined
+          : 'Benchmark is marked included, but benchmark files are missing.',
+    },
+    {
+      code: 'benchmarkContextMatchedWhenRequired',
+      label: 'Benchmark context matches encounter/difficulty/class/spec',
+      passed: !needsBenchmarkValidation || !benchmarkSummary.included || benchmarkContextMatched,
+      severity: 'warning',
+      reason:
+        !needsBenchmarkValidation || !benchmarkSummary.included || benchmarkContextMatched
+          ? undefined
+          : 'No exported benchmark candidate confirms same encounter/difficulty/class/spec.',
+    },
+    {
+      code: 'benchmarkOmissionReasonProvided',
+      label: 'Benchmark omission reason provided',
+      passed: !(benchmarkSummary.requested && !benchmarkSummary.included) || !!benchmarkOmittedReason,
+      severity: 'warning',
+      reason:
+        !(benchmarkSummary.requested && !benchmarkSummary.included) || !!benchmarkOmittedReason
+          ? undefined
+          : 'Benchmark was omitted without an explicit reason.',
+    },
+    {
+      code: 'dataQualityPresent',
+      label: 'Data quality section present',
+      passed: hasDataQuality,
+      severity: 'warning',
+      reason: hasDataQuality ? undefined : 'Data quality stats are missing.',
+    },
+  ]
+
+  const failedChecks = checks.filter((check) => !check.passed)
+  const reasons = [
+    ...failedChecks.map((check) => check.reason).filter((reason): reason is string => !!reason),
+    ...Array.from(partialReasons),
+  ]
+  const dedupedReasons: string[] = []
+  for (const reason of reasons) {
+    if (dedupedReasons.includes(reason)) continue
+    dedupedReasons.push(reason)
+    if (dedupedReasons.length >= 5) break
+  }
+
+  const criticalFailure = failedChecks.some((check) => check.severity === 'critical')
+  const anyCheckFailure = failedChecks.length > 0
+  const hasRuntimePartialSignals = partialReasons.size > 0
+  const finalStatus: 'complete' | 'partial' | 'failed' = criticalFailure
+    ? 'failed'
+    : anyCheckFailure || hasRuntimePartialSignals
+      ? 'partial'
+      : 'complete'
+
+  const failedStep =
+    finalStatus === 'failed'
+      ? (failedChecks[0]?.label ?? 'Export finalization')
+      : undefined
+  const summaryEncounter = fightRows[0]?.['encounterName']
+  const summaryDifficulty = Number(fightRows[0]?.['difficulty'] ?? 0)
+  const firstBenchmark = exportedCandidates[0] ?? null
+  const benchmarkPercentile = firstBenchmark ? Number(firstBenchmark['benchmarkPercentile'] ?? NaN) : NaN
+
+  return {
+    status: finalStatus,
+    resultSummary: {
+      readyForChatGpt: finalStatus !== 'failed',
+      qualityChecks: checks,
+      topReasons: dedupedReasons,
+      summary: {
+        playerName,
+        encounterName: typeof summaryEncounter === 'string' ? summaryEncounter : null,
+        difficulty: Number.isFinite(summaryDifficulty) && summaryDifficulty > 0 ? summaryDifficulty : null,
+        difficultyLabel: getDifficultyLabel(Number.isFinite(summaryDifficulty) && summaryDifficulty > 0 ? summaryDifficulty : null),
+        benchmarkPlayerName: firstBenchmark ? String(firstBenchmark['benchmarkPlayerName'] ?? '') || null : null,
+        benchmarkPercentile: Number.isFinite(benchmarkPercentile) ? benchmarkPercentile : null,
+        benchmarkMetric: request.benchmark?.metric ?? null,
+        nextStepInstruction: 'Upload this ZIP to ChatGPT. The README contains the analysis instructions.',
+      },
+      failedStep,
+      recoverySuggestion: finalStatus === 'failed' ? mapRecoverySuggestion(failedChecks[0]) : undefined,
+    },
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -2374,20 +2651,37 @@ async function runExportJob(
     sizeBytes: zipSize,
     downloadUrl: `/api/player-analysis/exports/${exportId}/bundle.zip`,
   })
+  const qualityGate = evaluateExportQualityGate({
+    playerName,
+    preview,
+    request,
+    files: writtenFiles,
+    fightRows,
+    dataQuality: dataQualityStats,
+    benchmarkSummary,
+    benchmarkRequestedButNotIncludedReason,
+    exportedCandidates,
+    partialReasons,
+  })
+  const manifestWithQualityGate = {
+    ...manifest,
+    qualityGate: {
+      status: qualityGate.status,
+      checks: qualityGate.resultSummary.qualityChecks,
+      topReasons: qualityGate.resultSummary.topReasons,
+    },
+    resultSummary: qualityGate.resultSummary,
+  }
+  writeExportJsonFile(exportId, 'manifest.json', manifestWithQualityGate)
+  const manifestFile = writtenFiles.find((file) => file.filename === 'manifest.json')
+  if (manifestFile) {
+    manifestFile.sizeBytes = getExportFileSize(exportId, 'manifest.json')
+  }
 
-  const hasZip = writtenFiles.some((file) => file.kind === 'zip')
-  const hasSubjectCsv = writtenFiles.some(
-    (file) => file.kind === 'csv' && (!file.filename.startsWith('benchmark-'))
-  )
-  const hasUsableSubjectBundle = hasZip && hasSubjectCsv
-  const hasPartialOutcome =
-    partialReasons.size > 0 ||
-    skippedViews.length > 0 ||
-    truncatedViews.length > 0 ||
-    (benchmarkRequested && !benchmarkIncluded)
-
-  if (!hasUsableSubjectBundle) {
-    const failureMessage = 'Export failed before a usable subject bundle could be produced.'
+  if (qualityGate.status === 'failed') {
+    const failureMessage =
+      qualityGate.resultSummary.topReasons[0] ??
+      'Export failed before a usable subject bundle could be produced.'
     addError(failureMessage, { asWarning: false })
     JobStore.fail(exportId, failureMessage, {
       files: writtenFiles,
@@ -2396,18 +2690,20 @@ async function runExportJob(
       warningGroups,
       benchmarkSummary,
       viewSummary,
-      currentStep: 'Export failed.',
+      resultSummary: qualityGate.resultSummary,
+      currentStep: `Export failed: ${qualityGate.resultSummary.failedStep ?? 'quality gate'}.`,
     })
     return
   }
 
-  if (hasPartialOutcome) {
+  if (qualityGate.status === 'partial') {
     JobStore.partial(exportId, writtenFiles, {
       warnings: allWarnings,
       errors,
       warningGroups,
       benchmarkSummary,
       viewSummary,
+      resultSummary: qualityGate.resultSummary,
       currentStep: 'Export completed with partial data.',
     })
     return
@@ -2419,6 +2715,7 @@ async function runExportJob(
     warningGroups,
     benchmarkSummary,
     viewSummary,
+    resultSummary: qualityGate.resultSummary,
     currentStep: 'Export complete.',
   })
 }

@@ -1,10 +1,10 @@
 # Legacy Route/Endpoint Sunset Notes
 
-WP0 establishes **Player Analysis Export** as the only primary workflow.
+WP0 established **Player Analysis Export** as the only primary workflow.
 
-These routes/endpoints are kept callable for deep links and compatibility only.
+These legacy routes/endpoints remain callable for deep links and compatibility only.
 
-## Legacy frontend routes (non-primary)
+## Remaining legacy frontend routes (non-primary)
 
 - `/bosses`
 - `/bosses/:encounterId`
@@ -12,13 +12,21 @@ These routes/endpoints are kept callable for deep links and compatibility only.
 - `/reports/:code/fights/:fightId`
 - `/reports/:code/fights/:fightId/players/:playerId`
 
-## Legacy backend endpoints (non-primary)
+## Remaining legacy backend endpoints (non-primary)
 
+- `GET /api/reports/recent`
+- `GET /api/reports/:code`
+- `GET /api/reports/:code/fights/:fightId/review`
+- `GET /api/reports/:code/fights/:fightId/players/:playerId/review`
+- `GET /api/bosses/recent`
+- `GET /api/bosses/:encounterId/recent-fights`
 - `POST /api/player-reviews/snapshot`
 - `POST /api/player-reviews/scope-preview`
 - `POST /api/player-reviews/prompt`
 
-Sunset status:
-- Deprecated from primary app flow in WP0.
-- No new feature work should target these endpoints.
-- New product work should use `/api/player-analysis/*`.
+## Sunset intent
+
+- These interfaces are deprecated from primary product flow.
+- No new feature work should target legacy routes/endpoints.
+- New export and benchmark work must target `/api/player-analysis/*`.
+- Legacy interfaces will be removed after a confidence window once no active local workflows depend on them.

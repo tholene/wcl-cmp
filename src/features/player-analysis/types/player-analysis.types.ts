@@ -319,6 +319,47 @@ export type PlayerAnalysisViewSummary = {
   truncatedViews: PlayerAnalysisViewTruncation[]
 }
 
+export type PlayerAnalysisQualityCheckCode =
+  | 'subjectPlayerExists'
+  | 'selectedSubjectFightExists'
+  | 'subjectFilesExist'
+  | 'readmeExists'
+  | 'manifestExists'
+  | 'bundleExists'
+  | 'benchmarkIncludedWhenRequired'
+  | 'benchmarkFilesExistWhenRequired'
+  | 'benchmarkContextMatchedWhenRequired'
+  | 'benchmarkOmissionReasonProvided'
+  | 'dataQualityPresent'
+
+export type PlayerAnalysisQualityCheck = {
+  code: PlayerAnalysisQualityCheckCode
+  label: string
+  passed: boolean
+  severity: 'critical' | 'warning'
+  reason?: string
+}
+
+export type PlayerAnalysisReadyForChatGptSummary = {
+  playerName: string
+  encounterName?: string | null
+  difficulty?: number | null
+  difficultyLabel?: string | null
+  benchmarkPlayerName?: string | null
+  benchmarkPercentile?: number | null
+  benchmarkMetric?: string | null
+  nextStepInstruction: string
+}
+
+export type PlayerAnalysisExportResultSummary = {
+  readyForChatGpt: boolean
+  qualityChecks: PlayerAnalysisQualityCheck[]
+  topReasons: string[]
+  summary: PlayerAnalysisReadyForChatGptSummary
+  failedStep?: string
+  recoverySuggestion?: string
+}
+
 export type PlayerAnalysisExportJob = {
   exportId: string
   status: PlayerAnalysisJobStatus
@@ -335,6 +376,7 @@ export type PlayerAnalysisExportJob = {
   warningGroups: PlayerAnalysisWarningGroups
   benchmarkSummary?: PlayerAnalysisBenchmarkSummary
   viewSummary?: PlayerAnalysisViewSummary
+  resultSummary?: PlayerAnalysisExportResultSummary
   files?: PlayerAnalysisExportFile[]
   error?: string
   createdAt: string

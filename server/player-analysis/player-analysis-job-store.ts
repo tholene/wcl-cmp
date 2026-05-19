@@ -2,6 +2,7 @@ import type {
   PlayerAnalysisBenchmarkSummary,
   PlayerAnalysisExportFile,
   PlayerAnalysisExportJob,
+  PlayerAnalysisExportResultSummary,
   PlayerAnalysisExportView,
   PlayerAnalysisJobStatus,
   PlayerAnalysisViewSummary,
@@ -85,6 +86,7 @@ export const JobStore = {
       warningGroups?: PlayerAnalysisWarningGroups
       benchmarkSummary?: PlayerAnalysisBenchmarkSummary
       viewSummary?: PlayerAnalysisViewSummary
+      resultSummary?: PlayerAnalysisExportResultSummary
       currentStep?: string
     }
   ): void {
@@ -97,6 +99,7 @@ export const JobStore = {
     if (details?.warningGroups) job.warningGroups = details.warningGroups
     if (details?.benchmarkSummary) job.benchmarkSummary = details.benchmarkSummary
     if (details?.viewSummary) job.viewSummary = details.viewSummary
+    if (details?.resultSummary) job.resultSummary = details.resultSummary
     job.completedSteps = job.totalSteps
     job.percentComplete = 100
     job.currentStep = details?.currentStep ?? 'Export complete.'
@@ -112,6 +115,7 @@ export const JobStore = {
       warningGroups?: PlayerAnalysisWarningGroups
       benchmarkSummary?: PlayerAnalysisBenchmarkSummary
       viewSummary?: PlayerAnalysisViewSummary
+      resultSummary?: PlayerAnalysisExportResultSummary
       currentStep?: string
     }
   ): void {
@@ -124,6 +128,7 @@ export const JobStore = {
     if (details?.warningGroups) job.warningGroups = details.warningGroups
     if (details?.benchmarkSummary) job.benchmarkSummary = details.benchmarkSummary
     if (details?.viewSummary) job.viewSummary = details.viewSummary
+    if (details?.resultSummary) job.resultSummary = details.resultSummary
     job.completedSteps = job.totalSteps
     job.percentComplete = 100
     job.currentStep = details?.currentStep ?? 'Export complete with partial data.'
@@ -140,6 +145,7 @@ export const JobStore = {
       warningGroups?: PlayerAnalysisWarningGroups
       benchmarkSummary?: PlayerAnalysisBenchmarkSummary
       viewSummary?: PlayerAnalysisViewSummary
+      resultSummary?: PlayerAnalysisExportResultSummary
       currentStep?: string
     }
   ): void {
@@ -153,6 +159,7 @@ export const JobStore = {
     if (details?.warningGroups) job.warningGroups = details.warningGroups
     if (details?.benchmarkSummary) job.benchmarkSummary = details.benchmarkSummary
     if (details?.viewSummary) job.viewSummary = details.viewSummary
+    if (details?.resultSummary) job.resultSummary = details.resultSummary
     if (details?.currentStep) job.currentStep = details.currentStep
     job.updatedAt = now()
   },

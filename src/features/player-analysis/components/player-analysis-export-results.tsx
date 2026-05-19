@@ -1,4 +1,5 @@
 import type { FC } from 'react'
+import { getDifficultyLabel } from '@/lib/difficulty'
 import type { PlayerAnalysisExportFile, PlayerAnalysisExportJob } from '../types/player-analysis.types'
 
 const formatBytes = (bytes: number): string => {
@@ -30,20 +31,17 @@ export const PlayerAnalysisExportResults: FC<Props> = ({ job, exportId, onReset 
   const skippedViews = job.viewSummary?.skippedViews ?? []
   const truncatedViews = job.viewSummary?.truncatedViews ?? []
   const skippedCandidates = job.benchmarkSummary?.skippedCandidates ?? []
-  const benchmarkOmittedReason = job.benchmarkSummary?.omittedReason ?? null
-  const subjectOnlyOverrideMessage =
-    job.benchmarkSummary?.requested &&
-    !job.benchmarkSummary.included &&
-    benchmarkOmittedReason
-      ? `Subject-only export: benchmark was requested but not included. ${benchmarkOmittedReason}`
-      : null
+  const resultSummary = job.resultSummary
+  const summary = resultSummary?.summary
+  const failedChecks = (resultSummary?.qualityChecks ?? []).filter((check) => !check.passed)
+  const topReasons = resultSummary?.topReasons?.slice(0, 5) ?? []
 
   const downloadUrl = (filename: string) => `/api/player-analysis/exports/${exportId}/${filename}`
 
   return (
     <div className="rounded-xl border border-slate-800 bg-slate-900/70 p-4 space-y-4">
       <div className="flex items-center justify-between">
-        <h2 className="text-sm font-semibold text-slate-200">Export Files</h2>
+        <h2 className="text-sm font-semibold text-slate-200">Ready for ChatGPT</h2>
         {job.status === 'complete' && (
           <span className="rounded px-2 py-0.5 text-xs font-medium bg-emerald-900/40 text-emerald-300">complete</span>
         )}
@@ -55,25 +53,23 @@ export const PlayerAnalysisExportResults: FC<Props> = ({ job, exportId, onReset 
         )}
       </div>
 
-      {job.status === 'partial' && (
-        <div className="rounded border border-amber-700/30 bg-amber-950/20 p-2 text-xs text-amber-200">
-          ZIP is usable but incomplete.
-        </div>
-      )}
-
-      {subjectOnlyOverrideMessage && (
-        <div className="rounded border border-amber-700/30 bg-amber-950/20 p-2 text-xs text-amber-200">
-          {subjectOnlyOverrideMessage}
-        </div>
-      )}
-
-      {job.benchmarkSummary && (
-        <div className="rounded border border-slate-700 bg-slate-950/40 p-2 text-xs text-slate-300">
-          <p>Benchmark requested/included: {job.benchmarkSummary.requested ? 'yes' : 'no'} / {job.benchmarkSummary.included ? 'yes' : 'no'}</p>
-          <p>Selected/exported/skipped: {job.benchmarkSummary.selectedCount}/{job.benchmarkSummary.exportedCount}/{job.benchmarkSummary.skippedCount}</p>
-          <p>Skipped/truncated view outcomes: {skippedViews.length}/{truncatedViews.length}</p>
-        </div>
-      )}
+      <div className="rounded border border-slate-700 bg-slate-950/40 p-3 text-xs text-slate-300 space-y-1">
+        <p>Player: <span className="text-slate-100">{summary?.playerName ?? 'unknown'}</span></p>
+        <p>Boss: <span className="text-slate-100">{summary?.encounterName ?? 'unknown'}</span></p>
+        <p>
+          Difficulty: <span className="text-slate-100">{summary?.difficultyLabel ?? getDifficultyLabel(summary?.difficulty ?? null)}</span>
+        </p>
+        <p>Benchmark player: <span className="text-slate-100">{summary?.benchmarkPlayerName ?? 'not included'}</span></p>
+        <p>
+          Benchmark target:{' '}
+          <span className="text-slate-100">
+            {summary?.benchmarkPercentile != null
+              ? `${summary.benchmarkPercentile}% ${summary.benchmarkMetric ?? 'metric'}`
+              : 'n/a'}
+          </span>
+        </p>
+        <p>Status: <span className="text-slate-100">{job.status}</span></p>
+      </div>
 
       {zipFile && (
         <a
@@ -81,15 +77,60 @@ export const PlayerAnalysisExportResults: FC<Props> = ({ job, exportId, onReset 
           download={zipFile.filename}
           className="flex items-center justify-between w-full rounded border border-violet-600 bg-violet-700/20 px-4 py-2.5 text-sm font-medium text-violet-200 hover:bg-violet-700/30"
         >
-          <span>Download bundle</span>
+          <span>Download bundle.zip</span>
           <span className="text-xs text-violet-300/70">{formatBytes(zipFile.sizeBytes)}</span>
         </a>
       )}
 
-      {job.status === 'failed' && !zipFile && (
-        <div className="rounded border border-rose-700/40 bg-rose-950/20 p-2 text-xs text-rose-200">
-          No downloadable files were produced.
+      {(job.status === 'complete' || job.status === 'partial') && (
+        <div className="rounded border border-emerald-700/30 bg-emerald-950/20 p-2 text-xs text-emerald-200">
+          {summary?.nextStepInstruction ?? 'Upload this ZIP to ChatGPT. The README contains the analysis instructions.'}
         </div>
+      )}
+
+      {job.status === 'partial' && (
+        <div className="rounded border border-amber-700/30 bg-amber-950/20 p-2 text-xs text-amber-200 space-y-1">
+          <p className="font-medium">Export completed with partial data</p>
+          {topReasons.length > 0 ? topReasons.map((reason, index) => <p key={`reason-${index}`}>{reason}</p>) : <p>Some requested data could not be exported.</p>}
+        </div>
+      )}
+
+      {job.status === 'failed' && (
+        <div className="rounded border border-rose-700/40 bg-rose-950/20 p-2 text-xs text-rose-200 space-y-1">
+          <p className="font-medium">Export failed</p>
+          {resultSummary?.failedStep && <p>Failed step: {resultSummary.failedStep}</p>}
+          {resultSummary?.recoverySuggestion && <p>Recovery: {resultSummary.recoverySuggestion}</p>}
+          {topReasons.length > 0 && <p>{topReasons[0]}</p>}
+        </div>
+      )}
+
+      {(topReasons.length > 0 || failedChecks.length > 0 || skippedCandidates.length > 0 || skippedViews.length > 0 || truncatedViews.length > 0 || job.warnings.length > 0) && (
+        <details className="rounded border border-slate-700 bg-slate-950/40 p-2">
+          <summary className="cursor-pointer text-xs font-medium text-slate-400">Detailed warnings</summary>
+          <div className="mt-2 space-y-1 text-xs text-slate-300 max-h-48 overflow-y-auto">
+            {failedChecks.map((check) => (
+              <p key={check.code}>Check failed: {check.label}{check.reason ? ` — ${check.reason}` : ''}</p>
+            ))}
+            {skippedCandidates.map((candidate, index) => (
+              <p key={`candidate-${index}`}>
+                Benchmark skipped: {candidate.benchmarkPlayerName ?? 'unknown player'} ({candidate.benchmarkReportCode ?? 'n/a'}#{candidate.benchmarkFightId ?? 'n/a'}) — {candidate.reason}
+              </p>
+            ))}
+            {skippedViews.map((entry, index) => (
+              <p key={`skip-${index}`}>
+                Skipped view: {entry.subjectType} {entry.view} ({entry.reportCode ?? 'n/a'}#{entry.fightId ?? 'n/a'}) — {entry.reason}
+              </p>
+            ))}
+            {truncatedViews.map((entry, index) => (
+              <p key={`truncated-${index}`}>
+                Truncated view: {entry.subjectType} {entry.view} ({entry.reportCode}#{entry.fightId}) capped at {entry.rowLimit} rows.
+              </p>
+            ))}
+            {job.warnings.map((warning, index) => (
+              <p key={`warning-${index}`}>Warning: {warning}</p>
+            ))}
+          </div>
+        </details>
       )}
 
       {otherFiles.length > 0 && (
@@ -112,44 +153,6 @@ export const PlayerAnalysisExportResults: FC<Props> = ({ job, exportId, onReset 
             ))}
           </div>
         </details>
-      )}
-
-      {(skippedCandidates.length > 0 || skippedViews.length > 0 || truncatedViews.length > 0) && (
-        <div className="rounded border border-amber-700/30 bg-amber-950/20 p-2 space-y-1 text-xs text-amber-200 max-h-40 overflow-y-auto">
-          {skippedCandidates.length > 0 && (
-            <p className="font-medium">Skipped benchmark candidates</p>
-          )}
-          {skippedCandidates.map((candidate, index) => (
-            <p key={`candidate-${index}`}>
-              {candidate.benchmarkPlayerName ?? 'unknown player'} ({candidate.benchmarkReportCode ?? 'n/a'}#{candidate.benchmarkFightId ?? 'n/a'}): {candidate.reason}
-            </p>
-          ))}
-          {skippedViews.length > 0 && (
-            <p className="font-medium mt-1">Skipped views</p>
-          )}
-          {skippedViews.map((entry, index) => (
-            <p key={`skip-${index}`}>
-              {entry.subjectType} {entry.view} ({entry.reportCode ?? 'n/a'}#{entry.fightId ?? 'n/a'}): {entry.reason}
-            </p>
-          ))}
-          {truncatedViews.length > 0 && (
-            <p className="font-medium mt-1">Truncated views</p>
-          )}
-          {truncatedViews.map((entry, index) => (
-            <p key={`truncated-${index}`}>
-              {entry.subjectType} {entry.view} ({entry.reportCode}#{entry.fightId}) capped at {entry.rowLimit} rows.
-            </p>
-          ))}
-        </div>
-      )}
-
-      {job.warnings.length > 0 && (
-        <div className="rounded border border-amber-700/30 bg-amber-950/20 p-2 space-y-1 text-xs text-amber-200 max-h-32 overflow-y-auto">
-          <p className="font-medium text-amber-400">Warnings ({job.warnings.length})</p>
-          {job.warnings.map((w, i) => (
-            <p key={i}>Warning: {w}</p>
-          ))}
-        </div>
       )}
 
       <button
