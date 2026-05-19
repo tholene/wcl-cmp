@@ -2,6 +2,11 @@ import crypto from 'node:crypto'
 import { queryWclGraphQl } from '../warcraft-logs/wcl-client'
 import type { WclConfig } from '../warcraft-logs/wcl-config'
 import { WclService } from '../warcraft-logs/wcl-service'
+import {
+  classifyRaidZone,
+  normalizeZoneName,
+  type RaidZoneClassification,
+} from '../warcraft-logs/raid-zone-classifier'
 import { clampLimits } from './player-analysis-limits'
 import { JobStore } from './player-analysis-job-store'
 import {
@@ -156,60 +161,89 @@ function resolveTimeframe(
   return { since, until }
 }
 
-const KNOWN_RAID_ZONE_IDS = new Set<number>([
-  26, // Castle Nathria
-  27, // Sanctum of Domination
-  28, // Sepulcher of the First Ones
-  31, // Vault of the Incarnates
-  33, // Aberrus, the Shadowed Crucible
-  35, // Amirdrassil, the Dream's Hope
-  38, // Nerub-ar Palace
-])
-
-const KNOWN_RAID_ZONE_NAMES = new Set<string>([
-  'castle nathria',
-  'sanctum of domination',
-  'sepulcher of the first ones',
-  'vault of the incarnates',
-  'aberrus, the shadowed crucible',
-  "amirdrassil, the dream's hope",
-  'nerub-ar palace',
-])
-
-const RAID_NAME_HINTS = ['raid', 'palace', 'vault', 'sanctum', 'sepulcher', 'aberrus', 'amirdrassil', 'nathria']
-const NON_RAID_NAME_HINTS = [
-  'mythic+',
-  'mythic plus',
-  'dungeon',
-  'keystone',
-  'timewalking',
-  'arena',
-  'battleground',
-  'skirmish',
-]
-
-function normalizeZoneName(value: string | null | undefined): string {
-  return (value ?? '').trim().toLowerCase()
+type LatestRaidDiagnostics = {
+  scannedReports: number
+  raidCandidates: number
+  playerPresentRaidCandidates: number
+  selectedReports: number
+  recentZoneSummaries: string[]
+  rejectedRaidZoneSummaries: string[]
+  raidButPlayerAbsentSummaries: string[]
 }
 
-function isRaidZone(report: { zoneId?: number | null; zoneName?: string | null }): boolean {
-  if (typeof report.zoneId === 'number' && KNOWN_RAID_ZONE_IDS.has(report.zoneId)) return true
-  const zoneName = normalizeZoneName(report.zoneName)
-  if (!zoneName) return false
-  if (KNOWN_RAID_ZONE_NAMES.has(zoneName)) return true
-  if (NON_RAID_NAME_HINTS.some((hint) => zoneName.includes(hint))) return false
-  return RAID_NAME_HINTS.some((hint) => zoneName.includes(hint))
+type LatestRaidSelectionResult = {
+  reportCodes: string[]
+  diagnostics: LatestRaidDiagnostics
+}
+
+function summarizeZone(report: { zoneId?: number | null; zoneName?: string | null }): string {
+  const zoneName = report.zoneName?.trim() || 'Unknown zone'
+  const zoneId = typeof report.zoneId === 'number' ? report.zoneId : 'n/a'
+  return `${zoneName} (id ${zoneId})`
+}
+
+function summarizeRaidRejection(
+  report: { code: string; zoneId?: number | null; zoneName?: string | null },
+  classification: RaidZoneClassification
+): string {
+  const zoneSummary = summarizeZone(report)
+  if (classification.reason === 'missingZoneName') return `${zoneSummary} — missing zone name metadata (${report.code})`
+  if (classification.reason === 'nonRaidHint') {
+    return `${zoneSummary} — matched non-raid hint "${classification.matchedSignal ?? 'unknown'}" (${report.code})`
+  }
+  if (classification.reason === 'noRaidSignal') return `${zoneSummary} — no raid signal matched (${report.code})`
+  return `${zoneSummary} — rejected as non-raid (${report.code})`
 }
 
 async function selectLatestRaidReportCodesForPlayer(
   config: WclConfig,
   reports: Array<{ code: string; startTime: number; zoneId?: number | null; zoneName?: string | null }>,
   playerName: string
-): Promise<string[]> {
-  if (reports.length === 0) return []
+): Promise<LatestRaidSelectionResult> {
+  if (reports.length === 0) {
+    return {
+      reportCodes: [],
+      diagnostics: {
+        scannedReports: 0,
+        raidCandidates: 0,
+        playerPresentRaidCandidates: 0,
+        selectedReports: 0,
+        recentZoneSummaries: [],
+        rejectedRaidZoneSummaries: [],
+        raidButPlayerAbsentSummaries: [],
+      },
+    }
+  }
 
-  const raidReports = reports.filter(isRaidZone).sort((left, right) => right.startTime - left.startTime)
-  if (raidReports.length === 0) return []
+  const recentZoneSummaries = reports.slice(0, 8).map((report) => summarizeZone(report))
+  const classifiedReports = reports.map((report) => ({
+    report,
+    classification: classifyRaidZone(report),
+  }))
+
+  const raidReports = classifiedReports
+    .filter((entry) => entry.classification.isRaid)
+    .map((entry) => entry.report)
+    .sort((left, right) => right.startTime - left.startTime)
+  const rejectedRaidZoneSummaries = classifiedReports
+    .filter((entry) => !entry.classification.isRaid)
+    .slice(0, 8)
+    .map((entry) => summarizeRaidRejection(entry.report, entry.classification))
+
+  if (raidReports.length === 0) {
+    return {
+      reportCodes: [],
+      diagnostics: {
+        scannedReports: reports.length,
+        raidCandidates: 0,
+        playerPresentRaidCandidates: 0,
+        selectedReports: 0,
+        recentZoneSummaries,
+        rejectedRaidZoneSummaries,
+        raidButPlayerAbsentSummaries: [],
+      },
+    }
+  }
 
   const withPresence = await Promise.all(
     raidReports.map(async (report) => {
@@ -221,14 +255,34 @@ async function selectLatestRaidReportCodesForPlayer(
     })
   )
 
-  const playerRaidReports = withPresence.filter((entry) => entry.playerPresent).map((entry) => entry.report)
-  if (playerRaidReports.length === 0) return []
+  const playerRaidReports = withPresence
+    .filter((entry) => entry.playerPresent)
+    .map((entry) => entry.report)
+  const raidButPlayerAbsentSummaries = withPresence
+    .filter((entry) => !entry.playerPresent)
+    .slice(0, 8)
+    .map((entry) => `${summarizeZone(entry.report)} (${entry.report.code})`)
+
+  if (playerRaidReports.length === 0) {
+    return {
+      reportCodes: [],
+      diagnostics: {
+        scannedReports: reports.length,
+        raidCandidates: raidReports.length,
+        playerPresentRaidCandidates: 0,
+        selectedReports: 0,
+        recentZoneSummaries,
+        rejectedRaidZoneSummaries,
+        raidButPlayerAbsentSummaries,
+      },
+    }
+  }
 
   const latest = playerRaidReports[0]
   const latestZone = normalizeZoneName(latest.zoneName)
   const maxWindowMs = 6 * 60 * 60 * 1000
 
-  return playerRaidReports
+  const reportCodes = playerRaidReports
     .filter((report) => {
       if (latest.startTime - report.startTime > maxWindowMs) return false
       if (!latestZone) return true
@@ -236,6 +290,19 @@ async function selectLatestRaidReportCodesForPlayer(
       return !!zone && zone === latestZone
     })
     .map((report) => report.code)
+
+  return {
+    reportCodes,
+    diagnostics: {
+      scannedReports: reports.length,
+      raidCandidates: raidReports.length,
+      playerPresentRaidCandidates: playerRaidReports.length,
+      selectedReports: reportCodes.length,
+      recentZoneSummaries,
+      rejectedRaidZoneSummaries,
+      raidButPlayerAbsentSummaries,
+    },
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -1138,9 +1205,28 @@ export async function getExportPreview(
   } else {
     const recentReports = await WclService.listRecentReports(config, limits.maxReports)
     if (request.timeframePreset === 'latestRaid') {
-      reportCodes = await selectLatestRaidReportCodesForPlayer(config, recentReports, playerName)
+      const latestRaidSelection = await selectLatestRaidReportCodesForPlayer(config, recentReports, playerName)
+      reportCodes = latestRaidSelection.reportCodes
       if (reportCodes.length === 0) {
         warnings.push(`No recent raid logs found where ${playerName} was present. Try manual report selection.`)
+        warnings.push(
+          `Latest-raid diagnostics: scanned=${latestRaidSelection.diagnostics.scannedReports}, raidCandidates=${latestRaidSelection.diagnostics.raidCandidates}, playerPresentRaidCandidates=${latestRaidSelection.diagnostics.playerPresentRaidCandidates}.`
+        )
+        if (latestRaidSelection.diagnostics.recentZoneSummaries.length > 0) {
+          warnings.push(
+            `Recent zones seen: ${latestRaidSelection.diagnostics.recentZoneSummaries.join(' | ')}`
+          )
+        }
+        if (latestRaidSelection.diagnostics.rejectedRaidZoneSummaries.length > 0) {
+          warnings.push(
+            `Rejected non-raid zones: ${latestRaidSelection.diagnostics.rejectedRaidZoneSummaries.join(' | ')}`
+          )
+        }
+        if (latestRaidSelection.diagnostics.raidButPlayerAbsentSummaries.length > 0) {
+          warnings.push(
+            `Raid reports without player presence: ${latestRaidSelection.diagnostics.raidButPlayerAbsentSummaries.join(' | ')}`
+          )
+        }
       }
     } else {
       reportCodes = recentReports

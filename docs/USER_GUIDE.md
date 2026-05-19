@@ -51,6 +51,10 @@ The README defines required output sections and caveats for fair, evidence-based
 
 - Player not found or no fights included:
   Verify player name, include player-present fights, and re-run preview.
+- Latest raid misses expected raid logs:
+  Latest-raid classification uses explicit zone ID/name/alias rules plus fallback hints in [raid-zone-classifier.ts](/home/tholene/Projects/git/std-analyzer/server/warcraft-logs/raid-zone-classifier.ts). If your guild uses a new shorthand zone label, add it under `raidZoneAliases` (and optionally `raidZoneIds` / `raidZoneNames`).
+- Latest raid returns no raid reports:
+  Preview warnings now include compact diagnostics (`recent zones seen`, `rejected non-raid zones`, `raid reports without player presence`) to show why reports were excluded.
 - Benchmark requested but missing:
   Select an exportable candidate or enable the subject-only override.
 - Partial export with skipped/truncated data:

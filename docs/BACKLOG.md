@@ -76,7 +76,7 @@ Scope completed:
 ## Follow-ups
 
 - Investigate ranking item-level vs CombatantInfo item-level source mismatches.
-- Maintain and periodically validate raid-zone classification heuristics.
+- Maintain and periodically validate raid-zone classification config in [raid-zone-classifier.ts](/home/tholene/Projects/git/std-analyzer/server/warcraft-logs/raid-zone-classifier.ts) (`raidZoneIds`, `raidZoneNames`, `raidZoneAliases`).
 - Add optional automated smoke tests for MVP flow.
 - Visual polish pass (status icons/spec imagery/visual hierarchy only).
 - Remove remaining legacy routes/endpoints after confidence window.

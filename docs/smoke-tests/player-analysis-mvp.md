@@ -48,9 +48,15 @@ npm run server:dev
 | Date | Tester | Environment | Result | Notes |
 |---|---|---|---|---|
 | 2026-05-19 | codex | local WCL-enabled run | pass | Player `Bagge`; report `ACDqPQncZ4vzTGr9`; latest player-present boss kill `Fallen-King Salhadaar` (Mythic); benchmark `Aknine` selected and exported; status `complete` with Ready-for-ChatGPT summary; README AI Instructions present; manifest contains `qualityGate` + `resultSummary`; benchmark files and valid `bundle.zip` confirmed. |
+| 2026-05-19 | codex | local WCL-enabled run | pass | WP8 check: Latest raid classification now includes `VS / DR / MQD` logs. Verified with player `Heathin` (`latestRaid`: reportsIncluded=2, fightsIncluded=30, killsIncluded=8; includes report `B76K9dZNRWmzjrn4` titled `VS / DR / MQD`). Manual report scope still works (`reportCodes=[ACDqPQncZ4vzTGr9]`). |
 
 ## Latest run notes (2026-05-19)
 
-- Smoke run used manual report scope because `latestRaid` currently excludes zone label `VS / DR / MQD` from raid classification.
+- Historical WP7 run used manual report scope because `latestRaid` then excluded zone label `VS / DR / MQD`.
 - Export ID: `19eb4f1b-40d6-47b2-a3e8-54349459270f`
 - Bundle integrity check: `unzip -t` passed for all exported files.
+
+## WP8 note (2026-05-19)
+
+- `latestRaid` raid classification is now alias-aware and includes `VS / DR / MQD`.
+- If latest raid is still empty for a specific player, preview warnings include compact diagnostics (`recent zones seen`, rejected zones and reasons, and raid reports where player presence was not found).

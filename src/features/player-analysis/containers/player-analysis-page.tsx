@@ -104,30 +104,39 @@ function buildSelectedCandidates(
   return result
 }
 
-const KNOWN_RAID_ZONE_IDS = new Set<number>([26, 27, 28, 31, 33, 35, 38])
-const KNOWN_RAID_ZONE_NAMES = new Set<string>([
-  'castle nathria',
-  'sanctum of domination',
-  'sepulcher of the first ones',
-  'vault of the incarnates',
-  'aberrus, the shadowed crucible',
-  "amirdrassil, the dream's hope",
-  'nerub-ar palace',
-])
-const RAID_NAME_HINTS = ['raid', 'palace', 'vault', 'sanctum', 'sepulcher', 'aberrus', 'amirdrassil', 'nathria']
-const NON_RAID_NAME_HINTS = ['mythic+', 'mythic plus', 'dungeon', 'keystone', 'timewalking', 'arena', 'battleground', 'skirmish']
+const RAID_CLASSIFICATION_CONFIG = {
+  zoneIds: [26, 27, 28, 31, 33, 35, 38, 46],
+  zoneNames: [
+    'castle nathria',
+    'sanctum of domination',
+    'sepulcher of the first ones',
+    'vault of the incarnates',
+    'aberrus, the shadowed crucible',
+    "amirdrassil, the dream's hope",
+    'nerub-ar palace',
+    'liberation of undermine',
+  ],
+  aliases: ['vs / dr / mqd', 'vs/dr/mqd', 'vs-dr-mqd'],
+  raidHints: ['raid', 'palace', 'vault', 'sanctum', 'sepulcher', 'aberrus', 'amirdrassil', 'nathria', 'undermine', 'reclear'],
+  nonRaidHints: ['mythic+', 'mythic plus', 'dungeon', 'keystone', 'timewalking', 'arena', 'battleground', 'skirmish'],
+} as const
+
+const RAID_ZONE_ID_SET = new Set<number>(RAID_CLASSIFICATION_CONFIG.zoneIds)
+const RAID_ZONE_NAME_SET = new Set<string>(RAID_CLASSIFICATION_CONFIG.zoneNames)
+const RAID_ZONE_ALIAS_SET = new Set<string>(RAID_CLASSIFICATION_CONFIG.aliases)
 
 function normalizeZoneName(value: string | null | undefined): string {
   return (value ?? '').trim().toLowerCase()
 }
 
 function isRaidReport(report: ReportSummary): boolean {
-  if (typeof report.zoneId === 'number' && KNOWN_RAID_ZONE_IDS.has(report.zoneId)) return true
+  if (typeof report.zoneId === 'number' && RAID_ZONE_ID_SET.has(report.zoneId)) return true
   const zoneName = normalizeZoneName(report.zoneName)
   if (!zoneName) return false
-  if (KNOWN_RAID_ZONE_NAMES.has(zoneName)) return true
-  if (NON_RAID_NAME_HINTS.some((hint) => zoneName.includes(hint))) return false
-  return RAID_NAME_HINTS.some((hint) => zoneName.includes(hint))
+  if (RAID_ZONE_NAME_SET.has(zoneName)) return true
+  if (RAID_ZONE_ALIAS_SET.has(zoneName)) return true
+  if (RAID_CLASSIFICATION_CONFIG.nonRaidHints.some((hint) => zoneName.includes(hint))) return false
+  return RAID_CLASSIFICATION_CONFIG.raidHints.some((hint) => zoneName.includes(hint))
 }
 
 function selectLatestRaidReportCodes(reports: ReportSummary[]): string[] {

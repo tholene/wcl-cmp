@@ -1,5 +1,6 @@
 import type { WclConfig } from './wcl-config'
 import { queryWclGraphQl } from './wcl-client'
+import { isRaidZone } from './raid-zone-classifier'
 import type {
   WclBossFightListItem,
   WclBossSummary,
@@ -199,40 +200,6 @@ type AggregatedBossSource = {
 }
 
 const RECENT_REPORT_LIMIT = 15
-
-const KNOWN_RAID_ZONE_IDS = new Set<number>([
-  26, // Castle Nathria
-  27, // Sanctum of Domination
-  28, // Sepulcher of the First Ones
-  31, // Vault of the Incarnates
-  33, // Aberrus, the Shadowed Crucible
-  35, // Amirdrassil, the Dream's Hope
-  38, // Nerub-ar Palace
-])
-
-const KNOWN_RAID_ZONE_NAMES = new Set<string>([
-  'castle nathria',
-  'sanctum of domination',
-  'sepulcher of the first ones',
-  'vault of the incarnates',
-  'aberrus, the shadowed crucible',
-  "amirdrassil, the dream's hope",
-  'nerub-ar palace',
-])
-
-const RAID_NAME_HINTS = ['raid', 'palace', 'vault', 'sanctum', 'sepulcher', 'aberrus', 'amirdrassil', 'nathria']
-const NON_RAID_NAME_HINTS = ['mythic+', 'mythic plus', 'dungeon', 'keystone', 'timewalking', 'arena', 'battleground', 'skirmish']
-
-const normalizeZoneName = (value: string | null | undefined): string => (value ?? '').trim().toLowerCase()
-
-const isRaidZone = (report: { zoneId?: number | null; zoneName?: string | null }): boolean => {
-  if (typeof report.zoneId === 'number' && KNOWN_RAID_ZONE_IDS.has(report.zoneId)) return true
-  const zoneName = normalizeZoneName(report.zoneName)
-  if (!zoneName) return false
-  if (KNOWN_RAID_ZONE_NAMES.has(zoneName)) return true
-  if (NON_RAID_NAME_HINTS.some((hint) => zoneName.includes(hint))) return false
-  return RAID_NAME_HINTS.some((hint) => zoneName.includes(hint))
-}
 
 const REPORTS_BY_GUILD_QUERY = `
   query ReportsByGuild($guildId: Int!, $limit: Int!) {
