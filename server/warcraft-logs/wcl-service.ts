@@ -1513,27 +1513,32 @@ export const WclService = {
   getRecentPlayers: async (config: WclConfig, limit = RECENT_REPORT_LIMIT): Promise<WclRecentPlayer[]> => {
     const reports = await WclService.listRecentReports(config, limit)
     const raidReports = reports.filter(isRaidZone)
+    const scopedReports = raidReports.length > 0 ? raidReports : reports
     const playerMap = new Map<string, WclRecentPlayer>()
 
-    if (raidReports.length === 0) {
+    if (scopedReports.length === 0) {
       return []
     }
 
     const reportDetailsResults = await Promise.allSettled(
-      raidReports.map(async (report) => {
+      scopedReports.map(async (report) => {
         const details = await WclService.getReportDetails(config, report.code)
         const raidKillFights = details.fights.filter((fight) => fight.encounterId > 0 && fight.kill).length
         return { report, raidKillFights }
       })
     )
 
-    const raidKillReports = reportDetailsResults
+    const resolvedReports = reportDetailsResults
       .filter((result): result is PromiseFulfilledResult<{ report: WclReportSummary; raidKillFights: number }> => result.status === 'fulfilled')
       .map((result) => result.value)
+
+    const raidKillReports = resolvedReports
       .filter((entry) => entry.raidKillFights > 0)
 
+    const sourceReports = raidKillReports.length > 0 ? raidKillReports : resolvedReports
+
     await Promise.all(
-      raidKillReports.map(async ({ report, raidKillFights }) => {
+      sourceReports.map(async ({ report, raidKillFights }) => {
         try {
           const response = await queryWclGraphQl<ReportPlayersQueryResponse>({
             config,
@@ -1557,7 +1562,7 @@ export const WclService = {
                   role: 'unknown',
                   seenInReportCodes: [report.code],
                   lastSeenAt: report.startTime,
-                  seenInRaidKillReports: 1,
+                  seenInRaidKillReports: raidKillFights > 0 ? 1 : 0,
                   seenInRaidKillFights: raidKillFights,
                 })
                 return
@@ -1565,7 +1570,7 @@ export const WclService = {
 
               if (!existing.seenInReportCodes.includes(report.code)) {
                 existing.seenInReportCodes.push(report.code)
-                existing.seenInRaidKillReports = (existing.seenInRaidKillReports ?? 0) + 1
+                existing.seenInRaidKillReports = (existing.seenInRaidKillReports ?? 0) + (raidKillFights > 0 ? 1 : 0)
                 existing.seenInRaidKillFights = (existing.seenInRaidKillFights ?? 0) + raidKillFights
               }
               existing.lastSeenAt = Math.max(existing.lastSeenAt ?? 0, report.startTime)

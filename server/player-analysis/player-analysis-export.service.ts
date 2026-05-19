@@ -199,18 +199,34 @@ function isRaidZone(report: { zoneId?: number | null; zoneName?: string | null }
   return RAID_NAME_HINTS.some((hint) => zoneName.includes(hint))
 }
 
-function selectLatestRaidReportCodes(
-  reports: Array<{ code: string; startTime: number; zoneId?: number | null; zoneName?: string | null }>
-): string[] {
+async function selectLatestRaidReportCodesForPlayer(
+  config: WclConfig,
+  reports: Array<{ code: string; startTime: number; zoneId?: number | null; zoneName?: string | null }>,
+  playerName: string
+): Promise<string[]> {
   if (reports.length === 0) return []
-  const raidReports = reports.filter(isRaidZone)
+
+  const raidReports = reports.filter(isRaidZone).sort((left, right) => right.startTime - left.startTime)
   if (raidReports.length === 0) return []
-  const sorted = [...raidReports].sort((left, right) => right.startTime - left.startTime)
-  const latest = sorted[0]
+
+  const withPresence = await Promise.all(
+    raidReports.map(async (report) => {
+      const actor = await findPlayerInReport(config, report.code, playerName)
+      return {
+        report,
+        playerPresent: actor !== null,
+      }
+    })
+  )
+
+  const playerRaidReports = withPresence.filter((entry) => entry.playerPresent).map((entry) => entry.report)
+  if (playerRaidReports.length === 0) return []
+
+  const latest = playerRaidReports[0]
   const latestZone = normalizeZoneName(latest.zoneName)
   const maxWindowMs = 6 * 60 * 60 * 1000
 
-  return sorted
+  return playerRaidReports
     .filter((report) => {
       if (latest.startTime - report.startTime > maxWindowMs) return false
       if (!latestZone) return true
@@ -845,9 +861,9 @@ export async function getExportPreview(
   } else {
     const recentReports = await WclService.listRecentReports(config, limits.maxReports)
     if (request.timeframePreset === 'latestRaid') {
-      reportCodes = selectLatestRaidReportCodes(recentReports)
+      reportCodes = await selectLatestRaidReportCodesForPlayer(config, recentReports, playerName)
       if (reportCodes.length === 0) {
-        warnings.push('No recent raid logs found. Try manual report selection.')
+        warnings.push(`No recent raid logs found where ${playerName} was present. Try manual report selection.`)
       }
     } else {
       reportCodes = recentReports

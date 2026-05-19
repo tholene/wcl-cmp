@@ -1,4 +1,5 @@
 import type { FC } from 'react'
+import { getDifficultyLabel } from '@/lib/difficulty'
 import type { PlayerAnalysisExportPreview } from '../types/player-analysis.types'
 
 const SIZE_LABELS: Record<string, string> = {
@@ -205,7 +206,7 @@ export const PlayerAnalysisPreviewPanel: FC<Props> = ({
                     >
                       <div className="flex flex-wrap items-center justify-between gap-2">
                         <span className="font-medium">
-                          Difficulty {group.difficulty} — {formatDuration(fight.durationMs)} — {new Date(fight.startTime).toLocaleDateString()}
+                          {getDifficultyLabel(group.difficulty)} — {formatDuration(fight.durationMs)} — {new Date(fight.startTime).toLocaleDateString()}
                         </span>
                         <span className="text-xs text-slate-400">
                           {fight.reportCode}
@@ -265,7 +266,7 @@ export const PlayerAnalysisPreviewPanel: FC<Props> = ({
                           <div className="grid gap-0.5 md:grid-cols-2">
                             <span className="font-medium text-slate-200">{fight.encounterName}</span>
                             <span className="text-slate-400">Fight ID: {fight.fightId}</span>
-                            <span className="text-slate-400">Difficulty: {fight.difficulty}</span>
+                            <span className="text-slate-400">Difficulty: {getDifficultyLabel(fight.difficulty)}</span>
                             <span className={fight.kill ? 'text-emerald-300' : 'text-rose-300'}>
                               {fight.kill ? 'Kill' : 'Wipe'}
                             </span>

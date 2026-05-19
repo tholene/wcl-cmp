@@ -356,9 +356,7 @@ export const PlayerAnalysisPage: FC = () => {
     const reportCodes =
       timeframePreset === 'manualReports'
         ? selectedReports
-        : timeframePreset === 'latestRaid' && latestRaidReportCodes.length > 0
-          ? latestRaidReportCodes
-          : undefined
+        : undefined
 
     return {
       playerName,
