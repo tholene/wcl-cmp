@@ -28,6 +28,7 @@ type Props = {
   onOnlyPlayerPresentChange: (value: boolean) => void
   onPreview: () => void
   isPreviewing: boolean
+  previewButtonLabel?: string
 }
 
 export const PlayerAnalysisScopeForm: FC<Props> = ({
@@ -54,10 +55,11 @@ export const PlayerAnalysisScopeForm: FC<Props> = ({
   onOnlyPlayerPresentChange,
   onPreview,
   isPreviewing,
+  previewButtonLabel = 'Preview latest raid',
 }) => (
   <section className="rounded-xl border border-slate-800 bg-slate-900/70 p-4">
-    <h2 className="text-sm font-semibold text-slate-200">Export Scope</h2>
-    <p className="mt-1 text-xs text-slate-400">Enter a character name to get started.</p>
+    <h2 className="text-sm font-semibold text-slate-200">Step 1: Player and Scope</h2>
+    <p className="mt-1 text-xs text-slate-400">Pick a player, then preview raids/bosses for analysis.</p>
 
     <label className="mt-3 block text-xs font-medium text-slate-300">Character name</label>
     <input
@@ -108,7 +110,7 @@ export const PlayerAnalysisScopeForm: FC<Props> = ({
           </p>
         )}
         {!reportsLoading && !reportsError && latestRaidReportCodes.length === 0 && (
-          <p className="mt-1 text-slate-500">No recent reports found yet.</p>
+          <p className="mt-1 text-slate-500">No recent raid logs found. Try manual report selection.</p>
         )}
         {!reportsLoading && latestRaidReportCodes.length > 0 && (
           <ul className="mt-1 space-y-1 text-slate-400">
@@ -208,7 +210,7 @@ export const PlayerAnalysisScopeForm: FC<Props> = ({
       disabled={isPreviewing || !playerName.trim() || (timeframePreset === 'manualReports' && selectedReports.length === 0)}
       className="mt-4 w-full rounded border border-cyan-600 bg-cyan-700/20 px-3 py-1.5 text-xs text-cyan-200 hover:bg-cyan-700/30 disabled:opacity-60"
     >
-      {isPreviewing ? 'Previewing…' : 'Preview export'}
+      {isPreviewing ? 'Previewing…' : previewButtonLabel}
     </button>
   </section>
 )

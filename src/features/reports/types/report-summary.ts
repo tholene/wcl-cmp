@@ -5,6 +5,7 @@ export type ReportSummary = {
   endTime: number
   visibility?: string | null
   ownerName?: string | null
+  zoneId?: number | null
   zoneName?: string | null
   url: string
 }

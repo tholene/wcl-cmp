@@ -12,6 +12,7 @@ export type WclReportSummary = {
   endTime: number
   visibility?: string | null
   ownerName?: string | null
+  zoneId?: number | null
   zoneName?: string | null
   url: string
 }
@@ -31,6 +32,7 @@ export type WclReportDetails = {
   title: string
   startTime: number
   endTime: number
+  zoneId?: number | null
   zoneName?: string | null
   ownerName?: string | null
   visibility?: string | null

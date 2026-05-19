@@ -99,7 +99,12 @@ export type SelectedBenchmarkCandidate = {
   benchmarkClassName: string
   benchmarkSpecName: string
   benchmarkPercentile?: number
+  /** Ranking metadata item level from WCL character rankings. */
+  benchmarkCandidateItemLevel?: number
+  /** Deprecated alias; use benchmarkCandidateItemLevel. */
   benchmarkItemLevel?: number
+  /** Populated from benchmark fight CombatantInfo when available. */
+  benchmarkCombatantInfoItemLevel?: number
   benchmarkDurationMs?: number
 }
 

@@ -37,6 +37,7 @@ type ReportsQueryResponse = {
           name?: string | null
         } | null
         zone?: {
+          id?: number | null
           name?: string | null
         } | null
       }>
@@ -56,6 +57,7 @@ type ReportDetailsQueryResponse = {
         name?: string | null
       } | null
       zone?: {
+        id?: number | null
         name?: string | null
       } | null
       fights?: Array<{
@@ -212,6 +214,7 @@ const REPORTS_BY_GUILD_QUERY = `
             name
           }
           zone {
+            id
             name
           }
         }
@@ -233,6 +236,7 @@ const REPORT_DETAILS_QUERY = `
           name
         }
         zone {
+          id
           name
         }
         fights {
@@ -975,6 +979,7 @@ export const WclService = {
       endTime: report.endTime,
       visibility: report.visibility,
       ownerName: report.owner?.name ?? null,
+      zoneId: report.zone?.id ?? null,
       zoneName: report.zone?.name ?? null,
       url: `https://www.warcraftlogs.com/reports/${report.code}`,
     }))
@@ -1002,6 +1007,7 @@ export const WclService = {
       endTime: report.endTime,
       visibility: report.visibility,
       ownerName: report.owner?.name ?? null,
+      zoneId: report.zone?.id ?? null,
       zoneName: report.zone?.name ?? null,
       fights: mapFights(report.fights),
       url: `https://www.warcraftlogs.com/reports/${report.code}`,

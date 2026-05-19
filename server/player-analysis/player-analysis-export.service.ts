@@ -154,21 +154,68 @@ function resolveTimeframe(
   return { since, until }
 }
 
+const KNOWN_RAID_ZONE_IDS = new Set<number>([
+  26, // Castle Nathria
+  27, // Sanctum of Domination
+  28, // Sepulcher of the First Ones
+  31, // Vault of the Incarnates
+  33, // Aberrus, the Shadowed Crucible
+  35, // Amirdrassil, the Dream's Hope
+  38, // Nerub-ar Palace
+])
+
+const KNOWN_RAID_ZONE_NAMES = new Set<string>([
+  'castle nathria',
+  'sanctum of domination',
+  'sepulcher of the first ones',
+  'vault of the incarnates',
+  'aberrus, the shadowed crucible',
+  "amirdrassil, the dream's hope",
+  'nerub-ar palace',
+])
+
+const RAID_NAME_HINTS = ['raid', 'palace', 'vault', 'sanctum', 'sepulcher', 'aberrus', 'amirdrassil', 'nathria']
+const NON_RAID_NAME_HINTS = [
+  'mythic+',
+  'mythic plus',
+  'dungeon',
+  'keystone',
+  'timewalking',
+  'arena',
+  'battleground',
+  'skirmish',
+]
+
+function normalizeZoneName(value: string | null | undefined): string {
+  return (value ?? '').trim().toLowerCase()
+}
+
+function isRaidZone(report: { zoneId?: number | null; zoneName?: string | null }): boolean {
+  if (typeof report.zoneId === 'number' && KNOWN_RAID_ZONE_IDS.has(report.zoneId)) return true
+  const zoneName = normalizeZoneName(report.zoneName)
+  if (!zoneName) return false
+  if (KNOWN_RAID_ZONE_NAMES.has(zoneName)) return true
+  if (NON_RAID_NAME_HINTS.some((hint) => zoneName.includes(hint))) return false
+  return RAID_NAME_HINTS.some((hint) => zoneName.includes(hint))
+}
+
 function selectLatestRaidReportCodes(
-  reports: Array<{ code: string; startTime: number; zoneName?: string | null }>
+  reports: Array<{ code: string; startTime: number; zoneId?: number | null; zoneName?: string | null }>
 ): string[] {
   if (reports.length === 0) return []
-  const sorted = [...reports].sort((left, right) => right.startTime - left.startTime)
+  const raidReports = reports.filter(isRaidZone)
+  if (raidReports.length === 0) return []
+  const sorted = [...raidReports].sort((left, right) => right.startTime - left.startTime)
   const latest = sorted[0]
-  const latestZone = latest.zoneName?.trim().toLowerCase()
+  const latestZone = normalizeZoneName(latest.zoneName)
   const maxWindowMs = 6 * 60 * 60 * 1000
 
   return sorted
     .filter((report) => {
       if (latest.startTime - report.startTime > maxWindowMs) return false
       if (!latestZone) return true
-      const zone = report.zoneName?.trim().toLowerCase()
-      return !zone || zone === latestZone
+      const zone = normalizeZoneName(report.zoneName)
+      return !!zone && zone === latestZone
     })
     .map((report) => report.code)
 }
@@ -217,6 +264,12 @@ type CombatantDetails = {
   talentsJson: string
   gearJson: string
   rawJson: string
+}
+
+function coalesceKnownItemLevel(current: number | null, next: number | null | undefined): number | null {
+  if (typeof current === 'number') return current
+  if (typeof next === 'number') return next
+  return null
 }
 
 function extractCombatantDetails(events: RawEvent[], sourceId: number): CombatantDetails {
@@ -492,7 +545,7 @@ function buildReadme(params: {
   playerName: string
   className: string
   specName: string
-  itemLevel: number | null
+  subjectCombatantInfoItemLevel: number | null
   scope: PlayerAnalysisExportPreview['scope']
   views: PlayerAnalysisExportView[]
   benchmarkEnabled: boolean
@@ -515,6 +568,14 @@ function buildReadme(params: {
   errors?: string[]
   benchmarkSummary?: PlayerAnalysisBenchmarkSummary
   viewSummary?: PlayerAnalysisViewSummary
+  benchmarkItemLevelMismatches?: Array<{
+    benchmarkPlayerName: string
+    benchmarkReportCode: string
+    benchmarkFightId: number
+    benchmarkCandidateItemLevel: number
+    benchmarkCombatantInfoItemLevel: number
+    delta: number
+  }>
 }): string {
   const scope = params.scope
   const dc = params.detectedContext
@@ -559,11 +620,31 @@ function buildReadme(params: {
         : 'no class/spec context available'
 
   const lines: string[] = [
-    '# Player Analysis Export',
+    '# Player Analysis Export Bundle',
+    '',
+    '## Purpose',
+    '- This bundle captures Warcraft Logs evidence for one player and optional same-spec benchmark comparisons.',
+    '- Use it to produce constructive, evidence-based coaching notes for officers.',
+    '',
+    '## AI Instructions',
+    '- Report back in English.',
+    '- Focus on actionable, benchmark-oriented coaching feedback.',
+    '- Treat this bundle as evidence, not a verdict.',
+    '- If data is missing or ambiguous, state assumptions and confidence clearly.',
+    '- Use benchmark comparisons only when class/spec/encounter context matches.',
+    '',
+    'Required output structure:',
+    '1. Executive summary',
+    '2. Core findings (facts first)',
+    '3. Deltas vs benchmark (only where valid)',
+    '4. Practical recommendations for next raid',
+    '5. Fight-by-fight notes',
+    '6. Limitations and assumptions',
+    '7. Concise player-facing message',
     '',
     '## Player',
     `- Requested player: ${params.playerName}`,
-    `- Item level: ${params.itemLevel ?? 'unknown'}`,
+    `- Subject CombatantInfo item level: ${params.subjectCombatantInfoItemLevel ?? 'unknown'}`,
     '',
     '## Player Context',
     '',
@@ -620,11 +701,22 @@ function buildReadme(params: {
           const benchmarkPlayerName = String(candidate['benchmarkPlayerName'] ?? candidate['playerName'] ?? '')
           const benchmarkReportCode = String(candidate['benchmarkReportCode'] ?? candidate['reportCode'] ?? '')
           const benchmarkFightId = String(candidate['benchmarkFightId'] ?? candidate['fightId'] ?? '')
-          return `  - ${baselineReportCode}#${baselineFightId} -> ${benchmarkPlayerName} (${benchmarkReportCode}#${benchmarkFightId})`
+          const rankingIlvl = candidate['benchmarkCandidateItemLevel'] ?? candidate['benchmarkItemLevel'] ?? 'unknown'
+          const combatantIlvl = candidate['benchmarkCombatantInfoItemLevel'] ?? 'unknown'
+          return `  - ${baselineReportCode}#${baselineFightId} -> ${benchmarkPlayerName} (${benchmarkReportCode}#${benchmarkFightId}) | ranking ilvl=${rankingIlvl}, combatantInfo ilvl=${combatantIlvl}`
         })
       : []),
     ...(params.benchmarkWarnings.length
       ? params.benchmarkWarnings.map((w) => `- Warning: ${w}`)
+      : []),
+    ...(params.benchmarkItemLevelMismatches && params.benchmarkItemLevelMismatches.length > 0
+      ? [
+          '- Item level mismatch checks (|ranking - combatantInfo| > 3):',
+          ...params.benchmarkItemLevelMismatches.map(
+            (item) =>
+              `  - ${item.benchmarkPlayerName} (${item.benchmarkReportCode}#${item.benchmarkFightId}): ranking=${item.benchmarkCandidateItemLevel}, combatantInfo=${item.benchmarkCombatantInfoItemLevel}, delta=${item.delta}`
+          ),
+        ]
       : []),
     '',
     '## Files',
@@ -725,7 +817,7 @@ function buildReadme(params: {
     '',
     '## Optional analysis prompt',
     '',
-    'Analyze the attached Player Analysis Export. Compare the player to the benchmark data only where the benchmark is the same class and spec. Look for improvement opportunities across damage profile, casts, cooldown usage, buff uptime, debuff uptime, resources, target selection, mechanics, survivability, utility, consumables, and consistency. Separate strong evidence from tentative conclusions. Do not assume role/spec/class if marked unknown.',
+    'Analyze this bundle in English. Compare the player to benchmark data only when same encounter/difficulty/class/spec is validated. Separate facts from interpretation and highlight assumptions.',
   ]
   return lines.join('\n')
 }
@@ -754,8 +846,8 @@ export async function getExportPreview(
     const recentReports = await WclService.listRecentReports(config, limits.maxReports)
     if (request.timeframePreset === 'latestRaid') {
       reportCodes = selectLatestRaidReportCodes(recentReports)
-      if (reportCodes.length === 0 && recentReports[0]) {
-        reportCodes = [recentReports[0].code]
+      if (reportCodes.length === 0) {
+        warnings.push('No recent raid logs found. Try manual report selection.')
       }
     } else {
       reportCodes = recentReports
@@ -785,6 +877,7 @@ export async function getExportPreview(
 
   const sourceIdsByReport: Record<string, number[]> = {}
   let detectedClassName: string | null = null
+  let detectedItemLevel: number | null = null
   let firstPlayerFight: { code: string; fightId: number; startTime: number; endTime: number; sourceId: number } | null = null
   const specCandidateFights: Array<{
     code: string; fightId: number; startTime: number; endTime: number; sourceId: number
@@ -935,6 +1028,7 @@ export async function getExportPreview(
       diag.combatantInfoQueried = true
       diag.combatantInfoEventsFound += combatantResult.events.length
       const details = extractCombatantDetails(combatantResult.events, candidate.sourceId)
+      detectedItemLevel = coalesceKnownItemLevel(detectedItemLevel, details.itemLevel)
       if (details.specId !== null) {
         diag.rawSpecIdFound = details.specId
         if (WOW_SPEC_MAP[details.specId]) {
@@ -1007,7 +1101,7 @@ export async function getExportPreview(
       className: detectedContext.className ?? detectedClassName ?? 'unknown',
       specName: detectedContext.specName ?? 'unknown',
       role: detectedContext.role ?? 'unknown',
-      itemLevel: null,
+      itemLevel: detectedItemLevel,
       sourceIdsByReport,
       detectedContext,
       specId: detectedContext.specId,
@@ -1203,6 +1297,7 @@ async function runExportJob(
   const combatantRows: Record<string, unknown>[] = []
   const benchmarkFightRows: Record<string, unknown>[] = []
   const benchmarkCombatantRows: Record<string, unknown>[] = []
+  let subjectCombatantInfoItemLevel: number | null = null
 
   // Process each included fight
   for (const reportPreview of preview.includedReports) {
@@ -1298,12 +1393,16 @@ async function runExportJob(
           })
         }
 
-        if (request.views.includes('combatantInfo') && sourceId) {
-          const details = extractCombatantDetails(combatantResult.events, sourceId)
-          combatantItemLevel = details.itemLevel
-          combatantSpecName = details.specName
-          combatantRole = details.role
+        const subjectCombatantDetails =
+          sourceId !== undefined ? extractCombatantDetails(combatantResult.events, sourceId) : null
+        if (subjectCombatantDetails) {
+          combatantItemLevel = subjectCombatantDetails.itemLevel
+          subjectCombatantInfoItemLevel = coalesceKnownItemLevel(subjectCombatantInfoItemLevel, subjectCombatantDetails.itemLevel)
+          combatantSpecName = subjectCombatantDetails.specName
+          combatantRole = subjectCombatantDetails.role
+        }
 
+        if (request.views.includes('combatantInfo') && sourceId && subjectCombatantDetails) {
           combatantRows.push({
             subjectType: 'player',
             reportCode: reportPreview.code,
@@ -1311,12 +1410,12 @@ async function runExportJob(
             sourceName: playerActor?.name ?? playerName,
             sourceId: sourceId ?? '',
             className: preview.detectedPlayer?.className ?? 'unknown',
-            specName: details.specName ?? 'unknown',
-            role: details.role ?? 'unknown',
-            itemLevel: details.itemLevel ?? '',
-            talentsJson: details.talentsJson,
-            gearJson: details.gearJson,
-            rawJson: details.rawJson,
+            specName: subjectCombatantDetails.specName ?? 'unknown',
+            role: subjectCombatantDetails.role ?? 'unknown',
+            itemLevel: subjectCombatantDetails.itemLevel ?? '',
+            talentsJson: subjectCombatantDetails.talentsJson,
+            gearJson: subjectCombatantDetails.gearJson,
+            rawJson: subjectCombatantDetails.rawJson,
           })
         }
         if (request.views.includes('combatantInfo')) JobStore.advance(exportId)
@@ -1470,6 +1569,14 @@ async function runExportJob(
 
   let benchmarkIncluded = false
   const benchmarkWarnings: string[] = []
+  const benchmarkItemLevelMismatches: Array<{
+    benchmarkPlayerName: string
+    benchmarkReportCode: string
+    benchmarkFightId: number
+    benchmarkCandidateItemLevel: number
+    benchmarkCombatantInfoItemLevel: number
+    delta: number
+  }> = []
   let benchmarkCandidate: Record<string, unknown> | null = null
   const skippedCandidates: PlayerAnalysisBenchmarkSkippedCandidate[] = []
   const exportedCandidates: Array<Record<string, unknown>> = []
@@ -1499,7 +1606,11 @@ async function runExportJob(
 
   const createLinkFields = (
     candidate: SelectedBenchmarkCandidate,
-    overrides?: { benchmarkClassName?: string; benchmarkSpecName?: string }
+    overrides?: {
+      benchmarkClassName?: string
+      benchmarkSpecName?: string
+      benchmarkCombatantInfoItemLevel?: number | null
+    }
   ): Record<string, unknown> => ({
     baselineReportCode: candidate.baselineReportCode,
     baselineFightId: candidate.baselineFightId,
@@ -1514,12 +1625,22 @@ async function runExportJob(
     benchmarkClassName: overrides?.benchmarkClassName ?? candidate.benchmarkClassName,
     benchmarkSpecName: overrides?.benchmarkSpecName ?? candidate.benchmarkSpecName,
     benchmarkPercentile: candidate.benchmarkPercentile ?? '',
-    benchmarkItemLevel: candidate.benchmarkItemLevel ?? '',
+    benchmarkCandidateItemLevel: candidate.benchmarkCandidateItemLevel ?? candidate.benchmarkItemLevel ?? '',
+    benchmarkItemLevel: candidate.benchmarkCandidateItemLevel ?? candidate.benchmarkItemLevel ?? '',
+    benchmarkCandidateItemLevelSource: 'wclRankings',
+    benchmarkCombatantInfoItemLevel: overrides?.benchmarkCombatantInfoItemLevel ?? candidate.benchmarkCombatantInfoItemLevel ?? '',
     benchmarkDurationMs: candidate.benchmarkDurationMs ?? '',
   })
 
   const exportBenchmarkCandidate = async (candidate: SelectedBenchmarkCandidate): Promise<void> => {
-    selectedCandidatesForManifest.push(candidate as unknown as Record<string, unknown>)
+    const benchmarkCandidateItemLevel = candidate.benchmarkCandidateItemLevel ?? candidate.benchmarkItemLevel ?? null
+    const candidateForManifest: Record<string, unknown> = {
+      ...candidate,
+      benchmarkCandidateItemLevel,
+      benchmarkCandidateItemLevelSource: 'wclRankings',
+      benchmarkCombatantInfoItemLevel: candidate.benchmarkCombatantInfoItemLevel ?? null,
+    }
+    selectedCandidatesForManifest.push(candidateForManifest)
     const benchReportDetails = await WclService.getReportDetails(config, candidate.benchmarkReportCode).catch(() => null)
     if (!benchReportDetails) {
       pushSkippedCandidate(candidate, `could not load benchmark report ${candidate.benchmarkReportCode}`)
@@ -1582,9 +1703,11 @@ async function runExportJob(
     }
 
     const benchSourceId = benchActor.id
-    const linkFields = createLinkFields(candidate, {
+    let benchmarkCombatantInfoItemLevel: number | null = candidate.benchmarkCombatantInfoItemLevel ?? null
+    let linkFields = createLinkFields(candidate, {
       benchmarkClassName: candidate.benchmarkClassName || benchActor.subType || 'unknown',
       benchmarkSpecName: candidate.benchmarkSpecName || 'unknown',
+      benchmarkCombatantInfoItemLevel,
     })
     const benchDurationMs = Math.max(benchFight.endTime - benchFight.startTime, 0)
     const benchCtx: FightContext = {
@@ -1621,7 +1744,7 @@ async function runExportJob(
         className: candidate.benchmarkClassName,
         specName: candidate.benchmarkSpecName,
         role: 'unknown',
-        itemLevel: candidate.benchmarkItemLevel ?? '',
+        itemLevel: benchmarkCandidateItemLevel ?? '',
         wclReportUrl: `https://www.warcraftlogs.com/reports/${candidate.benchmarkReportCode}#fight=${candidate.benchmarkFightId}`,
       })
     }
@@ -1652,6 +1775,31 @@ async function runExportJob(
         })
       }
       const details = extractCombatantDetails(combatantResult.events, benchSourceId)
+      benchmarkCombatantInfoItemLevel = details.itemLevel
+      candidateForManifest['benchmarkCombatantInfoItemLevel'] = details.itemLevel ?? null
+      linkFields = createLinkFields(candidate, {
+        benchmarkClassName: candidate.benchmarkClassName || benchActor.subType || 'unknown',
+        benchmarkSpecName: candidate.benchmarkSpecName || 'unknown',
+        benchmarkCombatantInfoItemLevel,
+      })
+
+      if (typeof benchmarkCandidateItemLevel === 'number' && typeof details.itemLevel === 'number') {
+        const ilvlDelta = Math.abs(benchmarkCandidateItemLevel - details.itemLevel)
+        if (ilvlDelta > 3) {
+          const mismatchWarning = `Benchmark item level mismatch for ${candidate.benchmarkPlayerName} (${candidate.benchmarkReportCode}#${candidate.benchmarkFightId}): ranking=${benchmarkCandidateItemLevel}, combatantInfo=${details.itemLevel}, delta=${ilvlDelta}.`
+          addBenchmarkWarning(mismatchWarning)
+          benchmarkItemLevelMismatches.push({
+            benchmarkPlayerName: candidate.benchmarkPlayerName,
+            benchmarkReportCode: candidate.benchmarkReportCode,
+            benchmarkFightId: candidate.benchmarkFightId,
+            benchmarkCandidateItemLevel,
+            benchmarkCombatantInfoItemLevel: details.itemLevel,
+            delta: ilvlDelta,
+          })
+          candidateForManifest['benchmarkItemLevelMismatchWarning'] = mismatchWarning
+        }
+      }
+
       benchmarkCombatantRows.push({
         ...linkFields,
         subjectType: 'benchmark',
@@ -1662,7 +1810,7 @@ async function runExportJob(
         className: candidate.benchmarkClassName || 'unknown',
         specName: details.specName ?? candidate.benchmarkSpecName ?? 'unknown',
         role: details.role ?? 'unknown',
-        itemLevel: details.itemLevel ?? candidate.benchmarkItemLevel ?? '',
+        itemLevel: details.itemLevel ?? '',
         talentsJson: details.talentsJson,
         gearJson: details.gearJson,
         rawJson: details.rawJson,
@@ -1749,7 +1897,7 @@ async function runExportJob(
       JobStore.advance(exportId)
     }
 
-    exportedCandidates.push(candidate as unknown as Record<string, unknown>)
+    exportedCandidates.push(candidateForManifest)
     benchmarkIncluded = true
   }
 
@@ -1928,9 +2076,11 @@ async function runExportJob(
       reason: benchmarkIncluded ? null : (benchmarkRequestedButNotIncludedReason ?? null),
       targetPercentile: request.benchmark?.targetPercentile ?? null,
       metric: request.benchmark?.metric ?? null,
+      subjectCombatantInfoItemLevel,
       selectedCandidates: selectedCandidatesForManifest,
       exportedCandidates,
       skippedCandidates,
+      benchmarkItemLevelMismatches,
       warnings: benchmarkWarnings,
     })
     writtenFiles.push({ filename: 'benchmark-candidates.json', kind: 'benchmarkJson', sizeBytes: getExportFileSize(exportId, 'benchmark-candidates.json'), downloadUrl: `/api/player-analysis/exports/${exportId}/benchmark-candidates.json` })
@@ -1943,8 +2093,10 @@ async function runExportJob(
       allowSubjectOnlyWithoutBenchmark,
       reason: benchmarkIncluded ? null : (benchmarkRequestedButNotIncludedReason ?? null),
       candidate: benchmarkCandidate,
+      subjectCombatantInfoItemLevel,
       exportedCandidates,
       skippedCandidates,
+      benchmarkItemLevelMismatches,
       warnings: benchmarkWarnings,
     })
     writtenFiles.push({ filename: 'benchmark-candidate.json', kind: 'benchmarkJson', sizeBytes: getExportFileSize(exportId, 'benchmark-candidate.json'), downloadUrl: `/api/player-analysis/exports/${exportId}/benchmark-candidate.json` })
@@ -1991,6 +2143,7 @@ async function runExportJob(
     exportId,
     createdAt: new Date().toISOString(),
     playerName,
+    subjectCombatantInfoItemLevel,
     views: request.views,
     scope: preview.scope,
     detectedContext: preview.detectedPlayer?.detectedContext ?? null,
@@ -2006,6 +2159,7 @@ async function runExportJob(
     exportedBenchmarkFiles,
     skippedCandidates,
     benchmarkWarnings,
+    benchmarkItemLevelMismatches,
     benchmarkReason: benchmarkIncluded ? null : benchmarkRequestedButNotIncludedReason,
     benchmarkSummary,
     viewSummary,
@@ -2028,7 +2182,7 @@ async function runExportJob(
     playerName,
     className: preview.detectedPlayer?.className ?? 'unknown',
     specName: preview.detectedPlayer?.specName ?? 'unknown',
-    itemLevel: null,
+    subjectCombatantInfoItemLevel,
     scope: preview.scope,
     views: request.views,
     benchmarkEnabled: benchmarkIncluded,
@@ -2051,6 +2205,7 @@ async function runExportJob(
     errors,
     benchmarkSummary,
     viewSummary,
+    benchmarkItemLevelMismatches,
   })
   writeExportFile(exportId, 'README.md', readme)
   writtenFiles.push({

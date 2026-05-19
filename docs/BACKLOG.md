@@ -40,6 +40,20 @@ The app is an export workbench for analysis-grade WCL data.
 - WCL credentials stay server-side.
 - Use the official WCL API only. Do not scrape WCL pages.
 
+## Slice Completion Note (2026-05-19)
+
+Completed focused usability/correctness slice for player-analysis export:
+- Guided 4-step workflow (player, raid/boss, benchmark, export).
+- `latestRaid` now defaults to raid-only logs (non-raid logs excluded by conservative classification).
+- One-boss default selection after preview (prefer kill), with multi-fight as explicit opt-in.
+- Explicit benchmark candidate selection wired from UI to export payload (no implicit backend-only selection).
+- Benchmark candidate rows now show parse/rank/metric amount, ranking ilvl, duration, and deltas vs baseline.
+- Item-level correctness split:
+  - subject item level from subject CombatantInfo
+  - benchmark ranking item level vs benchmark CombatantInfo item level
+  - mismatch warning when absolute delta > 3
+- README export header rewritten with explicit AI instructions, English-output requirement, and fixed output structure.
+
 ## Work Packages
 
 ### WP0 — Stabilize product shape and remove confusion

@@ -24,7 +24,7 @@ export const PlayerAnalysisExportProgress: FC<Props> = ({ job }) => {
   return (
     <div className="rounded-xl border border-slate-800 bg-slate-900/70 p-4 space-y-3">
       <div className="flex items-center justify-between">
-        <h2 className="text-sm font-semibold text-slate-200">Export Progress</h2>
+        <h2 className="text-sm font-semibold text-slate-200">Step 4: Export</h2>
         <span className={`rounded px-2 py-0.5 text-xs font-medium ${
           job.status === 'complete' ? 'bg-emerald-900/40 text-emerald-300' :
           job.status === 'partial' ? 'bg-amber-900/40 text-amber-300' :
@@ -33,6 +33,10 @@ export const PlayerAnalysisExportProgress: FC<Props> = ({ job }) => {
         }`}>
           {statusLabel}
         </span>
+      </div>
+
+      <div className="text-xs text-slate-400">
+        Status: <span className="text-slate-200">{job.status}</span>
       </div>
 
       <div className="space-y-1">
@@ -55,6 +59,13 @@ export const PlayerAnalysisExportProgress: FC<Props> = ({ job }) => {
         </div>
       </div>
 
+      {job.benchmarkSummary && (
+        <div className="rounded border border-slate-700 bg-slate-950/40 p-2 text-xs text-slate-300 space-y-0.5">
+          <p>Benchmark requested/included: {job.benchmarkSummary.requested ? 'yes' : 'no'} / {job.benchmarkSummary.included ? 'yes' : 'no'}</p>
+          <p>Selected/exported/skipped: {job.benchmarkSummary.selectedCount}/{job.benchmarkSummary.exportedCount}/{job.benchmarkSummary.skippedCount}</p>
+        </div>
+      )}
+
       {(job.currentReportCode || job.currentFightId) && !isTerminal && (
         <div className="text-xs text-slate-400">
           {job.currentReportCode && <span>Report: {job.currentReportCode}</span>}
@@ -64,6 +75,7 @@ export const PlayerAnalysisExportProgress: FC<Props> = ({ job }) => {
 
       {job.status === 'partial' && (skippedViews.length > 0 || truncatedViews.length > 0 || benchmarkSkipped.length > 0) && (
         <div className="rounded border border-amber-700/30 bg-amber-950/20 p-2 space-y-1 text-xs text-amber-200">
+          <p>Partial summary: some requested data could not be exported.</p>
           {skippedViews.length > 0 && (
             <p>Skipped view outcomes: {skippedViews.length}</p>
           )}

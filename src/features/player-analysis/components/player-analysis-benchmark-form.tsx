@@ -30,12 +30,14 @@ type Props = {
   hasPreview?: boolean
   availableBaselines?: AvailableBaseline[]
   selectedBaselineKeys?: Set<string>
+  selectedCandidateKeysByBaseline?: Record<string, string>
   specDetectionFailed?: boolean
   detectedContext?: PlayerDetectedContext
   contextWarnings?: string[]
   benchmarkContextSource?: 'wclDetected' | 'userProvided'
   playerUserContext?: ClassSpecOverride | null
   onBaselineSelectionChange?: (keys: Set<string>) => void
+  onBenchmarkCandidateSelectionChange?: (baselineKey: string, candidateKey: string) => void
   onClassSpecOverrideChange?: (ctx: ClassSpecOverride | null) => void
   onBenchmarkContextSourceChange?: (source: 'wclDetected' | 'userProvided') => void
   onBenchmarkModeChange: (mode: 'none' | 'manual' | 'auto') => void
@@ -74,21 +76,57 @@ function isSameCandidate(
   )
 }
 
+function getCandidateKey(candidate: NormalizedBenchmarkCandidate): string {
+  return `${candidate.reportCode ?? ''}:${candidate.fightId ?? 0}:${candidate.characterName ?? ''}`
+}
+
 function CandidateRow({
+  baselineKey,
+  baseline,
   candidate,
   isSelected,
+  isRecommended,
+  onSelect,
 }: {
+  baselineKey: string
+  baseline: AvailableBaseline
   candidate: NormalizedBenchmarkCandidate
   isSelected: boolean
+  isRecommended: boolean
+  onSelect?: (baselineKey: string, candidateKey: string) => void
 }) {
   const exportable = candidate.validation.hasUsableExportTarget
   const validationReasons = getExportabilityReasons(candidate)
   const warningSummary = candidate.warnings.filter((w) => w.trim().length > 0).slice(0, 2)
+  const metricAmount = typeof candidate.amount === 'number' ? candidate.amount.toLocaleString() : 'unknown'
+  const rankingItemLevel = typeof candidate.itemLevel === 'number' ? candidate.itemLevel : null
+  const durationSeconds = typeof candidate.durationMs === 'number' ? Math.round(candidate.durationMs / 1000) : null
+  const durationDeltaPct =
+    typeof candidate.durationMs === 'number' && typeof baseline.durationMs === 'number' && baseline.durationMs > 0
+      ? Math.round(((candidate.durationMs - baseline.durationMs) / baseline.durationMs) * 100)
+      : null
+  const itemLevelDelta =
+    rankingItemLevel !== null && typeof baseline.itemLevel === 'number'
+      ? rankingItemLevel - baseline.itemLevel
+      : null
+
   return (
-    <div className={`rounded border px-2 py-1.5 text-xs ${exportable ? 'border-slate-700 bg-slate-900/60' : 'border-slate-800 bg-slate-950/40'}`}>
+    <div className={`rounded border px-2 py-1.5 text-xs ${exportable ? 'border-slate-700 bg-slate-900/60' : 'border-slate-800 bg-slate-950/40 opacity-70'}`}>
       <div className="flex items-center justify-between gap-2">
-        <span className="truncate font-medium text-slate-200">{candidate.characterName || '—'}</span>
+        <label className="flex min-w-0 items-center gap-2">
+          <input
+            type="radio"
+            name={`benchmark-${baselineKey}`}
+            checked={isSelected}
+            disabled={!exportable}
+            onChange={() => onSelect?.(baselineKey, getCandidateKey(candidate))}
+          />
+          <span className="truncate font-medium text-slate-200">{candidate.characterName || '—'}</span>
+        </label>
         <div className="flex shrink-0 items-center gap-1.5">
+          {isRecommended && (
+            <span className="rounded bg-sky-900/50 px-1 py-0.5 text-sky-300">recommended</span>
+          )}
           {isSelected && exportable && (
             <span className="rounded bg-emerald-800/50 px-1 py-0.5 text-emerald-300">selected</span>
           )}
@@ -104,15 +142,13 @@ function CandidateRow({
         </div>
       </div>
       <div className="mt-0.5 flex flex-wrap gap-2 text-slate-400">
-        {candidate.percentile !== undefined && (
-          <span>{candidate.percentile}th pct</span>
-        )}
-        {candidate.itemLevel !== undefined && (
-          <span>ilvl {candidate.itemLevel}</span>
-        )}
-        {candidate.durationMs !== undefined && (
-          <span>{Math.round(candidate.durationMs / 1000)}s</span>
-        )}
+        <span>Parse: {candidate.percentile ?? 'unknown'}th</span>
+        <span>Rank: {candidate.rank ?? 'unknown'}</span>
+        <span>{candidate.metric ?? 'metric'}: {metricAmount}</span>
+        <span>Ranking ilvl: {rankingItemLevel ?? 'unknown'}</span>
+        <span>ilvl Δ: {itemLevelDelta === null ? 'unknown' : `${itemLevelDelta > 0 ? '+' : ''}${itemLevelDelta}`}</span>
+        <span>Duration: {durationSeconds ?? 'unknown'}s</span>
+        <span>Duration Δ: {durationDeltaPct === null ? 'unknown' : `${durationDeltaPct > 0 ? '+' : ''}${durationDeltaPct}%`}</span>
         {candidate.serverName && (
           <span>{candidate.serverName}{candidate.region ? ` (${candidate.region})` : ''}</span>
         )}
@@ -150,12 +186,14 @@ export const PlayerAnalysisBenchmarkForm: FC<Props> = ({
   hasPreview = false,
   availableBaselines = [],
   selectedBaselineKeys,
+  selectedCandidateKeysByBaseline = {},
   specDetectionFailed = false,
   detectedContext,
   contextWarnings = [],
   benchmarkContextSource = 'wclDetected',
   playerUserContext,
   onBaselineSelectionChange,
+  onBenchmarkCandidateSelectionChange,
   onClassSpecOverrideChange,
   onBenchmarkContextSourceChange,
   onBenchmarkModeChange,
@@ -172,12 +210,13 @@ export const PlayerAnalysisBenchmarkForm: FC<Props> = ({
   const hasUserClassSpec = !!playerUserContext?.className && !!playerUserContext?.specName
   const safeBaselines = availableBaselines ?? []
   const safeSelectedBaselineKeys = selectedBaselineKeys ?? new Set<string>()
+  const safeSelectedCandidateKeysByBaseline = selectedCandidateKeysByBaseline ?? {}
   const candidateWarnings = candidatesResult?.warnings ?? []
   const candidateGroups = candidatesResult?.groups ?? []
 
   return (
     <section className="rounded-xl border border-slate-800 bg-slate-900/70 p-4">
-      <h2 className="text-sm font-semibold text-slate-200">Benchmark Comparison</h2>
+      <h2 className="text-sm font-semibold text-slate-200">Step 3: Benchmark</h2>
 
       <label className="mt-3 flex items-center gap-2 text-xs text-slate-300">
         <input
@@ -253,6 +292,24 @@ export const PlayerAnalysisBenchmarkForm: FC<Props> = ({
           {/* Auto mode */}
           {benchmarkMode === 'auto' && (
             <div className="space-y-3">
+              <div className="rounded border border-slate-700 bg-slate-950/50 p-2 text-xs text-slate-300">
+                <p>Benchmark discovery searches only same encounter, same difficulty, same class, and same spec.</p>
+                {benchmarkContextSource === 'wclDetected' && hasWclClassSpec && (
+                  <p className="mt-1 text-slate-400">
+                    Benchmark context: {detectedContext?.specName} {detectedContext?.className} — WCL detected
+                  </p>
+                )}
+                {benchmarkContextSource === 'userProvided' && hasUserClassSpec && (
+                  <p className="mt-1 text-slate-400">
+                    Benchmark context: {playerUserContext?.specName} {playerUserContext?.className} — user provided
+                  </p>
+                )}
+                {((benchmarkContextSource === 'wclDetected' && !hasWclClassSpec) ||
+                  (benchmarkContextSource === 'userProvided' && !hasUserClassSpec)) && (
+                  <p className="mt-1 text-amber-300">Class/spec required for same-spec benchmark discovery.</p>
+                )}
+              </div>
+
               {/* Fight selection */}
               <div className="space-y-1.5">
                 <div className="flex items-center justify-between text-xs">
@@ -487,7 +544,7 @@ export const PlayerAnalysisBenchmarkForm: FC<Props> = ({
                 disabled={!canFindCandidates || isFindingCandidates}
                 className="w-full rounded border border-indigo-700 bg-indigo-900/30 px-3 py-1.5 text-xs text-indigo-300 hover:bg-indigo-900/50 disabled:cursor-not-allowed disabled:border-slate-700 disabled:text-slate-500"
               >
-                {isFindingCandidates ? 'Searching…' : 'Find benchmark candidates'}
+                {isFindingCandidates ? 'Searching…' : 'Find same-spec benchmark'}
               </button>
 
               {/* Context-sensitive disabled hint */}
@@ -520,9 +577,15 @@ export const PlayerAnalysisBenchmarkForm: FC<Props> = ({
               {/* Export summary — what will actually be included */}
               {candidatesResult && (() => {
                 const willExport = candidateGroups.flatMap((g) =>
-                  g.selectedCandidate && g.selectedCandidate.validation.hasUsableExportTarget
-                    ? [{ baseline: g.baseline, candidate: g.selectedCandidate }]
-                    : []
+                  g.candidates
+                    .filter((candidate) => {
+                      const baselineKey = `${g.baseline.reportCode}:${g.baseline.fightId}`
+                      return (
+                        safeSelectedCandidateKeysByBaseline[baselineKey] === getCandidateKey(candidate) &&
+                        candidate.validation.hasUsableExportTarget
+                      )
+                    })
+                    .map((candidate) => ({ baseline: g.baseline, candidate }))
                 )
                 return (
                   <div className="rounded border border-slate-700 bg-slate-950/50 p-2 text-xs space-y-1">
@@ -557,8 +620,10 @@ export const PlayerAnalysisBenchmarkForm: FC<Props> = ({
                   {candidateGroups.map((group) => {
                     const groupWarnings = group.warnings ?? []
                     const groupCandidates = group.candidates ?? []
+                    const baselineKey = `${group.baseline.reportCode}:${group.baseline.fightId}`
+                    const selectedCandidateKey = safeSelectedCandidateKeysByBaseline[baselineKey]
                     return (
-                      <div key={`${group.baseline.reportCode}-${group.baseline.fightId}`} className="space-y-1">
+                      <div key={`${group.baseline.reportCode}-${group.baseline.fightId}`} className="space-y-1 rounded border border-slate-800 bg-slate-950/30 p-2">
                         <p className="text-xs font-medium text-slate-300">
                           {group.baseline.encounterName}
                           <span className="ml-2 font-normal text-slate-500">
@@ -582,8 +647,26 @@ export const PlayerAnalysisBenchmarkForm: FC<Props> = ({
                             {groupCandidates.map((c, i) => (
                               <CandidateRow
                                 key={`${c.reportCode ?? i}-${c.fightId ?? i}`}
+                                baselineKey={baselineKey}
+                                baseline={safeBaselines.find((b) => b.key === baselineKey) ?? {
+                                  key: baselineKey,
+                                  reportCode: group.baseline.reportCode,
+                                  reportTitle: '',
+                                  fightId: group.baseline.fightId,
+                                  encounterId: group.baseline.encounterId,
+                                  encounterName: group.baseline.encounterName ?? 'unknown encounter',
+                                  difficulty: group.baseline.difficulty,
+                                  durationMs: group.baseline.durationMs ?? 0,
+                                  kill: false,
+                                  playerName: group.baseline.playerName,
+                                  className: group.baseline.className,
+                                  specName: group.baseline.specName,
+                                  itemLevel: group.baseline.itemLevel ?? null,
+                                }}
                                 candidate={c}
-                                isSelected={isSameCandidate(group.selectedCandidate, c)}
+                                isSelected={selectedCandidateKey === getCandidateKey(c)}
+                                isRecommended={isSameCandidate(group.selectedCandidate, c)}
+                                onSelect={onBenchmarkCandidateSelectionChange}
                               />
                             ))}
                           </>

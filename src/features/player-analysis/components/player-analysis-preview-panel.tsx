@@ -12,6 +12,7 @@ type Props = {
   preview: PlayerAnalysisExportPreview
   selectedFightIdsByReport: Record<string, number[]>
   onFightSelectionChange: (reportCode: string, fightId: number, selected: boolean) => void
+  onAnalyzeSingleBoss: () => void
   onSelectAllEligibleFights: () => void
   onClearFightSelection: () => void
   onGenerateExport: () => void
@@ -24,6 +25,7 @@ export const PlayerAnalysisPreviewPanel: FC<Props> = ({
   preview,
   selectedFightIdsByReport,
   onFightSelectionChange,
+  onAnalyzeSingleBoss,
   onSelectAllEligibleFights,
   onClearFightSelection,
   onGenerateExport,
@@ -36,7 +38,7 @@ export const PlayerAnalysisPreviewPanel: FC<Props> = ({
 
   return (
     <div className="rounded-xl border border-slate-800 bg-slate-900/70 p-4 space-y-3">
-      <h2 className="text-sm font-semibold text-slate-200">Export Preview</h2>
+      <h2 className="text-sm font-semibold text-slate-200">Step 2: Raid and Boss Selection</h2>
 
       <div className="rounded border border-slate-700 bg-slate-950/50 p-3 space-y-1 text-xs">
         <div className="flex justify-between">
@@ -144,8 +146,11 @@ export const PlayerAnalysisPreviewPanel: FC<Props> = ({
         <div className="flex items-center justify-between">
           <p className="text-slate-300">Fight selection</p>
           <div className="flex items-center gap-2 text-slate-500">
+            <button type="button" className="hover:text-slate-300" onClick={onAnalyzeSingleBoss}>
+              Analyze this boss
+            </button>
             <button type="button" className="hover:text-slate-300" onClick={onSelectAllEligibleFights}>
-              Default selection
+              Include more fights
             </button>
             <button type="button" className="hover:text-slate-300" onClick={onClearFightSelection}>
               Clear
@@ -153,7 +158,7 @@ export const PlayerAnalysisPreviewPanel: FC<Props> = ({
           </div>
         </div>
         <p className="text-slate-500">
-          Default selection uses player-present boss fights, prefers kills, excludes trash, and excludes very short fights.
+          Default selection is one player-present boss fight (prefers kills). Use "Include more fights" for advanced multi-fight exports.
         </p>
         <p className="text-slate-400">
           Selected fights: <span className="text-slate-200">{selectedFightCount}</span>
@@ -220,7 +225,7 @@ export const PlayerAnalysisPreviewPanel: FC<Props> = ({
         disabled={isGenerating || selectedFightCount === 0 || viewCount === 0 || !!exportBlockedReason}
         className="w-full rounded border border-violet-600 bg-violet-700/20 px-3 py-2 text-sm font-medium text-violet-200 hover:bg-violet-700/30 disabled:opacity-60"
       >
-        {isGenerating ? 'Starting export…' : 'Generate export'}
+        {isGenerating ? 'Starting export…' : 'Export analysis bundle'}
       </button>
 
       {preview.scope.fightsIncluded === 0 && (

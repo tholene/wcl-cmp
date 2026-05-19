@@ -97,7 +97,10 @@ export type SelectedBenchmarkCandidate = {
   benchmarkClassName: string
   benchmarkSpecName: string
   benchmarkPercentile?: number
+  benchmarkCandidateItemLevel?: number
+  /** Deprecated alias; use benchmarkCandidateItemLevel. */
   benchmarkItemLevel?: number
+  benchmarkCombatantInfoItemLevel?: number
   benchmarkDurationMs?: number
 }
 

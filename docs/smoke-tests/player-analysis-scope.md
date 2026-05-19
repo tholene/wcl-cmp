@@ -129,6 +129,54 @@ Expected:
   - `contextWarnings`
 - [ ] Confirm `README.md` Player Context section includes WCL-detected, user-provided, and benchmark/export context used.
 
+## Raid-Only Latest Scope Checks
+
+- [ ] Keep `Scope mode` at `Latest raid (default)`.
+- [ ] Verify non-raid recent logs (M+, dungeon, arena) are excluded from the latest-raid local helper list.
+- [ ] If no raid logs are available, verify warning appears:
+  `No recent raid logs found. Try manual report selection.`
+- [ ] Trigger preview and confirm the same warning can appear in preview warnings without crashing.
+
+## One-Boss Default And Multi-Fight Opt-In
+
+- [ ] After preview, verify exactly one eligible boss fight is selected by default (prefer kill when available).
+- [ ] Verify `Analyze this boss` re-applies one-fight selection.
+- [ ] Verify `Include more fights` expands selection to all eligible player-present boss fights.
+- [ ] Verify export payload `fightIdsByReport` reflects the current explicit selection.
+
+## Explicit Benchmark Candidate Selection
+
+- [ ] Run auto benchmark discovery.
+- [ ] Verify each baseline group shows all returned candidates (including non-exportable entries).
+- [ ] Verify recommended candidate badge is visible when backend provides one.
+- [ ] Verify user can select another exportable candidate explicitly.
+- [ ] Verify non-exportable candidates are disabled and show reasons.
+- [ ] Inspect export payload and confirm `benchmark.selectedCandidates` contains only explicitly selected candidate(s).
+
+## Candidate Row Metrics And Delta Checks
+
+- [ ] Verify candidate rows show:
+  - player name
+  - parse percentile
+  - rank
+  - metric amount
+  - `Ranking ilvl` label
+  - duration
+  - ilvl delta vs baseline (when baseline ilvl is known)
+  - duration delta vs baseline (when baseline duration is known)
+- [ ] Verify availability badges show exportable/not exportable, plus selected/recommended where applicable.
+
+## README Instruction + Item-Level Correctness Checks
+
+- [ ] Run export and open `README.md`.
+- [ ] Verify README begins with `# Player Analysis Export Bundle`.
+- [ ] Verify README includes explicit AI instruction section with English output requirement and required output structure.
+- [ ] Verify player item level in README uses subject CombatantInfo item level when available (not forced unknown).
+- [ ] Open `manifest.json` and benchmark candidate JSON (`benchmark-candidates.json` or `benchmark-candidate.json`) and verify both item-level sources are present:
+  - ranking-sourced benchmark item level
+  - benchmark CombatantInfo item level (if available)
+- [ ] Verify mismatch warning appears when `abs(ranking ilvl - combatantInfo ilvl) > 3`.
+
 ## Empty/Missing Array Safety
 
 Validate each view handles empty arrays safely (no React crash):
