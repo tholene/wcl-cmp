@@ -1,7 +1,13 @@
 import { useQuery } from '@tanstack/react-query'
 import { playerAnalysisQueryKeys } from '@/lib/query-keys'
 
-type RecentPlayer = { name: string; className?: string | null }
+type RecentPlayer = {
+  name: string
+  className?: string | null
+  lastSeenAt?: number | null
+  seenInRaidKillReports?: number
+  seenInRaidKillFights?: number
+}
 type RecentPlayersResponse = { players: RecentPlayer[]; generatedAt: number }
 
 const fetchRecentPlayers = async (): Promise<RecentPlayersResponse> => {

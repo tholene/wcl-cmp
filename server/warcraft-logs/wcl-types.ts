@@ -232,6 +232,8 @@ export type WclRecentPlayer = {
   role?: 'tank' | 'healer' | 'dps' | 'unknown'
   seenInReportCodes: string[]
   lastSeenAt?: number | null
+  seenInRaidKillReports?: number
+  seenInRaidKillFights?: number
 }
 
 export type WclPlayerReviewScopePreset =

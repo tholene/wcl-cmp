@@ -11,6 +11,7 @@ const SIZE_LABELS: Record<string, string> = {
 type Props = {
   preview: PlayerAnalysisExportPreview
   selectedFightIdsByReport: Record<string, number[]>
+  onSelectBossKill: (reportCode: string, fightId: number) => void
   onFightSelectionChange: (reportCode: string, fightId: number, selected: boolean) => void
   onAnalyzeSingleBoss: () => void
   onSelectAllEligibleFights: () => void
@@ -24,6 +25,7 @@ type Props = {
 export const PlayerAnalysisPreviewPanel: FC<Props> = ({
   preview,
   selectedFightIdsByReport,
+  onSelectBossKill,
   onFightSelectionChange,
   onAnalyzeSingleBoss,
   onSelectAllEligibleFights,
@@ -35,6 +37,14 @@ export const PlayerAnalysisPreviewPanel: FC<Props> = ({
 }) => {
   const player = preview.detectedPlayer
   const selectedFightCount = Object.values(selectedFightIdsByReport).reduce((sum, fightIds) => sum + fightIds.length, 0)
+  const formatDuration = (durationMs: number): string => {
+    const totalSeconds = Math.max(Math.floor(durationMs / 1000), 0)
+    const minutes = Math.floor(totalSeconds / 60)
+    const seconds = totalSeconds % 60
+    return `${minutes}:${seconds.toString().padStart(2, '0')}`
+  }
+  const isSelected = (reportCode: string, fightId: number): boolean =>
+    selectedFightIdsByReport[reportCode]?.includes(fightId) ?? false
 
   return (
     <div className="rounded-xl border border-slate-800 bg-slate-900/70 p-4 space-y-3">
@@ -158,65 +168,124 @@ export const PlayerAnalysisPreviewPanel: FC<Props> = ({
           </div>
         </div>
         <p className="text-slate-500">
-          Default selection is one player-present boss fight (prefers kills). Use "Include more fights" for advanced multi-fight exports.
+          Default flow uses one verified raid boss kill. Use advanced controls only when you need manual report/fight scope.
         </p>
         <p className="text-slate-400">
           Selected fights: <span className="text-slate-200">{selectedFightCount}</span>
         </p>
 
-        {preview.includedReports.length === 0 && (
-          <p className="text-slate-500">No reports available in current scope.</p>
+        {preview.recentRaidBossKills.warnings.length > 0 && (
+          <div className="rounded border border-amber-700/30 bg-amber-950/20 p-2 space-y-1 text-amber-200">
+            {preview.recentRaidBossKills.warnings.map((warning) => (
+              <p key={warning}>⚠ {warning}</p>
+            ))}
+          </div>
         )}
 
-        {preview.includedReports.map((report) => (
-          <div key={report.code} className="rounded border border-slate-800 bg-slate-950/40 p-2">
-            <div className="mb-1 flex flex-wrap items-center gap-x-2 gap-y-0.5">
-              <a href={report.url} target="_blank" rel="noreferrer" className="font-medium text-cyan-300 hover:text-cyan-200">
-                {report.title}
-              </a>
-              <span className="text-slate-500">({report.code})</span>
-              <span className={report.playerPresent ? 'text-emerald-300' : 'text-amber-300'}>
-                {report.playerPresent ? 'player present' : 'player absent'}
-              </span>
-            </div>
+        {preview.recentRaidBossKills.groups.length === 0 && (
+          <p className="text-slate-500">No verified raid boss kills found for this player in the current scope.</p>
+        )}
 
-            {report.includedFights.length === 0 && (
-              <p className="text-slate-500">No fights included from this report.</p>
-            )}
-
-            {report.includedFights.length > 0 && (
-              <div className="space-y-1">
-                {report.includedFights.map((fight) => {
-                  const checked = selectedFightIdsByReport[report.code]?.includes(fight.fightId) ?? false
-                  return (
-                    <label
-                      key={`${report.code}:${fight.fightId}`}
-                      className="grid grid-cols-[auto,1fr] gap-2 rounded border border-slate-800 bg-slate-900/50 p-2 text-slate-300"
+        {preview.recentRaidBossKills.groups.length > 0 && (
+          <div className="space-y-2">
+            {preview.recentRaidBossKills.groups.map((group) => (
+              <div key={`${group.encounterId}:${group.difficulty}`} className="rounded border border-slate-800 bg-slate-950/40 p-2">
+                <p className="font-medium text-slate-200">{group.encounterName}</p>
+                <div className="mt-1 space-y-1">
+                  {group.fights.map((fight) => (
+                    <button
+                      key={`${fight.reportCode}:${fight.fightId}`}
+                      type="button"
+                      onClick={() => onSelectBossKill(fight.reportCode, fight.fightId)}
+                      className={`w-full rounded border px-2 py-1.5 text-left ${
+                        isSelected(fight.reportCode, fight.fightId)
+                          ? 'border-cyan-500/70 bg-cyan-900/20 text-cyan-100'
+                          : 'border-slate-800 bg-slate-900/50 text-slate-300 hover:border-slate-700'
+                      }`}
                     >
-                      <input
-                        type="checkbox"
-                        checked={checked}
-                        onChange={(e) => onFightSelectionChange(report.code, fight.fightId, e.target.checked)}
-                      />
-                      <div className="grid gap-0.5 md:grid-cols-2">
-                        <span className="font-medium text-slate-200">{fight.encounterName}</span>
-                        <span className="text-slate-400">Fight ID: {fight.fightId}</span>
-                        <span className="text-slate-400">Difficulty: {fight.difficulty}</span>
-                        <span className={fight.kill ? 'text-emerald-300' : 'text-rose-300'}>
-                          {fight.kill ? 'Kill' : 'Wipe'}
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <span className="font-medium">
+                          Difficulty {group.difficulty} — {formatDuration(fight.durationMs)} — {new Date(fight.startTime).toLocaleDateString()}
                         </span>
-                        <span className="text-slate-400">Duration: {Math.round(fight.durationMs / 1000)}s</span>
-                        <span className={fight.playerPresent ? 'text-emerald-300' : 'text-amber-300'}>
-                          {fight.playerPresent ? 'Player present' : 'Player absent'}
+                        <span className="text-xs text-slate-400">
+                          {fight.reportCode}
                         </span>
                       </div>
-                    </label>
-                  )
-                })}
+                      <div className="mt-0.5 text-xs text-slate-400">
+                        {fight.reportTitle}
+                        {fight.playerItemLevel !== undefined && fight.playerItemLevel !== null
+                          ? ` · ilvl ${fight.playerItemLevel}`
+                          : ''}
+                      </div>
+                    </button>
+                  ))}
+                </div>
               </div>
-            )}
+            ))}
           </div>
-        ))}
+        )}
+
+        <details className="rounded border border-slate-800 bg-slate-950/30 p-2">
+          <summary className="cursor-pointer text-slate-400">Advanced/manual fight selection</summary>
+          <div className="mt-2 space-y-2">
+            {preview.includedReports.length === 0 && (
+              <p className="text-slate-500">No reports available in current scope.</p>
+            )}
+
+            {preview.includedReports.map((report) => (
+              <div key={report.code} className="rounded border border-slate-800 bg-slate-950/40 p-2">
+                <div className="mb-1 flex flex-wrap items-center gap-x-2 gap-y-0.5">
+                  <a href={report.url} target="_blank" rel="noreferrer" className="font-medium text-cyan-300 hover:text-cyan-200">
+                    {report.title}
+                  </a>
+                  <span className="text-slate-500">({report.code})</span>
+                  <span className={report.playerPresent ? 'text-emerald-300' : 'text-amber-300'}>
+                    {report.playerPresent ? 'player present' : 'player absent'}
+                  </span>
+                </div>
+
+                {report.includedFights.length === 0 && (
+                  <p className="text-slate-500">No fights included from this report.</p>
+                )}
+
+                {report.includedFights.length > 0 && (
+                  <div className="space-y-1">
+                    {report.includedFights.map((fight) => {
+                      const checked = isSelected(report.code, fight.fightId)
+                      return (
+                        <label
+                          key={`${report.code}:${fight.fightId}`}
+                          className="grid grid-cols-[auto,1fr] gap-2 rounded border border-slate-800 bg-slate-900/50 p-2 text-slate-300"
+                        >
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            onChange={(e) => onFightSelectionChange(report.code, fight.fightId, e.target.checked)}
+                          />
+                          <div className="grid gap-0.5 md:grid-cols-2">
+                            <span className="font-medium text-slate-200">{fight.encounterName}</span>
+                            <span className="text-slate-400">Fight ID: {fight.fightId}</span>
+                            <span className="text-slate-400">Difficulty: {fight.difficulty}</span>
+                            <span className={fight.kill ? 'text-emerald-300' : 'text-rose-300'}>
+                              {fight.kill ? 'Kill' : 'Wipe'}
+                            </span>
+                            <span className="text-slate-400">Duration: {Math.round(fight.durationMs / 1000)}s</span>
+                            <span className={fight.playerPresent ? 'text-emerald-300' : 'text-amber-300'}>
+                              {fight.playerPresent ? 'Player present' : 'Player absent'}
+                            </span>
+                            {fight.kill && (fight.encounterId ?? 0) > 0 && fight.presenceVerified !== true && (
+                              <span className="text-amber-300">Presence unverified (advanced/manual only)</span>
+                            )}
+                          </div>
+                        </label>
+                      )
+                    })}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </details>
       </div>
 
       <button

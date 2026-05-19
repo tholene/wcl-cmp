@@ -200,6 +200,40 @@ type AggregatedBossSource = {
 
 const RECENT_REPORT_LIMIT = 15
 
+const KNOWN_RAID_ZONE_IDS = new Set<number>([
+  26, // Castle Nathria
+  27, // Sanctum of Domination
+  28, // Sepulcher of the First Ones
+  31, // Vault of the Incarnates
+  33, // Aberrus, the Shadowed Crucible
+  35, // Amirdrassil, the Dream's Hope
+  38, // Nerub-ar Palace
+])
+
+const KNOWN_RAID_ZONE_NAMES = new Set<string>([
+  'castle nathria',
+  'sanctum of domination',
+  'sepulcher of the first ones',
+  'vault of the incarnates',
+  'aberrus, the shadowed crucible',
+  "amirdrassil, the dream's hope",
+  'nerub-ar palace',
+])
+
+const RAID_NAME_HINTS = ['raid', 'palace', 'vault', 'sanctum', 'sepulcher', 'aberrus', 'amirdrassil', 'nathria']
+const NON_RAID_NAME_HINTS = ['mythic+', 'mythic plus', 'dungeon', 'keystone', 'timewalking', 'arena', 'battleground', 'skirmish']
+
+const normalizeZoneName = (value: string | null | undefined): string => (value ?? '').trim().toLowerCase()
+
+const isRaidZone = (report: { zoneId?: number | null; zoneName?: string | null }): boolean => {
+  if (typeof report.zoneId === 'number' && KNOWN_RAID_ZONE_IDS.has(report.zoneId)) return true
+  const zoneName = normalizeZoneName(report.zoneName)
+  if (!zoneName) return false
+  if (KNOWN_RAID_ZONE_NAMES.has(zoneName)) return true
+  if (NON_RAID_NAME_HINTS.some((hint) => zoneName.includes(hint))) return false
+  return RAID_NAME_HINTS.some((hint) => zoneName.includes(hint))
+}
+
 const REPORTS_BY_GUILD_QUERY = `
   query ReportsByGuild($guildId: Int!, $limit: Int!) {
     reportData {
@@ -1478,10 +1512,28 @@ export const WclService = {
 
   getRecentPlayers: async (config: WclConfig, limit = RECENT_REPORT_LIMIT): Promise<WclRecentPlayer[]> => {
     const reports = await WclService.listRecentReports(config, limit)
+    const raidReports = reports.filter(isRaidZone)
     const playerMap = new Map<string, WclRecentPlayer>()
 
+    if (raidReports.length === 0) {
+      return []
+    }
+
+    const reportDetailsResults = await Promise.allSettled(
+      raidReports.map(async (report) => {
+        const details = await WclService.getReportDetails(config, report.code)
+        const raidKillFights = details.fights.filter((fight) => fight.encounterId > 0 && fight.kill).length
+        return { report, raidKillFights }
+      })
+    )
+
+    const raidKillReports = reportDetailsResults
+      .filter((result): result is PromiseFulfilledResult<{ report: WclReportSummary; raidKillFights: number }> => result.status === 'fulfilled')
+      .map((result) => result.value)
+      .filter((entry) => entry.raidKillFights > 0)
+
     await Promise.all(
-      reports.map(async (report) => {
+      raidKillReports.map(async ({ report, raidKillFights }) => {
         try {
           const response = await queryWclGraphQl<ReportPlayersQueryResponse>({
             config,
@@ -1505,12 +1557,16 @@ export const WclService = {
                   role: 'unknown',
                   seenInReportCodes: [report.code],
                   lastSeenAt: report.startTime,
+                  seenInRaidKillReports: 1,
+                  seenInRaidKillFights: raidKillFights,
                 })
                 return
               }
 
               if (!existing.seenInReportCodes.includes(report.code)) {
                 existing.seenInReportCodes.push(report.code)
+                existing.seenInRaidKillReports = (existing.seenInRaidKillReports ?? 0) + 1
+                existing.seenInRaidKillFights = (existing.seenInRaidKillFights ?? 0) + raidKillFights
               }
               existing.lastSeenAt = Math.max(existing.lastSeenAt ?? 0, report.startTime)
               if (!existing.className && actor.subType) {
@@ -1524,7 +1580,15 @@ export const WclService = {
       })
     )
 
-    return Array.from(playerMap.values()).sort((a, b) => a.name.localeCompare(b.name))
+    return Array.from(playerMap.values()).sort((left, right) => {
+      const reportDelta = (right.seenInRaidKillReports ?? 0) - (left.seenInRaidKillReports ?? 0)
+      if (reportDelta !== 0) return reportDelta
+      const fightDelta = (right.seenInRaidKillFights ?? 0) - (left.seenInRaidKillFights ?? 0)
+      if (fightDelta !== 0) return fightDelta
+      const seenDelta = (right.lastSeenAt ?? 0) - (left.lastSeenAt ?? 0)
+      if (seenDelta !== 0) return seenDelta
+      return left.name.localeCompare(right.name)
+    })
   },
 
   getPlayerReviewScopePreview: async (

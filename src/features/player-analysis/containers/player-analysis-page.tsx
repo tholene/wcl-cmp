@@ -149,40 +149,38 @@ function selectLatestRaidReportCodes(reports: ReportSummary[]): string[] {
 }
 
 function buildSingleBossDefaultSelection(preview: {
-  includedReports: Array<{
-    code: string
-    startTime?: number
-    includedFights: Array<{
-      fightId: number
-      encounterId?: number
-      kill: boolean
-      playerPresent: boolean
-      durationMs: number
+  recentRaidBossKills?: {
+    groups: Array<{
+      fights: Array<{
+        reportCode: string
+        fightId: number
+        startTime: number
+        durationMs: number
+      }>
     }>
-  }>
+  }
+  includedReports: Array<{ code: string }>
 }): Record<string, number[]> {
   const selected: Record<string, number[]> = Object.fromEntries(
     (preview.includedReports ?? []).map((report) => [report.code, [] as number[]])
   )
-  const candidates = (preview.includedReports ?? []).flatMap((report) =>
-    (report.includedFights ?? [])
-      .filter((fight) => fight.playerPresent && (fight.encounterId ?? 0) > 0 && fight.durationMs >= 60_000)
-      .map((fight) => ({
-        reportCode: report.code,
-        reportStartTime: report.startTime ?? 0,
-        fight,
-      }))
+  const candidates = (preview.recentRaidBossKills?.groups ?? []).flatMap((group) =>
+    group.fights.map((fight) => ({
+      reportCode: fight.reportCode,
+      fightId: fight.fightId,
+      startTime: fight.startTime ?? 0,
+      durationMs: fight.durationMs ?? 0,
+    }))
   )
   if (candidates.length === 0) return selected
 
   candidates.sort((left, right) => {
-    if (left.fight.kill !== right.fight.kill) return left.fight.kill ? -1 : 1
-    if (left.reportStartTime !== right.reportStartTime) return right.reportStartTime - left.reportStartTime
-    return right.fight.durationMs - left.fight.durationMs
+    if (left.startTime !== right.startTime) return right.startTime - left.startTime
+    return right.durationMs - left.durationMs
   })
 
   const chosen = candidates[0]
-  selected[chosen.reportCode] = [chosen.fight.fightId]
+  selected[chosen.reportCode] = [chosen.fightId]
   return selected
 }
 
@@ -210,6 +208,34 @@ function countSelectedFights(selection: Record<string, number[]>): number {
   return Object.values(selection).reduce((sum, fightIds) => sum + fightIds.length, 0)
 }
 
+function buildBaselineKeysFromFightSelection(
+  preview: {
+    includedReports: Array<{
+      code: string
+      includedFights: Array<{
+        fightId: number
+        encounterId?: number
+        playerPresent: boolean
+        durationMs: number
+      }>
+    }>
+  },
+  selection: Record<string, number[]>
+): Set<string> {
+  const next = new Set<string>()
+  for (const report of preview.includedReports ?? []) {
+    const selectedFightIds = new Set(selection[report.code] ?? [])
+    for (const fight of report.includedFights ?? []) {
+      if (!selectedFightIds.has(fight.fightId)) continue
+      if ((fight.encounterId ?? 0) <= 0) continue
+      if (!fight.playerPresent) continue
+      if (fight.durationMs < 60_000) continue
+      next.add(`${report.code}:${fight.fightId}`)
+    }
+  }
+  return next
+}
+
 export const PlayerAnalysisPage: FC = () => {
   const recentPlayersQuery = useRecentPlayers()
   const recentReportsQuery = useRecentReports()
@@ -221,7 +247,7 @@ export const PlayerAnalysisPage: FC = () => {
   const [timeframePreset, setTimeframePreset] = useState<PlayerAnalysisTimeframePreset>('latestRaid')
   const [selectedReports, setSelectedReports] = useState<string[]>([])
   const [includeKills, setIncludeKills] = useState(true)
-  const [includeWipes, setIncludeWipes] = useState(true)
+  const [includeWipes, setIncludeWipes] = useState(false)
   const [includeTrash, setIncludeTrash] = useState(false)
   const [onlyPlayerPresent, setOnlyPlayerPresent] = useState(true)
   const [selectedViews, setSelectedViews] = useState<PlayerAnalysisExportView[]>([...STABLE_EXPORT_VIEWS])
@@ -276,7 +302,10 @@ export const PlayerAnalysisPage: FC = () => {
         .filter((r) => r.playerPresent)
         .flatMap((r) =>
           r.includedFights
-            .filter((f) => (f.encounterId ?? 0) > 0 && f.playerPresent && f.durationMs >= 60000)
+            .filter((f) => {
+              const selectedInScope = (selectedFightIdsByReport[r.code] ?? []).includes(f.fightId)
+              return selectedInScope && (f.encounterId ?? 0) > 0 && f.playerPresent && f.durationMs >= 60000
+            })
             .map((f): AvailableBaseline => ({
               key: `${r.code}:${f.fightId}`,
               reportCode: r.code,
@@ -290,7 +319,7 @@ export const PlayerAnalysisPage: FC = () => {
               playerName: preview.detectedPlayer?.characterName ?? '',
               className: effectiveClassName ?? 'unknown',
               specName: effectiveSpecName ?? 'unknown',
-              itemLevel: preview.detectedPlayer?.itemLevel ?? null,
+              itemLevel: f.playerItemLevel ?? null,
             }))
         )
     : []
@@ -298,12 +327,24 @@ export const PlayerAnalysisPage: FC = () => {
   const contextSource = hasWclClassSpec && benchmarkContextSource !== 'userProvided'
     ? ('wclDetected' as const)
     : ('userProvided' as const)
+  const syncSelectedBaselineKeys = (nextKeys: Set<string>) => {
+    setSelectedBaselineKeys(nextKeys)
+    setSelectedCandidateKeysByBaseline((current) => {
+      const filtered: Record<string, string> = {}
+      for (const baselineKey of Object.keys(current)) {
+        if (nextKeys.has(baselineKey)) {
+          filtered[baselineKey] = current[baselineKey]
+        }
+      }
+      return filtered
+    })
+  }
+
   const invalidatePreviewState = (params?: { resetUserContext?: boolean }) => {
     previewRequestSeq.current += 1
     previewMutation.reset()
     setSelectedFightIdsByReport({})
-    setSelectedBaselineKeys(new Set())
-    setSelectedCandidateKeysByBaseline({})
+    syncSelectedBaselineKeys(new Set())
     benchmarkCandidatesMutation.reset()
     if (params?.resetUserContext) {
       setPlayerUserContext(null)
@@ -376,7 +417,7 @@ export const PlayerAnalysisPage: FC = () => {
   }
 
   const handlePreview = () => {
-    setSelectedBaselineKeys(new Set())
+    syncSelectedBaselineKeys(new Set())
     const requestId = previewRequestSeq.current + 1
     previewRequestSeq.current = requestId
     previewMutation.mutate(buildRequest(), {
@@ -387,14 +428,7 @@ export const PlayerAnalysisPage: FC = () => {
 
         const defaultFightSelection = buildSingleBossDefaultSelection(data)
         setSelectedFightIdsByReport(defaultFightSelection)
-
-        const defaultKeys = new Set<string>()
-        for (const report of data.includedReports) {
-          for (const fightId of defaultFightSelection[report.code] ?? []) {
-            defaultKeys.add(`${report.code}:${fightId}`)
-          }
-        }
-        setSelectedBaselineKeys(defaultKeys)
+        syncSelectedBaselineKeys(buildBaselineKeysFromFightSelection(data, defaultFightSelection))
         if (
           benchmarkContextSource === 'wclDetected' &&
           data.effectiveContext?.source === 'userProvided'
@@ -472,21 +506,16 @@ export const PlayerAnalysisPage: FC = () => {
       const next = selected
         ? (existing.includes(fightId) ? existing : [...existing, fightId])
         : existing.filter((id) => id !== fightId)
-      return { ...current, [reportCode]: next }
+      const nextSelection = { ...current, [reportCode]: next }
+      if (preview) {
+        syncSelectedBaselineKeys(buildBaselineKeysFromFightSelection(preview, nextSelection))
+      }
+      return nextSelection
     })
   }
 
   const handleBaselineSelectionChange = (next: Set<string>) => {
-    setSelectedBaselineKeys(next)
-    setSelectedCandidateKeysByBaseline((current) => {
-      const filtered: Record<string, string> = {}
-      for (const baselineKey of Object.keys(current)) {
-        if (next.has(baselineKey)) {
-          filtered[baselineKey] = current[baselineKey]
-        }
-      }
-      return filtered
-    })
+    syncSelectedBaselineKeys(next)
   }
 
   const handleBenchmarkCandidateSelection = (baselineKey: string, candidateKey: string) => {
@@ -498,12 +527,25 @@ export const PlayerAnalysisPage: FC = () => {
 
   const handleSelectAllEligibleFights = () => {
     if (!preview) return
-    setSelectedFightIdsByReport(buildAllEligibleFightSelection(preview))
+    const nextSelection = buildAllEligibleFightSelection(preview)
+    setSelectedFightIdsByReport(nextSelection)
+    syncSelectedBaselineKeys(buildBaselineKeysFromFightSelection(preview, nextSelection))
   }
 
   const handleSelectSingleBossFight = () => {
     if (!preview) return
-    setSelectedFightIdsByReport(buildSingleBossDefaultSelection(preview))
+    const nextSelection = buildSingleBossDefaultSelection(preview)
+    setSelectedFightIdsByReport(nextSelection)
+    syncSelectedBaselineKeys(buildBaselineKeysFromFightSelection(preview, nextSelection))
+  }
+
+  const handleSelectBossKill = (reportCode: string, fightId: number) => {
+    if (!preview) return
+    const nextSelection: Record<string, number[]> = Object.fromEntries(
+      (preview.includedReports ?? []).map((report) => [report.code, report.code === reportCode ? [fightId] : []])
+    )
+    setSelectedFightIdsByReport(nextSelection)
+    syncSelectedBaselineKeys(buildBaselineKeysFromFightSelection(preview, nextSelection))
   }
 
   const handleClearFightSelection = () => {
@@ -513,6 +555,7 @@ export const PlayerAnalysisPage: FC = () => {
       empty[report.code] = []
     }
     setSelectedFightIdsByReport(empty)
+    syncSelectedBaselineKeys(new Set())
   }
 
   const canFindCandidates =
@@ -574,7 +617,15 @@ export const PlayerAnalysisPage: FC = () => {
   const showProgress = exportJob.isStarting || job !== null
   const showResults = !!job && (job.status === 'complete' || job.status === 'partial' || ((job.status === 'failed') && (job.files?.length ?? 0) > 0))
 
-  const players = recentPlayersQuery.data?.players ?? []
+  const players = [...(recentPlayersQuery.data?.players ?? [])].sort((left, right) => {
+    const reportDelta = (right.seenInRaidKillReports ?? 0) - (left.seenInRaidKillReports ?? 0)
+    if (reportDelta !== 0) return reportDelta
+    const fightDelta = (right.seenInRaidKillFights ?? 0) - (left.seenInRaidKillFights ?? 0)
+    if (fightDelta !== 0) return fightDelta
+    const seenDelta = (right.lastSeenAt ?? 0) - (left.lastSeenAt ?? 0)
+    if (seenDelta !== 0) return seenDelta
+    return left.name.localeCompare(right.name)
+  })
   const reports = recentReportsQuery.data?.reports ?? []
   const latestRaidReportCodes = selectLatestRaidReportCodes(reports)
 
@@ -664,6 +715,7 @@ export const PlayerAnalysisPage: FC = () => {
             <PlayerAnalysisPreviewPanel
               preview={preview}
               selectedFightIdsByReport={selectedFightIdsByReport}
+              onSelectBossKill={handleSelectBossKill}
               onFightSelectionChange={handleFightSelectionChange}
               onAnalyzeSingleBoss={handleSelectSingleBossFight}
               onSelectAllEligibleFights={handleSelectAllEligibleFights}

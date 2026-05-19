@@ -938,14 +938,49 @@ export async function getExportPreview(
         continue
       }
 
+      const fightDurationMs = Math.max(fight.endTime - fight.startTime, 0)
+      let presenceVerified: boolean | undefined
+      let playerItemLevel: number | null | undefined
+
+      if (fight.kill && fight.encounterId > 0) {
+        presenceVerified = false
+        playerItemLevel = null
+
+        if (playerPresent && actor) {
+          try {
+            const combatantResult = await fetchCombatantInfoEvents({
+              config,
+              code: report.code,
+              fightId: fight.id,
+              startTime: fight.startTime,
+              endTime: fight.endTime,
+              maxEvents: 50,
+            })
+            const matchingCombatant = combatantResult.events.find(
+              (event) => event.sourceID === actor.id || (event as { sourceId?: number }).sourceId === actor.id
+            )
+            if (matchingCombatant) {
+              presenceVerified = true
+              const details = extractCombatantDetails(combatantResult.events, actor.id)
+              playerItemLevel = details.itemLevel
+            }
+          } catch {
+            warnings.push(`CombatantInfo presence verification failed for ${report.code}#${fight.id}.`)
+          }
+        }
+      }
+
       includedFights.push({
         fightId: fight.id,
         encounterId: fight.encounterId,
         encounterName: fight.encounterName,
         kill: fight.kill,
         difficulty: fight.difficulty,
-        durationMs: Math.max(fight.endTime - fight.startTime, 0),
+        startTime: report.startTime + fight.startTime,
+        durationMs: fightDurationMs,
         playerPresent,
+        presenceVerified,
+        playerItemLevel,
       })
       fightsIncluded += 1
 
@@ -959,7 +994,6 @@ export async function getExportPreview(
         }
       }
 
-      const fightDurationMs = Math.max(fight.endTime - fight.startTime, 0)
       if (playerPresent && actor && fight.encounterId > 0 && fightDurationMs >= 60000) {
         specCandidateFights.push({
           code: report.code,
@@ -1084,6 +1118,104 @@ export async function getExportPreview(
   const estimatedSizeLevel: 'small' | 'medium' | 'large' | 'veryLarge' =
     fightsIncluded > 45 ? 'veryLarge' : fightsIncluded > 20 ? 'large' : fightsIncluded > 8 ? 'medium' : 'small'
 
+  const recentRaidBossKillWarnings: string[] = []
+  const unverifiedKillCount = includedReports.reduce(
+    (total, report) =>
+      total +
+      report.includedFights.filter(
+        (fight) => fight.kill && (fight.encounterId ?? 0) > 0 && fight.presenceVerified !== true
+      ).length,
+    0
+  )
+  if (unverifiedKillCount > 0) {
+    recentRaidBossKillWarnings.push(
+      `${unverifiedKillCount} boss kill fight(s) were hidden from the default boss list because player presence could not be verified per fight.`
+    )
+  }
+
+  const recentRaidBossKillEntries = includedReports.flatMap((report) =>
+    report.includedFights
+      .filter((fight) => fight.kill && (fight.encounterId ?? 0) > 0 && fight.presenceVerified === true)
+      .map((fight) => ({
+        encounterId: fight.encounterId ?? 0,
+        encounterName: fight.encounterName,
+        difficulty: fight.difficulty,
+        reportCode: report.code,
+        reportTitle: report.title,
+        reportUrl: report.url,
+        fightId: fight.fightId,
+        startTime: fight.startTime ?? report.startTime,
+        durationMs: fight.durationMs,
+        playerItemLevel: fight.playerItemLevel ?? null,
+      }))
+  )
+
+  const recentRaidBossKillMap = new Map<
+    string,
+    {
+      encounterId: number
+      encounterName: string
+      difficulty: number
+      fights: Array<{
+        reportCode: string
+        reportTitle: string
+        reportUrl: string
+        fightId: number
+        startTime: number
+        durationMs: number
+        playerItemLevel?: number | null
+      }>
+    }
+  >()
+
+  for (const fight of recentRaidBossKillEntries) {
+    const key = `${fight.encounterId}:${fight.difficulty}`
+    const existing = recentRaidBossKillMap.get(key)
+    if (existing) {
+      existing.fights.push({
+        reportCode: fight.reportCode,
+        reportTitle: fight.reportTitle,
+        reportUrl: fight.reportUrl,
+        fightId: fight.fightId,
+        startTime: fight.startTime,
+        durationMs: fight.durationMs,
+        playerItemLevel: fight.playerItemLevel,
+      })
+      continue
+    }
+    recentRaidBossKillMap.set(key, {
+      encounterId: fight.encounterId,
+      encounterName: fight.encounterName,
+      difficulty: fight.difficulty,
+      fights: [
+        {
+          reportCode: fight.reportCode,
+          reportTitle: fight.reportTitle,
+          reportUrl: fight.reportUrl,
+          fightId: fight.fightId,
+          startTime: fight.startTime,
+          durationMs: fight.durationMs,
+          playerItemLevel: fight.playerItemLevel,
+        },
+      ],
+    })
+  }
+
+  const recentRaidBossKills = {
+    groups: Array.from(recentRaidBossKillMap.values())
+      .map((group) => ({
+        ...group,
+        fights: [...group.fights].sort((left, right) => right.startTime - left.startTime),
+      }))
+      .sort((left, right) => {
+        const leftLatest = left.fights[0]?.startTime ?? 0
+        const rightLatest = right.fights[0]?.startTime ?? 0
+        if (rightLatest !== leftLatest) return rightLatest - leftLatest
+        return left.encounterName.localeCompare(right.encounterName)
+      }),
+    warnings: recentRaidBossKillWarnings,
+  }
+
   return {
     requestedPlayerName: playerName,
     scope: {
@@ -1109,6 +1241,7 @@ export async function getExportPreview(
       detectionDiagnostics: diag,
     },
     includedReports,
+    recentRaidBossKills,
     estimatedExport: {
       views: request.views,
       estimatedCsvFiles,

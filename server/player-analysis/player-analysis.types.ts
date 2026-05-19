@@ -221,8 +221,11 @@ export type PlayerAnalysisExportPreview = {
       encounterName: string
       kill: boolean
       difficulty: number
+      startTime?: number
       durationMs: number
       playerPresent: boolean
+      presenceVerified?: boolean
+      playerItemLevel?: number | null
     }>
     skippedFights: Array<{
       fightId: number
@@ -230,6 +233,23 @@ export type PlayerAnalysisExportPreview = {
       reason: string
     }>
   }>
+  recentRaidBossKills: {
+    groups: Array<{
+      encounterId: number
+      encounterName: string
+      difficulty: number
+      fights: Array<{
+        reportCode: string
+        reportTitle: string
+        reportUrl: string
+        fightId: number
+        startTime: number
+        durationMs: number
+        playerItemLevel?: number | null
+      }>
+    }>
+    warnings: string[]
+  }
   estimatedExport: {
     views: PlayerAnalysisExportView[]
     estimatedCsvFiles: number
