@@ -1,7 +1,9 @@
 import { useRef, useState, type FC } from 'react'
 import { useRecentReports } from '@/features/reports/hooks/use-recent-reports'
 import type { ReportSummary } from '@/features/reports/types/report-summary'
+import { getDifficultyLabel } from '@/lib/difficulty'
 import { BenchmarkErrorBoundary } from '../components/benchmark-error-boundary'
+import { BossKillCard } from '../components/boss-kill-card'
 import { PlayerAnalysisBenchmarkForm } from '../components/player-analysis-benchmark-form'
 import { PlayerAnalysisExportProgress } from '../components/player-analysis-export-progress'
 import { PlayerAnalysisExportResults } from '../components/player-analysis-export-results'
@@ -262,7 +264,7 @@ export const PlayerAnalysisPage: FC = () => {
   const [selectedViews, setSelectedViews] = useState<PlayerAnalysisExportView[]>([...STABLE_EXPORT_VIEWS])
   const [selectedFightIdsByReport, setSelectedFightIdsByReport] = useState<Record<string, number[]>>({})
 
-  const [benchmarkMode, setBenchmarkMode] = useState<'none' | 'manual' | 'auto'>('none')
+  const [benchmarkMode, setBenchmarkMode] = useState<'none' | 'manual' | 'auto'>('auto')
   const [manualBenchmarkConfig, setManualBenchmarkConfig] = useState<ManualBenchmarkConfig>({
     reportCode: '',
     fightId: '',
@@ -280,6 +282,8 @@ export const PlayerAnalysisPage: FC = () => {
   const [playerUserContext, setPlayerUserContext] = useState<ClassSpecOverride | null>(null)
   const [benchmarkContextSource, setBenchmarkContextSource] = useState<'wclDetected' | 'userProvided'>('wclDetected')
   const previewRequestSeq = useRef(0)
+  // Tracks which player name last triggered an auto-preview, to prevent duplicate triggers
+  const lastAutoPreviewedName = useRef<string>('')
 
   const preview = previewMutation.data ?? null
   const job = exportJob.jobStatus
@@ -305,7 +309,6 @@ export const PlayerAnalysisPage: FC = () => {
         : null
   const specDetectionFailed = !!preview && (!wclClassName || !wclSpecName)
 
-  // Boss fights where the player was present, duration ≥ 60s — available for baseline selection
   const availableBaselines: AvailableBaseline[] = preview
     ? preview.includedReports
         .filter((r) => r.playerPresent)
@@ -336,6 +339,7 @@ export const PlayerAnalysisPage: FC = () => {
   const contextSource = hasWclClassSpec && benchmarkContextSource !== 'userProvided'
     ? ('wclDetected' as const)
     : ('userProvided' as const)
+
   const syncSelectedBaselineKeys = (nextKeys: Set<string>) => {
     setSelectedBaselineKeys(nextKeys)
     setSelectedCandidateKeysByBaseline((current) => {
@@ -361,14 +365,14 @@ export const PlayerAnalysisPage: FC = () => {
     }
   }
 
-  const buildRequest = (params?: { forExport?: boolean }): PlayerAnalysisExportRequest => {
+  const buildRequest = (params?: { forExport?: boolean; playerNameOverride?: string }): PlayerAnalysisExportRequest => {
     const reportCodes =
       timeframePreset === 'manualReports'
         ? selectedReports
         : undefined
 
     return {
-      playerName,
+      playerName: params?.playerNameOverride ?? playerName,
       timeframePreset,
       reportCodes,
       fightIdsByReport: params?.forExport ? selectedFightIdsByReport : undefined,
@@ -423,39 +427,13 @@ export const PlayerAnalysisPage: FC = () => {
     }
   }
 
-  const handlePreview = () => {
-    syncSelectedBaselineKeys(new Set())
-    const requestId = previewRequestSeq.current + 1
-    previewRequestSeq.current = requestId
-    previewMutation.mutate(buildRequest(), {
-      onSuccess: (data) => {
-        if (requestId !== previewRequestSeq.current) {
-          return
-        }
-
-        const defaultFightSelection = buildSingleBossDefaultSelection(data)
-        setSelectedFightIdsByReport(defaultFightSelection)
-        syncSelectedBaselineKeys(buildBaselineKeysFromFightSelection(data, defaultFightSelection))
-        if (
-          benchmarkContextSource === 'wclDetected' &&
-          data.effectiveContext?.source === 'userProvided'
-        ) {
-          setBenchmarkContextSource('userProvided')
-        }
-      },
-    })
-  }
-
-  const handleGenerateExport = async () => {
-    if (selectedViews.length === 0 || countSelectedFights(selectedFightIdsByReport) === 0) return
-    if (exportBlockedReason) return
-    await exportJob.startExport(buildRequest({ forExport: true }))
-  }
-
-  const handleFindCandidates = () => {
-    if (!preview || selectedBaselineKeys.size === 0 || !preview.detectedPlayer) return
-    const baselines = availableBaselines
-      .filter((b) => selectedBaselineKeys.has(b.key))
+  // Shared benchmark candidate fetch logic. Accepts explicit baselines to avoid stale-state issues
+  // when called synchronously after a state-mutating handler (boss kill selection, preview success).
+  const handleFindCandidatesWithKeys = (keysOverride: Set<string>, baselinesOverride?: AvailableBaseline[]) => {
+    if (!preview || keysOverride.size === 0 || !preview.detectedPlayer) return
+    const baselinesSource = baselinesOverride ?? availableBaselines
+    const baselines = baselinesSource
+      .filter((b) => keysOverride.has(b.key))
       .map((b) => ({
         reportCode: b.reportCode,
         fightId: b.fightId,
@@ -469,6 +447,7 @@ export const PlayerAnalysisPage: FC = () => {
         itemLevel: b.itemLevel,
         contextSource,
       }))
+    if (baselines.length === 0) return
     benchmarkCandidatesMutation.mutate(
       {
         baselines,
@@ -500,6 +479,79 @@ export const PlayerAnalysisPage: FC = () => {
         },
       }
     )
+  }
+
+  const handlePreview = (playerNameOverride?: string) => {
+    syncSelectedBaselineKeys(new Set())
+    const requestId = previewRequestSeq.current + 1
+    previewRequestSeq.current = requestId
+    previewMutation.mutate(buildRequest({ playerNameOverride }), {
+      onSuccess: (data) => {
+        if (requestId !== previewRequestSeq.current) return
+
+        const defaultFightSelection = buildSingleBossDefaultSelection(data)
+        setSelectedFightIdsByReport(defaultFightSelection)
+        const nextBaselineKeys = buildBaselineKeysFromFightSelection(data, defaultFightSelection)
+        syncSelectedBaselineKeys(nextBaselineKeys)
+
+        if (benchmarkContextSource === 'wclDetected' && data.effectiveContext?.source === 'userProvided') {
+          setBenchmarkContextSource('userProvided')
+        }
+
+        // Auto-trigger benchmark for the default selected boss when class/spec is detected
+        if (nextBaselineKeys.size === 0) return
+        const detectedClass = data.detectedPlayer?.className !== 'unknown'
+          ? (data.detectedPlayer?.className ?? null)
+          : null
+        const detectedSpec = data.detectedPlayer?.specName !== 'unknown'
+          ? (data.detectedPlayer?.specName ?? null)
+          : null
+        const autoClass =
+          benchmarkContextSource === 'userProvided' && playerUserContext?.className
+            ? playerUserContext.className
+            : detectedClass
+        const autoSpec =
+          benchmarkContextSource === 'userProvided' && playerUserContext?.specName
+            ? playerUserContext.specName
+            : detectedSpec
+
+        if (!autoClass || !autoSpec) return
+
+        const baselinesForAutoTrigger: AvailableBaseline[] = (data.includedReports ?? [])
+          .filter((r) => r.playerPresent)
+          .flatMap((r) =>
+            (r.includedFights ?? [])
+              .filter((f) => nextBaselineKeys.has(`${r.code}:${f.fightId}`))
+              .map((f): AvailableBaseline => ({
+                key: `${r.code}:${f.fightId}`,
+                reportCode: r.code,
+                reportTitle: r.title,
+                fightId: f.fightId,
+                encounterId: f.encounterId ?? 0,
+                encounterName: f.encounterName,
+                difficulty: f.difficulty,
+                durationMs: f.durationMs,
+                kill: f.kill,
+                playerName: data.detectedPlayer?.characterName ?? '',
+                className: autoClass,
+                specName: autoSpec,
+                itemLevel: f.playerItemLevel ?? null,
+              }))
+          )
+        handleFindCandidatesWithKeys(nextBaselineKeys, baselinesForAutoTrigger)
+      },
+    })
+  }
+
+  const handleGenerateExport = async () => {
+    if (selectedViews.length === 0 || countSelectedFights(selectedFightIdsByReport) === 0) return
+    if (exportBlockedReason) return
+    await exportJob.startExport(buildRequest({ forExport: true }))
+  }
+
+  const handleFindCandidates = () => {
+    if (!preview || selectedBaselineKeys.size === 0 || !preview.detectedPlayer) return
+    handleFindCandidatesWithKeys(selectedBaselineKeys)
   }
 
   const handleScopeFieldChange = (applyChange: () => void, options?: { resetUserContext?: boolean }) => {
@@ -539,20 +591,43 @@ export const PlayerAnalysisPage: FC = () => {
     syncSelectedBaselineKeys(buildBaselineKeysFromFightSelection(preview, nextSelection))
   }
 
-  const handleSelectSingleBossFight = () => {
-    if (!preview) return
-    const nextSelection = buildSingleBossDefaultSelection(preview)
-    setSelectedFightIdsByReport(nextSelection)
-    syncSelectedBaselineKeys(buildBaselineKeysFromFightSelection(preview, nextSelection))
-  }
-
   const handleSelectBossKill = (reportCode: string, fightId: number) => {
     if (!preview) return
     const nextSelection: Record<string, number[]> = Object.fromEntries(
-      (preview.includedReports ?? []).map((report) => [report.code, report.code === reportCode ? [fightId] : []])
+      (preview.includedReports ?? []).map((report) => [
+        report.code,
+        report.code === reportCode ? [fightId] : [],
+      ])
     )
     setSelectedFightIdsByReport(nextSelection)
-    syncSelectedBaselineKeys(buildBaselineKeysFromFightSelection(preview, nextSelection))
+    const nextBaselineKeys = buildBaselineKeysFromFightSelection(preview, nextSelection)
+    syncSelectedBaselineKeys(nextBaselineKeys)
+
+    if (nextBaselineKeys.size === 0 || !effectiveClassName || !effectiveSpecName) return
+
+    // Compute baselines inline from next selection since state hasn't updated yet
+    const baselinesForAutoTrigger: AvailableBaseline[] = (preview.includedReports ?? [])
+      .filter((r) => r.playerPresent)
+      .flatMap((r) =>
+        (r.includedFights ?? [])
+          .filter((f) => nextBaselineKeys.has(`${r.code}:${f.fightId}`))
+          .map((f): AvailableBaseline => ({
+            key: `${r.code}:${f.fightId}`,
+            reportCode: r.code,
+            reportTitle: r.title,
+            fightId: f.fightId,
+            encounterId: f.encounterId ?? 0,
+            encounterName: f.encounterName,
+            difficulty: f.difficulty,
+            durationMs: f.durationMs,
+            kill: f.kill,
+            playerName: preview.detectedPlayer?.characterName ?? '',
+            className: effectiveClassName,
+            specName: effectiveSpecName,
+            itemLevel: f.playerItemLevel ?? null,
+          }))
+      )
+    handleFindCandidatesWithKeys(nextBaselineKeys, baselinesForAutoTrigger)
   }
 
   const handleClearFightSelection = () => {
@@ -622,7 +697,11 @@ export const PlayerAnalysisPage: FC = () => {
     benchmarkBlockedReason && !allowSubjectOnlyWithoutBenchmark ? benchmarkBlockedReason : null
 
   const showProgress = exportJob.isStarting || job !== null
-  const showResults = !!job && (job.status === 'complete' || job.status === 'partial' || ((job.status === 'failed') && (job.files?.length ?? 0) > 0))
+  const showResults =
+    !!job &&
+    (job.status === 'complete' ||
+      job.status === 'partial' ||
+      (job.status === 'failed' && (job.files?.length ?? 0) > 0))
 
   const players = [...(recentPlayersQuery.data?.players ?? [])].sort((left, right) => {
     const reportDelta = (right.seenInRaidKillReports ?? 0) - (left.seenInRaidKillReports ?? 0)
@@ -636,48 +715,168 @@ export const PlayerAnalysisPage: FC = () => {
   const reports = recentReportsQuery.data?.reports ?? []
   const latestRaidReportCodes = selectLatestRaidReportCodes(reports)
 
+  const selectedFightCount = countSelectedFights(selectedFightIdsByReport)
+
+  // Step visibility
+  const showStep2 = previewMutation.isPending || previewMutation.isSuccess || !!previewMutation.error
+  const showStep3 = !!preview && selectedFightCount > 0
+  // Step 4 appears as soon as a fight is selected; content inside varies by benchmark state
+  const showStep4 = showStep3
+
+  const isSelected = (reportCode: string, fightId: number): boolean =>
+    (selectedFightIdsByReport[reportCode] ?? []).includes(fightId)
+
+  // First baseline for export summary display
+  const firstBaseline = availableBaselines[0] ?? null
+
   return (
-    <div className="space-y-4">
-      <div>
-        <h1 className="text-lg font-semibold text-slate-100">Player Analysis Export</h1>
-        <p className="mt-0.5 text-xs text-slate-400">Export Warcraft Logs data without manually opening every WCL view.</p>
-      </div>
-      <div className="rounded border border-slate-800 bg-slate-900/50 p-3 text-xs text-slate-300">
-        Workflow: 1) Player 2) Raid/Boss 3) Benchmark 4) Export. Default flow analyzes one boss fight first; multi-fight export is optional.
+    <div className="mx-auto max-w-[900px] space-y-4 py-6 px-4">
+      {/* Page header */}
+      <div className="pb-2 text-center">
+        <h1 className="text-2xl font-bold text-slate-100">Player Analysis Export</h1>
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-3">
-        <div className="space-y-4">
-          <PlayerAnalysisScopeForm
-            players={players}
-            reports={reports}
-            latestRaidReportCodes={latestRaidReportCodes}
-            recentPlayersLoading={recentPlayersQuery.isLoading}
-            recentPlayersError={recentPlayersQuery.error instanceof Error ? recentPlayersQuery.error.message : null}
-            reportsLoading={recentReportsQuery.isLoading}
-            reportsError={recentReportsQuery.error instanceof Error ? recentReportsQuery.error.message : null}
-            playerName={playerName}
-            timeframePreset={timeframePreset}
-            selectedReports={selectedReports}
-            includeKills={includeKills}
-            includeWipes={includeWipes}
-            includeTrash={includeTrash}
-            onlyPlayerPresent={onlyPlayerPresent}
-            onPlayerNameChange={(value) => handleScopeFieldChange(() => setPlayerName(value), { resetUserContext: true })}
-            onTimeframePresetChange={(value) => handleScopeFieldChange(() => setTimeframePreset(value))}
-            onSelectedReportsChange={(value) => handleScopeFieldChange(() => setSelectedReports(value))}
-            onIncludeKillsChange={(value) => handleScopeFieldChange(() => setIncludeKills(value))}
-            onIncludeWipesChange={(value) => handleScopeFieldChange(() => setIncludeWipes(value))}
-            onIncludeTrashChange={(value) => handleScopeFieldChange(() => setIncludeTrash(value))}
-            onOnlyPlayerPresentChange={(value) => handleScopeFieldChange(() => setOnlyPlayerPresent(value))}
-            onPreview={handlePreview}
-            isPreviewing={previewMutation.isPending}
-            previewButtonLabel={timeframePreset === 'latestRaid' ? 'Preview latest raid' : 'Preview selected scope'}
-          />
-          <PlayerAnalysisViewsForm
-            selectedViews={selectedViews}
-            onSelectedViewsChange={setSelectedViews}
-          />
+      {/* Step 1 — Player */}
+      <section className="rounded-xl border border-slate-800 bg-slate-900/70 p-5">
+        <div className="mb-3 text-[10px] font-semibold uppercase tracking-widest text-slate-500">
+          Player
+        </div>
+        <PlayerAnalysisScopeForm
+          players={players}
+          reports={reports}
+          latestRaidReportCodes={latestRaidReportCodes}
+          recentPlayersLoading={recentPlayersQuery.isLoading}
+          recentPlayersError={
+            recentPlayersQuery.error instanceof Error ? recentPlayersQuery.error.message : null
+          }
+          reportsLoading={recentReportsQuery.isLoading}
+          reportsError={
+            recentReportsQuery.error instanceof Error ? recentReportsQuery.error.message : null
+          }
+          playerName={playerName}
+          timeframePreset={timeframePreset}
+          selectedReports={selectedReports}
+          includeKills={includeKills}
+          includeWipes={includeWipes}
+          includeTrash={includeTrash}
+          onlyPlayerPresent={onlyPlayerPresent}
+          onPlayerNameChange={(value) => {
+            handleScopeFieldChange(() => setPlayerName(value), { resetUserContext: true })
+            // Auto-trigger on exact autocomplete match, guarded against repeats
+            const normalizedValue = value.trim().toLowerCase()
+            if (
+              normalizedValue &&
+              normalizedValue !== lastAutoPreviewedName.current &&
+              players.some((p) => p.name.toLowerCase() === normalizedValue)
+            ) {
+              lastAutoPreviewedName.current = normalizedValue
+              handlePreview(value.trim())
+            }
+          }}
+          onTimeframePresetChange={(value) =>
+            handleScopeFieldChange(() => setTimeframePreset(value))
+          }
+          onSelectedReportsChange={(value) =>
+            handleScopeFieldChange(() => setSelectedReports(value))
+          }
+          onIncludeKillsChange={(value) => handleScopeFieldChange(() => setIncludeKills(value))}
+          onIncludeWipesChange={(value) => handleScopeFieldChange(() => setIncludeWipes(value))}
+          onIncludeTrashChange={(value) => handleScopeFieldChange(() => setIncludeTrash(value))}
+          onOnlyPlayerPresentChange={(value) =>
+            handleScopeFieldChange(() => setOnlyPlayerPresent(value))
+          }
+          onPreview={() => {
+            lastAutoPreviewedName.current = playerName.trim().toLowerCase()
+            handlePreview(playerName.trim() || undefined)
+          }}
+          onCommit={() => {
+            const trimmed = playerName.trim()
+            if (!trimmed) return
+            lastAutoPreviewedName.current = trimmed.toLowerCase()
+            handlePreview(trimmed)
+          }}
+          isPreviewing={previewMutation.isPending}
+        />
+      </section>
+
+      {/* Step 2 — Boss Kill */}
+      {showStep2 && (
+        <section className="rounded-xl border border-slate-800 bg-slate-900/70 p-5">
+          <div className="mb-3 text-[10px] font-semibold uppercase tracking-widest text-slate-500">
+            Boss Kill
+          </div>
+
+          {previewMutation.isPending && (
+            <p className="text-sm text-slate-400">Loading boss kills…</p>
+          )}
+
+          {previewMutation.error && !previewMutation.isPending && (
+            <div className="rounded border border-rose-700/40 bg-rose-950/20 p-3 text-xs text-rose-200">
+              {(previewMutation.error as Error).message}
+            </div>
+          )}
+
+          {preview && !previewMutation.isPending && (
+            <>
+              {preview.recentRaidBossKills.groups.length === 0 && (
+                <p className="text-sm text-slate-400">
+                  No verified raid boss kills found for {preview.requestedPlayerName} in this scope.
+                </p>
+              )}
+
+              <div className="space-y-2">
+                {preview.recentRaidBossKills.groups.flatMap((group) =>
+                  group.fights.map((fight) => (
+                    <BossKillCard
+                      key={`${fight.reportCode}:${fight.fightId}`}
+                      encounterName={group.encounterName}
+                      difficulty={group.difficulty}
+                      durationMs={fight.durationMs}
+                      startTime={fight.startTime}
+                      playerItemLevel={fight.playerItemLevel}
+                      reportCode={fight.reportCode}
+                      fightId={fight.fightId}
+                      isSelected={isSelected(fight.reportCode, fight.fightId)}
+                      onClick={() => handleSelectBossKill(fight.reportCode, fight.fightId)}
+                    />
+                  ))
+                )}
+              </div>
+
+              {preview.recentRaidBossKills.warnings.length > 0 && (
+                <div className="mt-2 rounded border border-amber-700/30 bg-amber-950/20 p-2 text-xs text-amber-200 space-y-1">
+                  {preview.recentRaidBossKills.warnings.map((w) => (
+                    <p key={w}>⚠ {w}</p>
+                  ))}
+                </div>
+              )}
+
+              <details className="mt-3 rounded border border-slate-700 bg-slate-950/30 p-2">
+                <summary className="cursor-pointer text-xs text-slate-400 hover:text-slate-300">
+                  Advanced: scope details & manual fight selection
+                </summary>
+                <div className="mt-3">
+                  <PlayerAnalysisPreviewPanel
+                    preview={preview}
+                    selectedFightIdsByReport={selectedFightIdsByReport}
+                    onFightSelectionChange={handleFightSelectionChange}
+                    onSelectAllEligibleFights={handleSelectAllEligibleFights}
+                    onClearFightSelection={handleClearFightSelection}
+                    viewCount={selectedViews.length}
+                  />
+                </div>
+              </details>
+            </>
+          )}
+        </section>
+      )}
+
+      {/* Step 3 — Benchmark */}
+      {showStep3 && (
+        <section className="rounded-xl border border-slate-800 bg-slate-900/70 p-5">
+          <div className="mb-3 text-[10px] font-semibold uppercase tracking-widest text-slate-500">
+            Benchmark
+          </div>
           <BenchmarkErrorBoundary>
             <PlayerAnalysisBenchmarkForm
               benchmarkMode={benchmarkMode}
@@ -707,63 +906,105 @@ export const PlayerAnalysisPage: FC = () => {
               allowSubjectOnlyWithoutBenchmark={allowSubjectOnlyWithoutBenchmark}
               onAllowSubjectOnlyWithoutBenchmarkChange={setAllowSubjectOnlyWithoutBenchmark}
               onFindCandidates={handleFindCandidates}
+              isAutoTriggered={true}
             />
           </BenchmarkErrorBoundary>
-        </div>
+        </section>
+      )}
 
-        <div className="space-y-4">
-          {previewMutation.error && (
-            <div className="rounded border border-rose-700/40 bg-rose-950/20 p-3 text-xs text-rose-200">
-              {(previewMutation.error as Error).message}
-            </div>
+      {/* Step 4 — Export */}
+      {showStep4 && (
+        <section className="rounded-xl border border-slate-800 bg-slate-900/70 p-5">
+          <div className="mb-3 text-[10px] font-semibold uppercase tracking-widest text-slate-500">
+            Export
+          </div>
+
+          {/* Benchmark status messages — explain why export may not be ready yet */}
+          {!showProgress && !showResults && benchmarkMode === 'auto' && (
+            <>
+              {benchmarkCandidatesMutation.isPending && (
+                <p className="mb-4 text-sm text-slate-400">
+                  Finding same-spec benchmark candidates…
+                </p>
+              )}
+              {benchmarkCandidatesMutation.isError && (
+                <div className="mb-4 rounded border border-rose-700/30 bg-rose-950/20 p-3 text-xs text-rose-200">
+                  Benchmark discovery failed. Retry from the Benchmark step or use manual benchmark
+                  fallback.
+                </div>
+              )}
+              {benchmarkCandidatesMutation.isSuccess &&
+                selectedAutoCandidates.length === 0 &&
+                !allowSubjectOnlyWithoutBenchmark && (
+                  <div className="mb-4 rounded border border-amber-700/30 bg-amber-950/20 p-3 text-xs text-amber-200">
+                    No exportable benchmark candidate found. Use manual benchmark fallback or enable
+                    subject-only export in the Benchmark step above.
+                  </div>
+                )}
+            </>
           )}
 
-          {preview && !showProgress && (
-            <PlayerAnalysisPreviewPanel
-              preview={preview}
-              selectedFightIdsByReport={selectedFightIdsByReport}
-              onSelectBossKill={handleSelectBossKill}
-              onFightSelectionChange={handleFightSelectionChange}
-              onAnalyzeSingleBoss={handleSelectSingleBossFight}
-              onSelectAllEligibleFights={handleSelectAllEligibleFights}
-              onClearFightSelection={handleClearFightSelection}
-              onGenerateExport={handleGenerateExport}
-              isGenerating={exportJob.isStarting}
-              viewCount={selectedViews.length}
-              exportBlockedReason={exportBlockedReason}
-            />
+          {/* Pre-export summary + button */}
+          {!showProgress && !showResults && (
+            <>
+              {firstBaseline && (
+                <div className="mb-4 rounded border border-slate-700 bg-slate-950/40 p-3 text-xs text-slate-300 space-y-1">
+                  <p>
+                    Player: <span className="text-slate-100">{playerName}</span>
+                  </p>
+                  <p>
+                    Fight:{' '}
+                    <span className="text-slate-100">
+                      {firstBaseline.encounterName} —{' '}
+                      {getDifficultyLabel(firstBaseline.difficulty)}
+                    </span>
+                  </p>
+                  {selectedAutoCandidates.length > 0 && (
+                    <p>
+                      Benchmark:{' '}
+                      <span className="text-slate-100">
+                        {selectedAutoCandidates[0].benchmarkPlayerName}
+                      </span>
+                    </p>
+                  )}
+                  {benchmarkMode !== 'none' && effectiveClassName && effectiveSpecName && (
+                    <p className="text-slate-400">
+                      Comparison: same encounter · same difficulty ·{' '}
+                      {effectiveSpecName} {effectiveClassName}
+                    </p>
+                  )}
+                </div>
+              )}
+
+              <button
+                type="button"
+                onClick={handleGenerateExport}
+                disabled={
+                  exportJob.isStarting ||
+                  selectedFightCount === 0 ||
+                  selectedViews.length === 0 ||
+                  !!exportBlockedReason
+                }
+                className="w-full rounded-lg bg-violet-600 px-4 py-3 text-sm font-semibold text-white hover:bg-violet-500 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {exportJob.isStarting ? 'Starting export…' : 'Export analysis bundle'}
+              </button>
+
+              {exportBlockedReason && !allowSubjectOnlyWithoutBenchmark && (
+                <p className="mt-2 text-xs text-amber-300">{exportBlockedReason}</p>
+              )}
+              {selectedViews.length === 0 && (
+                <p className="mt-2 text-xs text-rose-300">
+                  No views selected — enable export views in Advanced options below.
+                </p>
+              )}
+            </>
           )}
 
-          {showProgress && !showResults && job && (
-            <PlayerAnalysisExportProgress job={job} />
-          )}
-
+          {showProgress && !showResults && job && <PlayerAnalysisExportProgress job={job} />}
           {exportJob.isStarting && !job && (
-            <div className="rounded-xl border border-slate-800 bg-slate-900/70 p-4 text-xs text-slate-400">
-              Starting export…
-            </div>
+            <div className="text-xs text-slate-400">Starting export…</div>
           )}
-
-          {exportJob.startError && (
-            <div className="rounded border border-rose-700/40 bg-rose-950/20 p-3 text-xs text-rose-200">
-              {exportJob.startError}
-            </div>
-          )}
-
-          {exportJob.pollError && (
-            <div className="rounded border border-amber-700/40 bg-amber-950/20 p-3 text-xs text-amber-200">
-              {exportJob.pollError}
-            </div>
-          )}
-
-          {!preview && !showProgress && !previewMutation.isPending && (
-            <div className="rounded-xl border border-slate-800 bg-slate-900/70 p-4 text-xs text-slate-500">
-              Enter a player name and click "Preview export" to get started.
-            </div>
-          )}
-        </div>
-
-        <div className="space-y-4">
           {showResults && job && exportJob.exportId && (
             <PlayerAnalysisExportResults
               job={job}
@@ -771,18 +1012,40 @@ export const PlayerAnalysisPage: FC = () => {
               onReset={exportJob.reset}
             />
           )}
-
-          {job?.status === 'failed' && (
+          {job?.status === 'failed' && !showResults && (
             <button
               type="button"
               onClick={exportJob.reset}
-              className="w-full rounded border border-slate-700 bg-slate-800/40 px-3 py-1.5 text-xs text-slate-300 hover:bg-slate-800"
+              className="mt-2 w-full rounded border border-slate-700 bg-slate-800/40 px-3 py-1.5 text-xs text-slate-300 hover:bg-slate-800"
             >
               Try again
             </button>
           )}
+          {exportJob.startError && (
+            <div className="mt-2 rounded border border-rose-700/40 bg-rose-950/20 p-3 text-xs text-rose-200">
+              {exportJob.startError}
+            </div>
+          )}
+          {exportJob.pollError && (
+            <div className="mt-2 rounded border border-amber-700/40 bg-amber-950/20 p-3 text-xs text-amber-200">
+              {exportJob.pollError}
+            </div>
+          )}
+        </section>
+      )}
+
+      {/* Global advanced options */}
+      <details className="rounded-xl border border-slate-700 bg-slate-950/40 p-4">
+        <summary className="cursor-pointer text-xs text-slate-400 hover:text-slate-300">
+          Advanced options
+        </summary>
+        <div className="mt-4 space-y-4">
+          <PlayerAnalysisViewsForm
+            selectedViews={selectedViews}
+            onSelectedViewsChange={setSelectedViews}
+          />
         </div>
-      </div>
+      </details>
     </div>
   )
 }

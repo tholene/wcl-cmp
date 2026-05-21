@@ -39,59 +39,56 @@ export const PlayerAnalysisExportResults: FC<Props> = ({ job, exportId, onReset 
   const downloadUrl = (filename: string) => `/api/player-analysis/exports/${exportId}/${filename}`
 
   return (
-    <div className="rounded-xl border border-slate-800 bg-slate-900/70 p-4 space-y-4">
+    <div className="space-y-4">
+      {/* Status header */}
       <div className="flex items-center justify-between">
-        <h2 className="text-sm font-semibold text-slate-200">Ready for ChatGPT</h2>
+        <h3 className="text-sm font-semibold text-slate-200">Ready for ChatGPT</h3>
         {job.status === 'complete' && (
-          <span className="rounded px-2 py-0.5 text-xs font-medium bg-emerald-900/40 text-emerald-300">complete</span>
+          <span className="rounded px-2 py-0.5 text-xs font-medium bg-emerald-900/40 text-emerald-300">
+            complete
+          </span>
         )}
         {job.status === 'partial' && (
-          <span className="rounded px-2 py-0.5 text-xs font-medium bg-amber-900/40 text-amber-300">partial</span>
+          <span className="rounded px-2 py-0.5 text-xs font-medium bg-amber-900/40 text-amber-300">
+            partial
+          </span>
         )}
         {job.status === 'failed' && (
-          <span className="rounded px-2 py-0.5 text-xs font-medium bg-rose-900/40 text-rose-300">failed</span>
+          <span className="rounded px-2 py-0.5 text-xs font-medium bg-rose-900/40 text-rose-300">
+            failed
+          </span>
         )}
       </div>
 
-      <div className="rounded border border-slate-700 bg-slate-950/40 p-3 text-xs text-slate-300 space-y-1">
-        <p>Player: <span className="text-slate-100">{summary?.playerName ?? 'unknown'}</span></p>
-        <p>Boss: <span className="text-slate-100">{summary?.encounterName ?? 'unknown'}</span></p>
-        <p>
-          Difficulty: <span className="text-slate-100">{summary?.difficultyLabel ?? getDifficultyLabel(summary?.difficulty ?? null)}</span>
-        </p>
-        <p>Benchmark player: <span className="text-slate-100">{summary?.benchmarkPlayerName ?? 'not included'}</span></p>
-        <p>
-          Benchmark target:{' '}
-          <span className="text-slate-100">
-            {summary?.benchmarkPercentile != null
-              ? `${summary.benchmarkPercentile}% ${summary.benchmarkMetric ?? 'metric'}`
-              : 'n/a'}
-          </span>
-        </p>
-        <p>Status: <span className="text-slate-100">{job.status}</span></p>
-      </div>
-
+      {/* Download bundle — primary action */}
       {zipFile && (
         <a
           href={downloadUrl(zipFile.filename)}
           download={zipFile.filename}
-          className="flex items-center justify-between w-full rounded border border-violet-600 bg-violet-700/20 px-4 py-2.5 text-sm font-medium text-violet-200 hover:bg-violet-700/30"
+          className="flex items-center justify-between w-full rounded-lg border border-violet-500 bg-violet-600/20 px-4 py-3 text-sm font-semibold text-violet-200 hover:bg-violet-600/30"
         >
           <span>Download bundle.zip</span>
           <span className="text-xs text-violet-300/70">{formatBytes(zipFile.sizeBytes)}</span>
         </a>
       )}
 
+      {/* Next step instruction */}
       {(job.status === 'complete' || job.status === 'partial') && (
         <div className="rounded border border-emerald-700/30 bg-emerald-950/20 p-2 text-xs text-emerald-200">
-          {summary?.nextStepInstruction ?? 'Upload this ZIP to ChatGPT. The README contains the analysis instructions.'}
+          {summary?.nextStepInstruction ??
+            'Upload this ZIP to ChatGPT. The README contains the analysis instructions.'}
         </div>
       )}
 
+      {/* Partial/failed alerts */}
       {job.status === 'partial' && (
         <div className="rounded border border-amber-700/30 bg-amber-950/20 p-2 text-xs text-amber-200 space-y-1">
           <p className="font-medium">Export completed with partial data</p>
-          {topReasons.length > 0 ? topReasons.map((reason, index) => <p key={`reason-${index}`}>{reason}</p>) : <p>Some requested data could not be exported.</p>}
+          {topReasons.length > 0 ? (
+            topReasons.map((reason, index) => <p key={`reason-${index}`}>{reason}</p>)
+          ) : (
+            <p>Some requested data could not be exported.</p>
+          )}
         </div>
       )}
 
@@ -104,26 +101,77 @@ export const PlayerAnalysisExportResults: FC<Props> = ({ job, exportId, onReset 
         </div>
       )}
 
-      {(topReasons.length > 0 || failedChecks.length > 0 || skippedCandidates.length > 0 || skippedViews.length > 0 || truncatedViews.length > 0 || job.warnings.length > 0) && (
+      {/* Export summary — collapsed */}
+      <details className="rounded border border-slate-700 bg-slate-950/40 p-2">
+        <summary className="cursor-pointer text-xs font-medium text-slate-400">Export summary</summary>
+        <div className="mt-2 text-xs text-slate-300 space-y-1">
+          <p>
+            Player: <span className="text-slate-100">{summary?.playerName ?? 'unknown'}</span>
+          </p>
+          <p>
+            Boss: <span className="text-slate-100">{summary?.encounterName ?? 'unknown'}</span>
+          </p>
+          <p>
+            Difficulty:{' '}
+            <span className="text-slate-100">
+              {summary?.difficultyLabel ?? getDifficultyLabel(summary?.difficulty ?? null)}
+            </span>
+          </p>
+          <p>
+            Benchmark player:{' '}
+            <span className="text-slate-100">
+              {summary?.benchmarkPlayerName ?? 'not included'}
+            </span>
+          </p>
+          <p>
+            Benchmark target:{' '}
+            <span className="text-slate-100">
+              {summary?.benchmarkPercentile != null
+                ? `${summary.benchmarkPercentile}% ${summary.benchmarkMetric ?? 'metric'}`
+                : 'n/a'}
+            </span>
+          </p>
+          <p>
+            Status: <span className="text-slate-100">{job.status}</span>
+          </p>
+        </div>
+      </details>
+
+      {/* Detailed warnings */}
+      {(topReasons.length > 0 ||
+        failedChecks.length > 0 ||
+        skippedCandidates.length > 0 ||
+        skippedViews.length > 0 ||
+        truncatedViews.length > 0 ||
+        job.warnings.length > 0) && (
         <details className="rounded border border-slate-700 bg-slate-950/40 p-2">
-          <summary className="cursor-pointer text-xs font-medium text-slate-400">Detailed warnings</summary>
+          <summary className="cursor-pointer text-xs font-medium text-slate-400">
+            Detailed warnings
+          </summary>
           <div className="mt-2 space-y-1 text-xs text-slate-300 max-h-48 overflow-y-auto">
             {failedChecks.map((check) => (
-              <p key={check.code}>Check failed: {check.label}{check.reason ? ` — ${check.reason}` : ''}</p>
+              <p key={check.code}>
+                Check failed: {check.label}
+                {check.reason ? ` — ${check.reason}` : ''}
+              </p>
             ))}
             {skippedCandidates.map((candidate, index) => (
               <p key={`candidate-${index}`}>
-                Benchmark skipped: {candidate.benchmarkPlayerName ?? 'unknown player'} ({candidate.benchmarkReportCode ?? 'n/a'}#{candidate.benchmarkFightId ?? 'n/a'}) — {candidate.reason}
+                Benchmark skipped: {candidate.benchmarkPlayerName ?? 'unknown player'} (
+                {candidate.benchmarkReportCode ?? 'n/a'}#{candidate.benchmarkFightId ?? 'n/a'}) —{' '}
+                {candidate.reason}
               </p>
             ))}
             {skippedViews.map((entry, index) => (
               <p key={`skip-${index}`}>
-                Skipped view: {entry.subjectType} {entry.view} ({entry.reportCode ?? 'n/a'}#{entry.fightId ?? 'n/a'}) — {entry.reason}
+                Skipped view: {entry.subjectType} {entry.view} ({entry.reportCode ?? 'n/a'}#
+                {entry.fightId ?? 'n/a'}) — {entry.reason}
               </p>
             ))}
             {truncatedViews.map((entry, index) => (
               <p key={`truncated-${index}`}>
-                Truncated view: {entry.subjectType} {entry.view} ({entry.reportCode}#{entry.fightId}) capped at {entry.rowLimit} rows.
+                Truncated view: {entry.subjectType} {entry.view} ({entry.reportCode}#
+                {entry.fightId}) capped at {entry.rowLimit} rows.
               </p>
             ))}
             {job.warnings.map((warning, index) => (
@@ -133,9 +181,12 @@ export const PlayerAnalysisExportResults: FC<Props> = ({ job, exportId, onReset 
         </details>
       )}
 
+      {/* Individual files */}
       {otherFiles.length > 0 && (
         <details className="rounded border border-slate-700 bg-slate-950/40 p-2">
-          <summary className="cursor-pointer text-xs font-medium text-slate-400">Individual files ({otherFiles.length})</summary>
+          <summary className="cursor-pointer text-xs font-medium text-slate-400">
+            Individual files ({otherFiles.length})
+          </summary>
           <div className="mt-2 space-y-1">
             {otherFiles.map((file) => (
               <a
@@ -146,7 +197,11 @@ export const PlayerAnalysisExportResults: FC<Props> = ({ job, exportId, onReset 
               >
                 <span className="truncate mr-2">
                   <span className="text-slate-500">[{kindLabel[file.kind]}]</span> {file.filename}
-                  {file.rowCount !== undefined && <span className="ml-1 text-slate-500">({file.rowCount.toLocaleString()} rows)</span>}
+                  {file.rowCount !== undefined && (
+                    <span className="ml-1 text-slate-500">
+                      ({file.rowCount.toLocaleString()} rows)
+                    </span>
+                  )}
                 </span>
                 <span className="shrink-0 text-slate-500">{formatBytes(file.sizeBytes)}</span>
               </a>
@@ -160,7 +215,7 @@ export const PlayerAnalysisExportResults: FC<Props> = ({ job, exportId, onReset 
         onClick={onReset}
         className="w-full rounded border border-slate-700 bg-slate-800/40 px-3 py-1.5 text-xs text-slate-300 hover:bg-slate-800"
       >
-        Start new export
+        Start over
       </button>
     </div>
   )

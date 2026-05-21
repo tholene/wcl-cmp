@@ -12,46 +12,32 @@ const SIZE_LABELS: Record<string, string> = {
 type Props = {
   preview: PlayerAnalysisExportPreview
   selectedFightIdsByReport: Record<string, number[]>
-  onSelectBossKill: (reportCode: string, fightId: number) => void
   onFightSelectionChange: (reportCode: string, fightId: number, selected: boolean) => void
-  onAnalyzeSingleBoss: () => void
   onSelectAllEligibleFights: () => void
   onClearFightSelection: () => void
-  onGenerateExport: () => void
-  isGenerating: boolean
   viewCount: number
-  exportBlockedReason?: string | null
 }
 
 export const PlayerAnalysisPreviewPanel: FC<Props> = ({
   preview,
   selectedFightIdsByReport,
-  onSelectBossKill,
   onFightSelectionChange,
-  onAnalyzeSingleBoss,
   onSelectAllEligibleFights,
   onClearFightSelection,
-  onGenerateExport,
-  isGenerating,
   viewCount,
-  exportBlockedReason,
 }) => {
   const player = preview.detectedPlayer
-  const selectedFightCount = Object.values(selectedFightIdsByReport).reduce((sum, fightIds) => sum + fightIds.length, 0)
-  const formatDuration = (durationMs: number): string => {
-    const totalSeconds = Math.max(Math.floor(durationMs / 1000), 0)
-    const minutes = Math.floor(totalSeconds / 60)
-    const seconds = totalSeconds % 60
-    return `${minutes}:${seconds.toString().padStart(2, '0')}`
-  }
+  const selectedFightCount = Object.values(selectedFightIdsByReport).reduce(
+    (sum, fightIds) => sum + fightIds.length,
+    0,
+  )
   const isSelected = (reportCode: string, fightId: number): boolean =>
     selectedFightIdsByReport[reportCode]?.includes(fightId) ?? false
 
   return (
-    <div className="rounded-xl border border-slate-800 bg-slate-900/70 p-4 space-y-3">
-      <h2 className="text-sm font-semibold text-slate-200">Step 2: Raid and Boss Selection</h2>
-
-      <div className="rounded border border-slate-700 bg-slate-950/50 p-3 space-y-1 text-xs">
+    <div className="space-y-3 text-xs">
+      {/* Scope stats */}
+      <div className="rounded border border-slate-700 bg-slate-950/50 p-3 space-y-1">
         <div className="flex justify-between">
           <span className="text-slate-400">Reports scanned</span>
           <span className="text-slate-200">{preview.scope.reportsScanned}</span>
@@ -70,19 +56,28 @@ export const PlayerAnalysisPreviewPanel: FC<Props> = ({
         </div>
       </div>
 
+      {/* Player detection */}
       {player && (
-        <div className="rounded border border-slate-700 bg-slate-950/50 p-3 space-y-1 text-xs">
+        <div className="rounded border border-slate-700 bg-slate-950/50 p-3 space-y-1">
           <p className="font-medium text-slate-300">{player.characterName}</p>
 
           {player.detectedContext && player.detectedContext.confidence === 'high' && (
             <>
               <div className="flex gap-3 text-slate-400">
-                <span>Class: <span className="text-slate-200">{player.detectedContext.className}</span></span>
-                <span>Spec: <span className="text-slate-200">{player.detectedContext.specName}</span></span>
-                <span>Role: <span className="text-slate-200">{player.detectedContext.role?.toUpperCase()}</span></span>
+                <span>
+                  Class: <span className="text-slate-200">{player.detectedContext.className}</span>
+                </span>
+                <span>
+                  Spec: <span className="text-slate-200">{player.detectedContext.specName}</span>
+                </span>
+                <span>
+                  Role:{' '}
+                  <span className="text-slate-200">{player.detectedContext.role?.toUpperCase()}</span>
+                </span>
               </div>
               <p className="text-slate-500">
-                Source: WCL CombatantInfo{player.detectedContext.specId ? ` (specID ${player.detectedContext.specId})` : ''}
+                Source: WCL CombatantInfo
+                {player.detectedContext.specId ? ` (specID ${player.detectedContext.specId})` : ''}
               </p>
             </>
           )}
@@ -90,7 +85,9 @@ export const PlayerAnalysisPreviewPanel: FC<Props> = ({
           {player.detectedContext && player.detectedContext.confidence === 'medium' && (
             <>
               <div className="flex gap-3 text-slate-400">
-                <span>Class: <span className="text-slate-200">{player.detectedContext.className}</span></span>
+                <span>
+                  Class: <span className="text-slate-200">{player.detectedContext.className}</span>
+                </span>
                 <span className="text-amber-400">Spec not detected</span>
               </div>
               <p className="text-slate-500">Source: WCL actor data</p>
@@ -102,16 +99,18 @@ export const PlayerAnalysisPreviewPanel: FC<Props> = ({
           )}
 
           {player.detectionDiagnostics && player.detectedContext?.confidence !== 'high' && (
-            <div className="mt-0.5 space-y-0.5 text-xs text-slate-500">
+            <div className="mt-0.5 space-y-0.5 text-slate-500">
               {!player.detectionDiagnostics.playerActorFound && (
                 <p>Player actor not found in report masterData.</p>
               )}
-              {player.detectionDiagnostics.combatantInfoQueried && player.detectionDiagnostics.combatantInfoEventsFound === 0 && (
-                <p>CombatantInfo queried but returned no events for checked fight(s).</p>
-              )}
-              {player.detectionDiagnostics.matchingCombatantInfoFound && !player.detectionDiagnostics.specIdMapped && (
-                <p>specID {player.detectionDiagnostics.rawSpecIdFound} found but not in spec map.</p>
-              )}
+              {player.detectionDiagnostics.combatantInfoQueried &&
+                player.detectionDiagnostics.combatantInfoEventsFound === 0 && (
+                  <p>CombatantInfo queried but returned no events.</p>
+                )}
+              {player.detectionDiagnostics.matchingCombatantInfoFound &&
+                !player.detectionDiagnostics.specIdMapped && (
+                  <p>specID {player.detectionDiagnostics.rawSpecIdFound} found but not in spec map.</p>
+                )}
               {player.detectionDiagnostics.fightsAttempted > 0 && (
                 <p>{player.detectionDiagnostics.fightsAttempted} fight(s) checked for spec detection.</p>
               )}
@@ -119,49 +118,61 @@ export const PlayerAnalysisPreviewPanel: FC<Props> = ({
           )}
 
           {player.itemLevel !== null && (
-            <p className="text-slate-400">Item level: <span className="text-slate-200">{player.itemLevel}</span></p>
+            <p className="text-slate-400">
+              Item level: <span className="text-slate-200">{player.itemLevel}</span>
+            </p>
           )}
           {player.warnings.map((w) => (
-            <p key={w} className="text-amber-300">⚠ {w}</p>
+            <p key={w} className="text-amber-300">
+              ⚠ {w}
+            </p>
           ))}
         </div>
       )}
 
       {!player && (
-        <div className="rounded border border-amber-700/30 bg-amber-950/20 p-2 text-xs text-amber-300">
+        <div className="rounded border border-amber-700/30 bg-amber-950/20 p-2 text-amber-300">
           Player not detected in any included reports.
         </div>
       )}
 
-      <div className="rounded border border-slate-700 bg-slate-950/50 p-3 space-y-1 text-xs">
+      {/* Estimated export size */}
+      <div className="rounded border border-slate-700 bg-slate-950/50 p-3 space-y-1">
         <p className="text-slate-400">
-          Estimated size: <span className="text-slate-200">{SIZE_LABELS[preview.estimatedExport.estimatedSizeLevel] ?? preview.estimatedExport.estimatedSizeLevel}</span>
+          Estimated size:{' '}
+          <span className="text-slate-200">
+            {SIZE_LABELS[preview.estimatedExport.estimatedSizeLevel] ??
+              preview.estimatedExport.estimatedSizeLevel}
+          </span>
         </p>
         <p className="text-slate-400">
           CSV files: <span className="text-slate-200">~{preview.estimatedExport.estimatedCsvFiles}</span>
         </p>
         {preview.estimatedExport.warnings.map((w) => (
-          <p key={w} className="text-amber-300">⚠ {w}</p>
+          <p key={w} className="text-amber-300">
+            ⚠ {w}
+          </p>
         ))}
       </div>
 
       {preview.warnings.length > 0 && (
-        <div className="rounded border border-amber-700/30 bg-amber-950/20 p-2 space-y-1 text-xs text-amber-200">
+        <div className="rounded border border-amber-700/30 bg-amber-950/20 p-2 space-y-1 text-amber-200">
           {preview.warnings.map((w) => (
             <p key={w}>⚠ {w}</p>
           ))}
         </div>
       )}
 
-      <div className="rounded border border-slate-700 bg-slate-950/50 p-3 space-y-2 text-xs">
+      {/* Manual fight selection */}
+      <div className="space-y-2">
         <div className="flex items-center justify-between">
-          <p className="text-slate-300">Fight selection</p>
+          <p className="font-medium text-slate-300">Manual fight selection</p>
           <div className="flex items-center gap-2 text-slate-500">
-            <button type="button" className="hover:text-slate-300" onClick={onAnalyzeSingleBoss}>
-              Analyze this boss
-            </button>
+            <span className="text-slate-400">
+              {selectedFightCount} fight{selectedFightCount !== 1 ? 's' : ''} selected
+            </span>
             <button type="button" className="hover:text-slate-300" onClick={onSelectAllEligibleFights}>
-              Include more fights
+              Select all eligible
             </button>
             <button type="button" className="hover:text-slate-300" onClick={onClearFightSelection}>
               Clear
@@ -169,147 +180,84 @@ export const PlayerAnalysisPreviewPanel: FC<Props> = ({
           </div>
         </div>
         <p className="text-slate-500">
-          Default flow uses one verified raid boss kill. Use advanced controls only when you need manual report/fight scope.
+          Use these controls to override boss kill card selection or add multi-fight scope.
         </p>
-        <p className="text-slate-400">
-          Selected fights: <span className="text-slate-200">{selectedFightCount}</span>
-        </p>
-
-        {preview.recentRaidBossKills.warnings.length > 0 && (
-          <div className="rounded border border-amber-700/30 bg-amber-950/20 p-2 space-y-1 text-amber-200">
-            {preview.recentRaidBossKills.warnings.map((warning) => (
-              <p key={warning}>⚠ {warning}</p>
-            ))}
-          </div>
+        {viewCount === 0 && (
+          <p className="text-rose-300">No views selected — enable at least one export view.</p>
         )}
 
-        {preview.recentRaidBossKills.groups.length === 0 && (
-          <p className="text-slate-500">No verified raid boss kills found for this player in the current scope.</p>
+        {preview.includedReports.length === 0 && (
+          <p className="text-slate-500">No reports available in current scope.</p>
         )}
 
-        {preview.recentRaidBossKills.groups.length > 0 && (
-          <div className="space-y-2">
-            {preview.recentRaidBossKills.groups.map((group) => (
-              <div key={`${group.encounterId}:${group.difficulty}`} className="rounded border border-slate-800 bg-slate-950/40 p-2">
-                <p className="font-medium text-slate-200">{group.encounterName}</p>
-                <div className="mt-1 space-y-1">
-                  {group.fights.map((fight) => (
-                    <button
-                      key={`${fight.reportCode}:${fight.fightId}`}
-                      type="button"
-                      onClick={() => onSelectBossKill(fight.reportCode, fight.fightId)}
-                      className={`w-full rounded border px-2 py-1.5 text-left ${
-                        isSelected(fight.reportCode, fight.fightId)
-                          ? 'border-cyan-500/70 bg-cyan-900/20 text-cyan-100'
-                          : 'border-slate-800 bg-slate-900/50 text-slate-300 hover:border-slate-700'
-                      }`}
-                    >
-                      <div className="flex flex-wrap items-center justify-between gap-2">
-                        <span className="font-medium">
-                          {getDifficultyLabel(group.difficulty)} — {formatDuration(fight.durationMs)} — {new Date(fight.startTime).toLocaleDateString()}
-                        </span>
-                        <span className="text-xs text-slate-400">
-                          {fight.reportCode}
-                        </span>
-                      </div>
-                      <div className="mt-0.5 text-xs text-slate-400">
-                        {fight.reportTitle}
-                        {fight.playerItemLevel !== undefined && fight.playerItemLevel !== null
-                          ? ` · ilvl ${fight.playerItemLevel}`
-                          : ''}
-                      </div>
-                    </button>
-                  ))}
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
+        {preview.includedReports.map((report) => (
+          <div key={report.code} className="rounded border border-slate-800 bg-slate-950/40 p-2">
+            <div className="mb-1 flex flex-wrap items-center gap-x-2 gap-y-0.5">
+              <a
+                href={report.url}
+                target="_blank"
+                rel="noreferrer"
+                className="font-medium text-cyan-300 hover:text-cyan-200"
+              >
+                {report.title}
+              </a>
+              <span className="text-slate-500">({report.code})</span>
+              <span className={report.playerPresent ? 'text-emerald-300' : 'text-amber-300'}>
+                {report.playerPresent ? 'player present' : 'player absent'}
+              </span>
+            </div>
 
-        <details className="rounded border border-slate-800 bg-slate-950/30 p-2">
-          <summary className="cursor-pointer text-slate-400">Advanced/manual fight selection</summary>
-          <div className="mt-2 space-y-2">
-            {preview.includedReports.length === 0 && (
-              <p className="text-slate-500">No reports available in current scope.</p>
+            {report.includedFights.length === 0 && (
+              <p className="text-slate-500">No fights included from this report.</p>
             )}
 
-            {preview.includedReports.map((report) => (
-              <div key={report.code} className="rounded border border-slate-800 bg-slate-950/40 p-2">
-                <div className="mb-1 flex flex-wrap items-center gap-x-2 gap-y-0.5">
-                  <a href={report.url} target="_blank" rel="noreferrer" className="font-medium text-cyan-300 hover:text-cyan-200">
-                    {report.title}
-                  </a>
-                  <span className="text-slate-500">({report.code})</span>
-                  <span className={report.playerPresent ? 'text-emerald-300' : 'text-amber-300'}>
-                    {report.playerPresent ? 'player present' : 'player absent'}
-                  </span>
-                </div>
-
-                {report.includedFights.length === 0 && (
-                  <p className="text-slate-500">No fights included from this report.</p>
-                )}
-
-                {report.includedFights.length > 0 && (
-                  <div className="space-y-1">
-                    {report.includedFights.map((fight) => {
-                      const checked = isSelected(report.code, fight.fightId)
-                      return (
-                        <label
-                          key={`${report.code}:${fight.fightId}`}
-                          className="grid grid-cols-[auto,1fr] gap-2 rounded border border-slate-800 bg-slate-900/50 p-2 text-slate-300"
-                        >
-                          <input
-                            type="checkbox"
-                            checked={checked}
-                            onChange={(e) => onFightSelectionChange(report.code, fight.fightId, e.target.checked)}
-                          />
-                          <div className="grid gap-0.5 md:grid-cols-2">
-                            <span className="font-medium text-slate-200">{fight.encounterName}</span>
-                            <span className="text-slate-400">Fight ID: {fight.fightId}</span>
-                            <span className="text-slate-400">Difficulty: {getDifficultyLabel(fight.difficulty)}</span>
-                            <span className={fight.kill ? 'text-emerald-300' : 'text-rose-300'}>
-                              {fight.kill ? 'Kill' : 'Wipe'}
+            {report.includedFights.length > 0 && (
+              <div className="space-y-1">
+                {report.includedFights.map((fight) => {
+                  const checked = isSelected(report.code, fight.fightId)
+                  return (
+                    <label
+                      key={`${report.code}:${fight.fightId}`}
+                      className="grid grid-cols-[auto,1fr] gap-2 rounded border border-slate-800 bg-slate-900/50 p-2 text-slate-300"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        onChange={(e) =>
+                          onFightSelectionChange(report.code, fight.fightId, e.target.checked)
+                        }
+                      />
+                      <div className="grid gap-0.5 md:grid-cols-2">
+                        <span className="font-medium text-slate-200">{fight.encounterName}</span>
+                        <span className="text-slate-400">Fight ID: {fight.fightId}</span>
+                        <span className="text-slate-400">
+                          Difficulty: {getDifficultyLabel(fight.difficulty)}
+                        </span>
+                        <span className={fight.kill ? 'text-emerald-300' : 'text-rose-300'}>
+                          {fight.kill ? 'Kill' : 'Wipe'}
+                        </span>
+                        <span className="text-slate-400">
+                          Duration: {Math.round(fight.durationMs / 1000)}s
+                        </span>
+                        <span className={fight.playerPresent ? 'text-emerald-300' : 'text-amber-300'}>
+                          {fight.playerPresent ? 'Player present' : 'Player absent'}
+                        </span>
+                        {fight.kill &&
+                          (fight.encounterId ?? 0) > 0 &&
+                          fight.presenceVerified !== true && (
+                            <span className="text-amber-300">
+                              Presence unverified (advanced/manual only)
                             </span>
-                            <span className="text-slate-400">Duration: {Math.round(fight.durationMs / 1000)}s</span>
-                            <span className={fight.playerPresent ? 'text-emerald-300' : 'text-amber-300'}>
-                              {fight.playerPresent ? 'Player present' : 'Player absent'}
-                            </span>
-                            {fight.kill && (fight.encounterId ?? 0) > 0 && fight.presenceVerified !== true && (
-                              <span className="text-amber-300">Presence unverified (advanced/manual only)</span>
-                            )}
-                          </div>
-                        </label>
-                      )
-                    })}
-                  </div>
-                )}
+                          )}
+                      </div>
+                    </label>
+                  )
+                })}
               </div>
-            ))}
+            )}
           </div>
-        </details>
+        ))}
       </div>
-
-      <button
-        type="button"
-        onClick={onGenerateExport}
-        disabled={isGenerating || selectedFightCount === 0 || viewCount === 0 || !!exportBlockedReason}
-        className="w-full rounded border border-violet-600 bg-violet-700/20 px-3 py-2 text-sm font-medium text-violet-200 hover:bg-violet-700/30 disabled:opacity-60"
-      >
-        {isGenerating ? 'Starting export…' : 'Export analysis bundle'}
-      </button>
-
-      {preview.scope.fightsIncluded === 0 && (
-        <p className="text-xs text-rose-300">No fights match the current filters — adjust scope to proceed.</p>
-      )}
-      {selectedFightCount === 0 && (
-        <p className="text-xs text-rose-300">Select at least one fight to export.</p>
-      )}
-      {viewCount === 0 && (
-        <p className="text-xs text-rose-300">No views selected — select at least one export view.</p>
-      )}
-      {exportBlockedReason && (
-        <p className="text-xs text-amber-300">{exportBlockedReason}</p>
-      )}
     </div>
   )
 }

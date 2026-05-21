@@ -32,8 +32,8 @@ type Props = {
   onIncludeTrashChange: (value: boolean) => void
   onOnlyPlayerPresentChange: (value: boolean) => void
   onPreview: () => void
+  onCommit: () => void
   isPreviewing: boolean
-  previewButtonLabel?: string
 }
 
 export const PlayerAnalysisScopeForm: FC<Props> = ({
@@ -59,20 +59,22 @@ export const PlayerAnalysisScopeForm: FC<Props> = ({
   onIncludeTrashChange,
   onOnlyPlayerPresentChange,
   onPreview,
+  onCommit,
   isPreviewing,
-  previewButtonLabel = 'Preview latest raid',
 }) => (
-  <section className="rounded-xl border border-slate-800 bg-slate-900/70 p-4">
-    <h2 className="text-sm font-semibold text-slate-200">Step 1: Select Raider</h2>
-    <p className="mt-1 text-xs text-slate-400">Start with a player search. Default flow uses latest raid, kills only, and one boss kill.</p>
-
-    <label className="mt-3 block text-xs font-medium text-slate-300">Character name</label>
+  <div>
     <input
-      className="mt-1 w-full rounded border border-slate-600 bg-slate-950 px-3 py-2 text-sm text-slate-100 placeholder-slate-500 focus:border-violet-500 focus:outline-none"
+      className="w-full rounded-lg border border-slate-600 bg-slate-950 px-4 py-3 text-base text-slate-100 placeholder-slate-500 focus:border-violet-500 focus:outline-none"
       list="player-analysis-recent-players"
       value={playerName}
       onChange={(e) => onPlayerNameChange(e.target.value)}
-      placeholder="Start typing a character name..."
+      onKeyDown={(e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault()
+          onCommit()
+        }
+      }}
+      placeholder="Search for a player…"
       autoComplete="off"
       aria-label="Character name"
     />
@@ -82,16 +84,29 @@ export const PlayerAnalysisScopeForm: FC<Props> = ({
       ))}
     </datalist>
     {recentPlayersLoading && (
-      <p className="mt-1 text-xs text-slate-500">Loading recent guild players for autocomplete…</p>
+      <p className="mt-1.5 text-xs text-slate-500">Loading player suggestions…</p>
     )}
     {recentPlayersError && (
-      <p className="mt-1 text-xs text-amber-300">
-        Could not load autocomplete suggestions. Manual player entry still works.
+      <p className="mt-1.5 text-xs text-amber-300">
+        Could not load autocomplete suggestions. Manual entry still works.
       </p>
     )}
 
+    <button
+      type="button"
+      onClick={onPreview}
+      disabled={
+        isPreviewing ||
+        !playerName.trim() ||
+        (timeframePreset === 'manualReports' && selectedReports.length === 0)
+      }
+      className="mt-3 w-full rounded-lg border border-cyan-600 bg-cyan-700/20 px-4 py-2.5 text-sm font-medium text-cyan-200 hover:bg-cyan-700/30 disabled:opacity-50"
+    >
+      {isPreviewing ? 'Loading boss kills…' : 'Load boss kills'}
+    </button>
+
     <details className="mt-3 rounded border border-slate-700 bg-slate-950/40 p-2">
-      <summary className="cursor-pointer text-xs text-slate-300">Advanced scope/manual fallback</summary>
+      <summary className="cursor-pointer text-xs text-slate-400 hover:text-slate-300">Advanced scope options</summary>
 
       <label className="mt-2 block text-xs text-slate-400">Scope mode</label>
       <select
@@ -108,13 +123,11 @@ export const PlayerAnalysisScopeForm: FC<Props> = ({
 
       {timeframePreset === 'latestRaid' && (
         <div className="mt-3 rounded border border-slate-700 bg-slate-950/40 p-2 text-xs">
-          <p className="text-slate-300">Latest raid default selection</p>
-          {reportsLoading && (
-            <p className="mt-1 text-slate-500">Loading recent reports…</p>
-          )}
+          <p className="text-slate-300">Latest raid detection</p>
+          {reportsLoading && <p className="mt-1 text-slate-500">Loading recent reports…</p>}
           {!reportsLoading && reportsError && (
             <p className="mt-1 text-amber-300">
-              Could not load reports locally. Preview can still resolve latest raid on the server.
+              Could not load reports locally. Preview will still resolve latest raid on the server.
             </p>
           )}
           {!reportsLoading && !reportsError && latestRaidReportCodes.length === 0 && (
@@ -143,7 +156,7 @@ export const PlayerAnalysisScopeForm: FC<Props> = ({
               <button
                 type="button"
                 className="hover:text-slate-300"
-                onClick={() => onSelectedReportsChange(reports.map((report) => report.code))}
+                onClick={() => onSelectedReportsChange(reports.map((r) => r.code))}
                 disabled={reports.length === 0}
               >
                 Select all
@@ -159,33 +172,32 @@ export const PlayerAnalysisScopeForm: FC<Props> = ({
             </div>
           </div>
           <div className="mt-1 max-h-44 space-y-1 overflow-y-auto rounded border border-slate-700 bg-slate-950 p-2 text-xs">
-            {reportsLoading && (
-              <p className="text-slate-500">Loading recent reports…</p>
-            )}
+            {reportsLoading && <p className="text-slate-500">Loading recent reports…</p>}
             {!reportsLoading && reportsError && (
               <p className="text-amber-300">Could not load reports for manual selection.</p>
             )}
             {!reportsLoading && !reportsError && reports.length === 0 && (
               <p className="text-slate-500">No reports available.</p>
             )}
-            {!reportsLoading && reports.map((report) => (
-              <label key={report.code} className="flex items-start gap-2 text-slate-300">
-                <input
-                  type="checkbox"
-                  checked={selectedReports.includes(report.code)}
-                  onChange={(e) => {
-                    const next = e.target.checked
-                      ? [...selectedReports, report.code]
-                      : selectedReports.filter((code) => code !== report.code)
-                    onSelectedReportsChange(next)
-                  }}
-                />
-                <span>
-                  {report.title} ({report.code}){' '}
-                  <span className="text-slate-500">{new Date(report.startTime).toLocaleString()}</span>
-                </span>
-              </label>
-            ))}
+            {!reportsLoading &&
+              reports.map((report) => (
+                <label key={report.code} className="flex items-start gap-2 text-slate-300">
+                  <input
+                    type="checkbox"
+                    checked={selectedReports.includes(report.code)}
+                    onChange={(e) => {
+                      const next = e.target.checked
+                        ? [...selectedReports, report.code]
+                        : selectedReports.filter((code) => code !== report.code)
+                      onSelectedReportsChange(next)
+                    }}
+                  />
+                  <span>
+                    {report.title} ({report.code}){' '}
+                    <span className="text-slate-500">{new Date(report.startTime).toLocaleString()}</span>
+                  </span>
+                </label>
+              ))}
           </div>
           {selectedReports.length === 0 && (
             <p className="mt-1 text-xs text-amber-300">Select at least one report for manual scope.</p>
@@ -195,31 +207,42 @@ export const PlayerAnalysisScopeForm: FC<Props> = ({
 
       <div className="mt-3 space-y-1.5 text-xs text-slate-300">
         <label className="flex items-center gap-2">
-          <input type="checkbox" checked={onlyPlayerPresent} onChange={(e) => onOnlyPlayerPresentChange(e.target.checked)} />
+          <input
+            type="checkbox"
+            checked={onlyPlayerPresent}
+            onChange={(e) => onOnlyPlayerPresentChange(e.target.checked)}
+          />
           Only fights where player is present
         </label>
         <label className="flex items-center gap-2">
-          <input type="checkbox" checked={includeKills} onChange={(e) => onIncludeKillsChange(e.target.checked)} />
+          <input
+            type="checkbox"
+            checked={includeKills}
+            onChange={(e) => onIncludeKillsChange(e.target.checked)}
+          />
           Include kills
         </label>
         <label className="flex items-center gap-2">
-          <input type="checkbox" checked={includeWipes} onChange={(e) => onIncludeWipesChange(e.target.checked)} />
+          <input
+            type="checkbox"
+            checked={includeWipes}
+            onChange={(e) => onIncludeWipesChange(e.target.checked)}
+          />
           Include wipes
         </label>
-        <label className="flex items-center gap-2 opacity-50" title="Trash fights are not available via the WCL structured reports API">
-          <input type="checkbox" checked={includeTrash} onChange={(e) => onIncludeTrashChange(e.target.checked)} disabled />
+        <label
+          className="flex items-center gap-2 opacity-50"
+          title="Trash fights are not available via the WCL structured reports API"
+        >
+          <input
+            type="checkbox"
+            checked={includeTrash}
+            onChange={(e) => onIncludeTrashChange(e.target.checked)}
+            disabled
+          />
           Include trash <span className="text-slate-500">(not available from WCL)</span>
         </label>
       </div>
     </details>
-
-    <button
-      type="button"
-      onClick={onPreview}
-      disabled={isPreviewing || !playerName.trim() || (timeframePreset === 'manualReports' && selectedReports.length === 0)}
-      className="mt-4 w-full rounded border border-cyan-600 bg-cyan-700/20 px-3 py-1.5 text-xs text-cyan-200 hover:bg-cyan-700/30 disabled:opacity-60"
-    >
-      {isPreviewing ? 'Previewing…' : previewButtonLabel}
-    </button>
-  </section>
+  </div>
 )

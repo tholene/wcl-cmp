@@ -1945,6 +1945,7 @@ Codex final handoff should include:
 
 # Changelog
 
+- **2026-05-21** — UX simplification slice: Player Analysis Export transformed from 3-column grid to vertical 4-step workbench (Player → Boss Kill → Benchmark → Export). Boss kill cards, auto-triggered benchmark discovery, progressive step reveal, advanced options collapsed. See `docs/smoke-tests/player-analysis-ux.md`.
 - **2026-05-07** — Created initial product backlog for Warcraft Logs Guild Analyzer.
 - **2026-05-07** — Added boss-first workflow as P0 based on officer need to review specific bosses across logs.
 - **2026-05-07** — Refined §4 Structured AI Review Export: prompt-generation-first workflow, no direct LLM/API integration, evidence-rich manual ChatGPT prompts, and future reference-log benchmarking documented as later work.
