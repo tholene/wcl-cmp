@@ -1,10 +1,11 @@
 import type { FC } from 'react'
 import { ExternalLink } from 'lucide-react'
 import { Link } from 'react-router-dom'
+import { WclIcon } from '@/components/wcl-icon'
 import { StatusPill } from '@/components/ui/status-pill'
 import { getFightReviewPath, getReportDetailsPath } from '@/lib/routes'
 import { PlayersMapper } from '../mappers/players.mapper'
-import type { PlayerFightReview } from '../types/player-fight-review'
+import type { PlayerFightReview, PlayerReviewEvent } from '../types/player-fight-review'
 
 type PlayerFightReviewPageProps = {
   review: PlayerFightReview
@@ -16,15 +17,25 @@ const FindingToneClassBySeverity: Record<'info' | 'warning' | 'critical', string
   critical: 'border-rose-700/40 bg-rose-950/20 text-rose-100',
 }
 
+const EventLine: FC<{ event: PlayerReviewEvent }> = ({ event }) => (
+  <>
+    {event.abilityIcon ? <WclIcon icon={event.abilityIcon} alt={event.abilityName} size={16} /> : null}
+    {PlayersMapper.formatEventLine(event)}
+  </>
+)
+
 export const PlayerFightReviewPage: FC<PlayerFightReviewPageProps> = ({ review }) => (
   <section className="space-y-4">
     <header className="rounded-xl border border-slate-800 bg-slate-900/70 p-5">
       <div className="mb-3 flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h2 className="text-xl font-semibold text-slate-100">{review.player.name}</h2>
-          <p className="mt-1 text-sm text-slate-400">
-            {review.player.className ?? 'Unknown class'} · {review.fight.encounterName}
-          </p>
+        <div className="flex items-center gap-3">
+          {review.player.icon ? <WclIcon icon={review.player.icon} alt={review.player.name} size={24} /> : null}
+          <div>
+            <h2 className="text-xl font-semibold text-slate-100">{review.player.name}</h2>
+            <p className="mt-1 text-sm text-slate-400">
+              {review.player.className ?? 'Unknown class'} · {review.fight.encounterName}
+            </p>
+          </div>
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
@@ -166,8 +177,15 @@ export const PlayerFightReviewPage: FC<PlayerFightReviewPageProps> = ({ review }
               </p>
               <p className="mt-1 text-sm text-slate-300">
                 Final lethal damage:{' '}
-                <span className="text-slate-100">
-                  {death.finalDamageEvent ? `${death.finalDamageEvent.abilityName} · ${death.finalDamageEvent.sourceName ?? 'Unknown source'}` : 'Unknown from available data'}
+                <span className="inline-flex items-center gap-1 text-slate-100">
+                  {death.finalDamageEvent ? (
+                    <>
+                      {death.finalDamageEvent.abilityIcon ? (
+                        <WclIcon icon={death.finalDamageEvent.abilityIcon} alt={death.finalDamageEvent.abilityName} size={16} />
+                      ) : null}
+                      {death.finalDamageEvent.abilityName} · {death.finalDamageEvent.sourceName ?? 'Unknown source'}
+                    </>
+                  ) : 'Unknown from available data'}
                 </span>
               </p>
             </article>
@@ -183,8 +201,8 @@ export const PlayerFightReviewPage: FC<PlayerFightReviewPageProps> = ({ review }
       ) : (
         <ul className="mt-2 space-y-1 text-sm text-slate-300">
           {review.evidence.execution.openerEvents.map((event, index) => (
-            <li key={`${event.timestampRelativeMs}-${event.abilityName}-${index}`}>
-              {PlayersMapper.formatRelativeTimestamp(event.timestampRelativeMs)} · {PlayersMapper.formatEventLine(event)}
+            <li key={`${event.timestampRelativeMs}-${event.abilityName}-${index}`} className="inline-flex items-center gap-1">
+              {PlayersMapper.formatRelativeTimestamp(event.timestampRelativeMs)} · <EventLine event={event} />
             </li>
           ))}
         </ul>

@@ -3,6 +3,7 @@ export type PlayerReviewEvent = {
   eventType: string
   abilityId?: number | null
   abilityName: string
+  abilityIcon?: string | null
   sourceName?: string | null
   targetName?: string | null
   amount?: number | null
@@ -35,6 +36,7 @@ export type PlayerFightDeathSummary = {
     timestampRelativeMs: number
     abilityId?: number | null
     abilityName: string
+    abilityIcon?: string | null
     sourceName?: string | null
     amount?: number | null
   }
@@ -42,6 +44,7 @@ export type PlayerFightDeathSummary = {
     timestampRelativeMs: number
     abilityId?: number | null
     abilityName: string
+    abilityIcon?: string | null
     sourceName?: string | null
     amount?: number | null
   }>

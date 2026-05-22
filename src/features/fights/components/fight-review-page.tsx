@@ -1,14 +1,22 @@
 import { type FC, useState } from 'react'
 import { ExternalLink } from 'lucide-react'
 import { Link } from 'react-router-dom'
+import { WclIcon } from '@/components/wcl-icon'
 import { StatusPill } from '@/components/ui/status-pill'
 import { getBossDetailsPath, getPlayerFightReviewPath, getReportDetailsPath } from '@/lib/routes'
 import { FightsMapper } from '../mappers/fights.mapper'
-import type { FightReview } from '../types/fight-review'
+import type { FightDamageEvent, FightReview } from '../types/fight-review'
 
 type FightReviewPageProps = {
   review: FightReview
 }
+
+const DamageEventLine: FC<{ event: FightDamageEvent }> = ({ event }) => (
+  <>
+    {event.abilityIcon ? <WclIcon icon={event.abilityIcon} alt={event.abilityName} size={16} /> : null}
+    {FightsMapper.formatDamageEventLine(event)}
+  </>
+)
 
 export const FightReviewPage: FC<FightReviewPageProps> = ({ review }) => {
   const [playerSearch, setPlayerSearch] = useState('')
@@ -139,8 +147,8 @@ export const FightReviewPage: FC<FightReviewPageProps> = ({ review }) => {
 
                 <p className="mt-1 text-sm text-slate-300">
                   Final lethal damage:{' '}
-                  <span className="text-slate-100">
-                    {death.finalDamageEvent ? FightsMapper.formatDamageEventLine(death.finalDamageEvent) : 'Unknown from available data'}
+                  <span className="inline-flex items-center gap-1 text-slate-100">
+                    {death.finalDamageEvent ? <DamageEventLine event={death.finalDamageEvent} /> : 'Unknown from available data'}
                   </span>
                 </p>
 
@@ -161,8 +169,8 @@ export const FightReviewPage: FC<FightReviewPageProps> = ({ review }) => {
                 ) : (
                   <ul className="mt-1 space-y-1 text-sm text-slate-300">
                     {death.recentDamageEvents.map((event, eventIndex) => (
-                      <li key={`${death.playerId}-${event.timestampRelativeMs}-${eventIndex}`}>
-                        {FightsMapper.formatRelativeTimestamp(event.timestampRelativeMs)} · {FightsMapper.formatDamageEventLine(event)}
+                      <li key={`${death.playerId}-${event.timestampRelativeMs}-${eventIndex}`} className="inline-flex items-center gap-1">
+                        {FightsMapper.formatRelativeTimestamp(event.timestampRelativeMs)} · <DamageEventLine event={event} />
                       </li>
                     ))}
                   </ul>
@@ -204,7 +212,12 @@ export const FightReviewPage: FC<FightReviewPageProps> = ({ review }) => {
               <tbody className="divide-y divide-slate-800 bg-slate-950/20">
                 {visibleParticipants.map((participant) => (
                   <tr key={participant.id}>
-                    <td className="px-3 py-2 text-slate-100">{participant.name}</td>
+                    <td className="px-3 py-2 text-slate-100">
+                      <span className="inline-flex items-center gap-1.5">
+                        {participant.icon ? <WclIcon icon={participant.icon} alt={participant.name} size={16} /> : null}
+                        {participant.name}
+                      </span>
+                    </td>
                     <td className="px-3 py-2 text-slate-300">{participant.className ?? participant.type ?? 'Unknown'}</td>
                     <td className="px-3 py-2 text-slate-400">Not available</td>
                     <td className="px-3 py-2">

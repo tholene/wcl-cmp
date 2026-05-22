@@ -85,6 +85,7 @@ type WclActor = {
 type WclAbility = {
   gameID?: number | null
   name?: string | null
+  abilityIcon?: string | null
 }
 
 type WclRawEvent = {
@@ -482,6 +483,7 @@ const mapDamageEvent = (event: WclRawEvent, fightStartTime: number, sourceName?:
     timestampRelativeMs: Math.max(Math.floor(eventTimestamp - fightStartTime), 0),
     abilityId: event.ability?.gameID ?? null,
     abilityName: toAbilityName(event),
+    abilityIcon: event.ability?.abilityIcon ?? null,
     sourceName: sourceName ?? null,
     amount: toPositiveNumber(event.amount),
   }
@@ -502,6 +504,7 @@ const mapPlayerReviewEvent = (params: {
     eventType: params.eventType,
     abilityId: params.event.ability?.gameID ?? null,
     abilityName: toAbilityName(params.event),
+    abilityIcon: params.event.ability?.abilityIcon ?? null,
     sourceName,
     targetName,
     amount: toPositiveNumber(params.event.amount),

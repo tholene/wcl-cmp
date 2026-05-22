@@ -105,6 +105,7 @@ export type WclFightDamageEvent = {
   timestampRelativeMs: number
   abilityId?: number | null
   abilityName: string
+  abilityIcon?: string | null
   sourceName?: string | null
   amount?: number | null
 }
@@ -144,6 +145,7 @@ export type WclPlayerReviewEvent = {
   eventType: string
   abilityId?: number | null
   abilityName: string
+  abilityIcon?: string | null
   sourceName?: string | null
   targetName?: string | null
   amount?: number | null

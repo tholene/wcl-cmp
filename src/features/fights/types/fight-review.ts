@@ -10,6 +10,7 @@ export type FightDamageEvent = {
   timestampRelativeMs: number
   abilityId?: number | null
   abilityName: string
+  abilityIcon?: string | null
   sourceName?: string | null
   amount?: number | null
 }
