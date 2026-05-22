@@ -250,7 +250,7 @@ export type PlayerAnalysisExportPreview = {
         playerItemLevel?: number | null
         playerSpecName?: string | null
         duplicateReportCount?: number
-        duplicateReports?: Array<{ reportCode: string; reportTitle: string; fightId: number }>
+        duplicateReports?: Array<{ reportCode: string; reportTitle: string; fightId: number; startTime: number; durationMs: number }>
       }>
     }>
     warnings: string[]

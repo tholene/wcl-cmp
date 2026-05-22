@@ -1200,36 +1200,45 @@ type BossKillFightEntry = {
   playerItemLevel?: number | null
   playerSpecName?: string | null
   duplicateReportCount?: number
-  duplicateReports?: Array<{ reportCode: string; reportTitle: string; fightId: number }>
+  duplicateReports?: Array<{ reportCode: string; reportTitle: string; fightId: number; startTime: number; durationMs: number }>
 }
 
-const START_TIME_TOLERANCE_MS = 5_000
-const DURATION_TOLERANCE_MS = 3_000
-
+// WoW weekly lockout guarantee: a player can kill the same boss/difficulty at most once per
+// week. Within an already-grouped (same encounterId + difficulty) kill list, the same calendar
+// date + duration rounded to the nearest 5 s uniquely identifies a single pull, regardless of
+// how far apart the absolute timestamps are across different uploaders' WCL reports.
+//
+// Fixture (same pull, two uploads):
+//   Input:  [{reportCode:'A', startTime:1747612200000, durationMs:378123}, {reportCode:'B', startTime:1747612260000, durationMs:378456}]
+//   Key A:  "2026-05-19|380000"  (rounded 378123 → nearest 5 000 = 380000)
+//   Key B:  "2026-05-19|380000"  ← same bucket → merged; representative = whichever has more data
+//   Output: one fight with duplicateReportCount: 1
+//
+// Non-duplicate (same boss, different date → separate rows):
+//   Fight C: startTime=2026-05-12 → key "2026-05-12|400000"  kept separate
+//
+// Non-duplicate (same boss, same date but duration differs > 5 s bucket boundary → separate rows):
+//   Fight D: durationMs=385001 → bucket 385000 ≠ 380000  kept separate
 function deduplicateBossKillFights(fights: BossKillFightEntry[]): BossKillFightEntry[] {
-  const sorted = [...fights].sort((a, b) => a.startTime - b.startTime)
-  const clusters: BossKillFightEntry[][] = []
+  const DURATION_BUCKET_MS = 5_000
 
-  for (const fight of sorted) {
-    let placed = false
-    for (const cluster of clusters) {
-      const rep = cluster[0]
-      if (
-        Math.abs(fight.startTime - rep.startTime) <= START_TIME_TOLERANCE_MS &&
-        Math.abs(fight.durationMs - rep.durationMs) <= DURATION_TOLERANCE_MS
-      ) {
-        cluster.push(fight)
-        placed = true
-        break
-      }
+  const buckets = new Map<string, BossKillFightEntry[]>()
+  for (const fight of fights) {
+    const date = new Date(fight.startTime).toISOString().slice(0, 10) // YYYY-MM-DD UTC
+    const durBucket = Math.round(fight.durationMs / DURATION_BUCKET_MS) * DURATION_BUCKET_MS
+    const key = `${date}|${durBucket}`
+    const existing = buckets.get(key)
+    if (existing) {
+      existing.push(fight)
+    } else {
+      buckets.set(key, [fight])
     }
-    if (!placed) clusters.push([fight])
   }
 
-  return clusters.map((members) => {
+  return Array.from(buckets.values()).map((members) => {
     if (members.length === 1) return members[0]
 
-    // Prefer representative with more player data available
+    // Prefer the fight with the richest player data; fall back to first in sorted order
     const best = members.reduce((acc, cur) => {
       const curScore = (cur.playerItemLevel != null ? 2 : 0) + (cur.playerSpecName != null ? 1 : 0)
       const accScore = (acc.playerItemLevel != null ? 2 : 0) + (acc.playerSpecName != null ? 1 : 0)
@@ -1239,7 +1248,13 @@ function deduplicateBossKillFights(fights: BossKillFightEntry[]): BossKillFightE
     return {
       ...best,
       duplicateReportCount: others.length,
-      duplicateReports: others.map((o) => ({ reportCode: o.reportCode, reportTitle: o.reportTitle, fightId: o.fightId })),
+      duplicateReports: others.map((o) => ({
+        reportCode: o.reportCode,
+        reportTitle: o.reportTitle,
+        fightId: o.fightId,
+        startTime: o.startTime,
+        durationMs: o.durationMs,
+      })),
     }
   })
 }

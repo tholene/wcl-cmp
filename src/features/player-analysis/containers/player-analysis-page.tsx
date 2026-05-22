@@ -33,6 +33,29 @@ import {
   type SelectedBenchmarkCandidate,
 } from '@/features/player-analysis/types/player-analysis.types'
 
+// Defensive dedup applied to each group's fights before rendering.
+// Mirrors backend logic so stale API responses never show duplicate cards.
+// Key: YYYY-MM-DD UTC + duration rounded to nearest 5 s (same WoW lockout assumption).
+function deduplicateFightsForDisplay<
+  T extends { reportCode: string; fightId: number; startTime: number; durationMs: number; duplicateReportCount?: number },
+>(fights: T[]): T[] {
+  const BUCKET_MS = 5_000
+  const seen = new Map<string, T>()
+  for (const fight of fights) {
+    const date = new Date(fight.startTime).toISOString().slice(0, 10)
+    const dur = Math.round(fight.durationMs / BUCKET_MS) * BUCKET_MS
+    const key = `${date}|${dur}`
+    const existing = seen.get(key)
+    if (!existing) {
+      seen.set(key, fight)
+    } else if ((fight.duplicateReportCount ?? 0) > (existing.duplicateReportCount ?? 0)) {
+      // Prefer the backend-selected representative which already has duplicate metadata
+      seen.set(key, fight)
+    }
+  }
+  return Array.from(seen.values())
+}
+
 type ManualBenchmarkConfig = {
   reportCode: string
   fightId: string
@@ -739,7 +762,7 @@ export const PlayerAnalysisPage: FC = () => {
                               </div>
                             )}
                             {preview.recentRaidBossKills.groups.flatMap((group) =>
-                              group.fights.map((fight) => (
+                              deduplicateFightsForDisplay(group.fights).map((fight) => (
                                 <BossKillCard
                                   key={`${fight.reportCode}:${fight.fightId}`}
                                   encounterName={group.encounterName}
