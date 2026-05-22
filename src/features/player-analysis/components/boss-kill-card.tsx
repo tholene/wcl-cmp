@@ -1,9 +1,23 @@
-import type { FC } from 'react'
-import { getDifficultyLabel } from '@/lib/difficulty'
-import { cn } from '@/lib/utils'
+import { useState, type FC } from 'react'
+import { BossImage } from './boss-image'
 
-type Props = {
+const DIFFICULTY: Record<number, { label: string; color: string; bg: string; border: string }> = {
+  5: { label: 'Mythic',  color: '#c084fc', bg: 'rgba(192,132,252,0.10)', border: 'rgba(192,132,252,0.20)' },
+  4: { label: 'Heroic',  color: '#60a5fa', bg: 'rgba(96,165,250,0.10)',  border: 'rgba(96,165,250,0.20)' },
+  3: { label: 'Normal',  color: '#4ade80', bg: 'rgba(74,222,128,0.10)',  border: 'rgba(74,222,128,0.20)' },
+}
+
+const getDiff = (d: number) =>
+  DIFFICULTY[d] ?? { label: `Diff ${d}`, color: '#949ba4', bg: 'rgba(148,163,184,0.08)', border: 'rgba(148,163,184,0.15)' }
+
+const formatDuration = (ms: number): string => {
+  const s = Math.max(Math.floor(ms / 1000), 0)
+  return `${Math.floor(s / 60)}:${(s % 60).toString().padStart(2, '0')}`
+}
+
+type BossKillCardProps = {
   encounterName: string
+  encounterId?: number | null
   difficulty: number
   durationMs: number
   startTime: number
@@ -14,55 +28,90 @@ type Props = {
   onClick: () => void
 }
 
-function formatDuration(durationMs: number): string {
-  const totalSeconds = Math.max(Math.floor(durationMs / 1000), 0)
-  const minutes = Math.floor(totalSeconds / 60)
-  const seconds = totalSeconds % 60
-  return `${minutes}:${seconds.toString().padStart(2, '0')}`
-}
-
-function getDifficultyBadgeClass(difficulty: number): string {
-  switch (difficulty) {
-    case 5:
-      return 'bg-fuchsia-900/40 text-fuchsia-300 border border-fuchsia-700/40'
-    case 4:
-      return 'bg-indigo-900/40 text-indigo-300 border border-indigo-700/40'
-    case 3:
-      return 'bg-emerald-900/40 text-emerald-300 border border-emerald-700/40'
-    default:
-      return 'bg-slate-800 text-slate-400 border border-slate-700'
-  }
-}
-
-export const BossKillCard: FC<Props> = ({
+export const BossKillCard: FC<BossKillCardProps> = ({
   encounterName,
+  encounterId,
   difficulty,
   durationMs,
   startTime,
   playerItemLevel,
   isSelected,
   onClick,
-}) => (
-  <button
-    type="button"
-    onClick={onClick}
-    className={cn(
-      'w-full rounded-xl border p-4 text-left transition-colors',
-      isSelected
-        ? 'border-violet-500 bg-violet-900/20'
-        : 'border-slate-700 bg-slate-900/50 hover:border-slate-600 hover:bg-slate-900/80',
-    )}
-  >
-    <div className="flex items-center justify-between gap-3">
-      <span className="text-base font-semibold text-slate-100">{encounterName}</span>
-      <span className={cn('shrink-0 rounded px-2 py-0.5 text-xs font-medium', getDifficultyBadgeClass(difficulty))}>
-        {getDifficultyLabel(difficulty)}
-      </span>
-    </div>
-    <div className="mt-1.5 flex flex-wrap gap-3 text-sm text-slate-400">
-      <span>{formatDuration(durationMs)}</span>
-      {playerItemLevel != null && <span>{playerItemLevel} ilvl</span>}
-      <span>{new Date(startTime).toLocaleDateString()}</span>
-    </div>
-  </button>
-)
+}) => {
+  const [hovered, setHovered] = useState(false)
+  const diff = getDiff(difficulty)
+
+  const borderColor = isSelected
+    ? 'rgba(88,101,242,0.40)'
+    : hovered
+      ? 'rgba(255,255,255,0.10)'
+      : 'rgba(255,255,255,0.06)'
+
+  const bgColor = isSelected
+    ? 'rgba(88,101,242,0.063)'
+    : hovered
+      ? 'rgba(49,51,56,0.85)'
+      : 'rgba(43,45,49,0.72)'
+
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: 14,
+        width: '100%',
+        padding: '12px 14px',
+        textAlign: 'left',
+        fontFamily: 'inherit',
+        cursor: 'pointer',
+        borderRadius: 12,
+        border: `1px solid ${borderColor}`,
+        backgroundColor: bgColor,
+        backdropFilter: 'blur(16px)',
+        WebkitBackdropFilter: 'blur(16px)',
+        boxShadow: isSelected
+          ? '0 0 20px rgba(88,101,242,0.20), inset 0 0 0 1px rgba(88,101,242,0.09)'
+          : 'none',
+        transition: 'all 0.15s',
+      }}
+    >
+      <BossImage encounterId={encounterId} encounterName={encounterName} size={44} />
+
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 3 }}>
+          <span style={{ fontSize: 14, fontWeight: 600, color: '#f2f3f5' }}>{encounterName}</span>
+          <span style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            padding: '2px 8px',
+            borderRadius: 6,
+            fontSize: 11,
+            fontWeight: 600,
+            color: diff.color,
+            backgroundColor: diff.bg,
+            border: `1px solid ${diff.border}`,
+          }}>
+            {diff.label}
+          </span>
+        </div>
+        <div style={{ display: 'flex', gap: 14, fontSize: 12, color: '#949ba4' }}>
+          <span>{formatDuration(durationMs)}</span>
+          {playerItemLevel != null && <span>{playerItemLevel} ilvl</span>}
+          <span>{new Date(startTime).toLocaleDateString()}</span>
+        </div>
+      </div>
+
+      {isSelected && (
+        <div style={{ color: '#5865f2', flexShrink: 0 }}>
+          <svg width={18} height={18} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+            <polyline points="3.5 8.5 6.5 11.5 12.5 5.5" />
+          </svg>
+        </div>
+      )}
+    </button>
+  )
+}

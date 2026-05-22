@@ -1,19 +1,29 @@
 import { useRef, useState, type FC } from 'react'
 import { useRecentReports } from '@/features/reports/hooks/use-recent-reports'
-import type { ReportSummary } from '@/features/reports/types/report-summary'
 import { getDifficultyLabel } from '@/lib/difficulty'
-import { BenchmarkErrorBoundary } from '../components/benchmark-error-boundary'
-import { BossKillCard } from '../components/boss-kill-card'
-import { PlayerAnalysisBenchmarkForm } from '../components/player-analysis-benchmark-form'
-import { PlayerAnalysisExportProgress } from '../components/player-analysis-export-progress'
-import { PlayerAnalysisExportResults } from '../components/player-analysis-export-results'
-import { PlayerAnalysisPreviewPanel } from '../components/player-analysis-preview-panel'
-import { PlayerAnalysisScopeForm } from '../components/player-analysis-scope-form'
-import { PlayerAnalysisViewsForm } from '../components/player-analysis-views-form'
-import { useBenchmarkCandidates } from '../hooks/use-benchmark-candidates'
-import { usePlayerAnalysisExportJob } from '../hooks/use-player-analysis-export-job'
-import { usePlayerAnalysisPreview } from '../hooks/use-player-analysis-preview'
-import { useRecentPlayers } from '../hooks/use-recent-players'
+import { AdvancedButton } from '@/features/player-analysis/components/advanced-button'
+import { AdvancedSidebar } from '@/features/player-analysis/components/advanced-sidebar'
+import { BenchmarkErrorBoundary } from '@/features/player-analysis/components/benchmark-error-boundary'
+import { BossImage } from '@/features/player-analysis/components/boss-image'
+import { BossKillCard } from '@/features/player-analysis/components/boss-kill-card'
+import { ChipChangeBtn } from '@/features/player-analysis/components/chip-change-btn'
+import { DiffBadge } from '@/features/player-analysis/components/diff-badge'
+import { ExportButton } from '@/features/player-analysis/components/export-button'
+import { PercentileBar } from '@/features/player-analysis/components/percentile-bar'
+import { PlayerAnalysisBenchmarkForm } from '@/features/player-analysis/components/player-analysis-benchmark-form'
+import { PlayerAnalysisExportProgress } from '@/features/player-analysis/components/player-analysis-export-progress'
+import { PlayerAnalysisExportResults } from '@/features/player-analysis/components/player-analysis-export-results'
+import { PlayerAnalysisPreviewPanel } from '@/features/player-analysis/components/player-analysis-preview-panel'
+import { PlayerAnalysisScopeForm } from '@/features/player-analysis/components/player-analysis-scope-form'
+import { SpecIcon } from '@/features/player-analysis/components/spec-icon'
+import { StepDot } from '@/features/player-analysis/components/step-dot'
+import { useBenchmarkCandidates } from '@/features/player-analysis/hooks/use-benchmark-candidates'
+import { usePlayerAnalysisExportJob } from '@/features/player-analysis/hooks/use-player-analysis-export-job'
+import { usePlayerAnalysisPreview } from '@/features/player-analysis/hooks/use-player-analysis-preview'
+import { useRecentPlayers } from '@/features/player-analysis/hooks/use-recent-players'
+import { classColor } from '@/features/player-analysis/lib/class-colors'
+import type { AvailableBaseline } from '@/features/player-analysis/types/available-baseline'
+import type { ClassSpecOverride } from '@/features/player-analysis/types/class-spec-override'
 import {
   STABLE_EXPORT_VIEWS,
   type BenchmarkCandidatesResponse,
@@ -21,8 +31,7 @@ import {
   type PlayerAnalysisExportView,
   type PlayerAnalysisTimeframePreset,
   type SelectedBenchmarkCandidate,
-} from '../types/player-analysis.types'
-import type { WowRole } from '../types/wow-class-spec'
+} from '@/features/player-analysis/types/player-analysis.types'
 
 type ManualBenchmarkConfig = {
   reportCode: string
@@ -37,34 +46,12 @@ type AutoBenchmarkConfig = {
   durationWindowPercent: number
 }
 
-export type ClassSpecOverride = {
-  className: string
-  specName: string
-  role?: WowRole
-}
-
-export type AvailableBaseline = {
-  key: string // `${reportCode}:${fightId}`
-  reportCode: string
-  reportTitle: string
-  fightId: number
-  encounterId: number
-  encounterName: string
-  difficulty: number
-  durationMs: number
-  kill: boolean
-  playerName: string
-  className: string
-  specName: string
-  itemLevel: number | null
-}
-
-function buildSelectedCandidates(
+const buildSelectedCandidates = (
   baselines: AvailableBaseline[],
   candidatesResult: BenchmarkCandidatesResponse | null,
   selectedKeys: Set<string>,
   selectedCandidateKeysByBaseline: Record<string, string>
-): SelectedBenchmarkCandidate[] {
+): SelectedBenchmarkCandidate[] => {
   if (!candidatesResult) return []
   const result: SelectedBenchmarkCandidate[] = []
   for (const group of candidatesResult.groups ?? []) {
@@ -106,72 +93,15 @@ function buildSelectedCandidates(
   return result
 }
 
-const RAID_CLASSIFICATION_CONFIG = {
-  zoneIds: [26, 27, 28, 31, 33, 35, 38, 46],
-  zoneNames: [
-    'castle nathria',
-    'sanctum of domination',
-    'sepulcher of the first ones',
-    'vault of the incarnates',
-    'aberrus, the shadowed crucible',
-    "amirdrassil, the dream's hope",
-    'nerub-ar palace',
-    'liberation of undermine',
-  ],
-  aliases: ['vs / dr / mqd', 'vs/dr/mqd', 'vs-dr-mqd'],
-  raidHints: ['raid', 'palace', 'vault', 'sanctum', 'sepulcher', 'aberrus', 'amirdrassil', 'nathria', 'undermine', 'reclear'],
-  nonRaidHints: ['mythic+', 'mythic plus', 'dungeon', 'keystone', 'timewalking', 'arena', 'battleground', 'skirmish'],
-} as const
 
-const RAID_ZONE_ID_SET = new Set<number>(RAID_CLASSIFICATION_CONFIG.zoneIds)
-const RAID_ZONE_NAME_SET = new Set<string>(RAID_CLASSIFICATION_CONFIG.zoneNames)
-const RAID_ZONE_ALIAS_SET = new Set<string>(RAID_CLASSIFICATION_CONFIG.aliases)
-
-function normalizeZoneName(value: string | null | undefined): string {
-  return (value ?? '').trim().toLowerCase()
-}
-
-function isRaidReport(report: ReportSummary): boolean {
-  if (typeof report.zoneId === 'number' && RAID_ZONE_ID_SET.has(report.zoneId)) return true
-  const zoneName = normalizeZoneName(report.zoneName)
-  if (!zoneName) return false
-  if (RAID_ZONE_NAME_SET.has(zoneName)) return true
-  if (RAID_ZONE_ALIAS_SET.has(zoneName)) return true
-  if (RAID_CLASSIFICATION_CONFIG.nonRaidHints.some((hint) => zoneName.includes(hint))) return false
-  return RAID_CLASSIFICATION_CONFIG.raidHints.some((hint) => zoneName.includes(hint))
-}
-
-function selectLatestRaidReportCodes(reports: ReportSummary[]): string[] {
-  if (reports.length === 0) return []
-  const raidReports = reports.filter(isRaidReport)
-  if (raidReports.length === 0) return []
-  const sorted = [...raidReports].sort((left, right) => right.startTime - left.startTime)
-  const latest = sorted[0]
-  const latestZone = normalizeZoneName(latest.zoneName)
-  const maxWindowMs = 6 * 60 * 60 * 1000
-
-  return sorted
-    .filter((report) => {
-      if (latest.startTime - report.startTime > maxWindowMs) return false
-      const zone = normalizeZoneName(report.zoneName)
-      return !!zone && zone === latestZone
-    })
-    .map((report) => report.code)
-}
-
-function buildSingleBossDefaultSelection(preview: {
+const buildSingleBossDefaultSelection = (preview: {
   recentRaidBossKills?: {
     groups: Array<{
-      fights: Array<{
-        reportCode: string
-        fightId: number
-        startTime: number
-        durationMs: number
-      }>
+      fights: Array<{ reportCode: string; fightId: number; startTime: number; durationMs: number }>
     }>
   }
   includedReports: Array<{ code: string }>
-}): Record<string, number[]> {
+}): Record<string, number[]> => {
   const selected: Record<string, number[]> = Object.fromEntries(
     (preview.includedReports ?? []).map((report) => [report.code, [] as number[]])
   )
@@ -184,28 +114,21 @@ function buildSingleBossDefaultSelection(preview: {
     }))
   )
   if (candidates.length === 0) return selected
-
   candidates.sort((left, right) => {
     if (left.startTime !== right.startTime) return right.startTime - left.startTime
     return right.durationMs - left.durationMs
   })
-
   const chosen = candidates[0]
   selected[chosen.reportCode] = [chosen.fightId]
   return selected
 }
 
-function buildAllEligibleFightSelection(preview: {
+const buildAllEligibleFightSelection = (preview: {
   includedReports: Array<{
     code: string
-    includedFights: Array<{
-      fightId: number
-      encounterId?: number
-      playerPresent: boolean
-      durationMs: number
-    }>
+    includedFights: Array<{ fightId: number; encounterId?: number; playerPresent: boolean; durationMs: number }>
   }>
-}): Record<string, number[]> {
+}): Record<string, number[]> => {
   const selected: Record<string, number[]> = {}
   for (const report of preview.includedReports ?? []) {
     selected[report.code] = (report.includedFights ?? [])
@@ -215,24 +138,18 @@ function buildAllEligibleFightSelection(preview: {
   return selected
 }
 
-function countSelectedFights(selection: Record<string, number[]>): number {
-  return Object.values(selection).reduce((sum, fightIds) => sum + fightIds.length, 0)
-}
+const countSelectedFights = (selection: Record<string, number[]>): number =>
+  Object.values(selection).reduce((sum, fightIds) => sum + fightIds.length, 0)
 
-function buildBaselineKeysFromFightSelection(
+const buildBaselineKeysFromFightSelection = (
   preview: {
     includedReports: Array<{
       code: string
-      includedFights: Array<{
-        fightId: number
-        encounterId?: number
-        playerPresent: boolean
-        durationMs: number
-      }>
+      includedFights: Array<{ fightId: number; encounterId?: number; playerPresent: boolean; durationMs: number }>
     }>
   },
   selection: Record<string, number[]>
-): Set<string> {
+): Set<string> => {
   const next = new Set<string>()
   for (const report of preview.includedReports ?? []) {
     const selectedFightIds = new Set(selection[report.code] ?? [])
@@ -246,6 +163,12 @@ function buildBaselineKeysFromFightSelection(
   }
   return next
 }
+
+const formatDuration = (ms: number): string => {
+  const s = Math.max(Math.floor(ms / 1000), 0)
+  return `${Math.floor(s / 60)}:${(s % 60).toString().padStart(2, '0')}`
+}
+
 
 export const PlayerAnalysisPage: FC = () => {
   const recentPlayersQuery = useRecentPlayers()
@@ -266,23 +189,21 @@ export const PlayerAnalysisPage: FC = () => {
 
   const [benchmarkMode, setBenchmarkMode] = useState<'none' | 'manual' | 'auto'>('auto')
   const [manualBenchmarkConfig, setManualBenchmarkConfig] = useState<ManualBenchmarkConfig>({
-    reportCode: '',
-    fightId: '',
-    playerName: '',
+    reportCode: '', fightId: '', playerName: '',
   })
   const [autoBenchmarkConfig, setAutoBenchmarkConfig] = useState<AutoBenchmarkConfig>({
-    targetPercentile: 75,
-    metric: 'dps',
-    itemLevelWindow: 10,
-    durationWindowPercent: 35,
+    targetPercentile: 75, metric: 'dps', itemLevelWindow: 10, durationWindowPercent: 35,
   })
   const [allowSubjectOnlyWithoutBenchmark, setAllowSubjectOnlyWithoutBenchmark] = useState(false)
   const [selectedBaselineKeys, setSelectedBaselineKeys] = useState<Set<string>>(new Set())
   const [selectedCandidateKeysByBaseline, setSelectedCandidateKeysByBaseline] = useState<Record<string, string>>({})
   const [playerUserContext, setPlayerUserContext] = useState<ClassSpecOverride | null>(null)
   const [benchmarkContextSource, setBenchmarkContextSource] = useState<'wclDetected' | 'userProvided'>('wclDetected')
+
+  const [sidebarOpen, setSidebarOpen] = useState(false)
+  const [forcedStep, setForcedStep] = useState<number | null>(null)
+
   const previewRequestSeq = useRef(0)
-  // Tracks which player name last triggered an auto-preview, to prevent duplicate triggers
   const lastAutoPreviewedName = useRef<string>('')
 
   const preview = previewMutation.data ?? null
@@ -295,18 +216,10 @@ export const PlayerAnalysisPage: FC = () => {
   const selectedUserSource = benchmarkContextSource === 'userProvided'
   const effectiveClassName = selectedUserSource
     ? (hasUserClassSpec ? playerUserContext?.className ?? null : null)
-    : hasWclClassSpec
-      ? wclClassName
-      : hasUserClassSpec
-        ? playerUserContext?.className ?? null
-        : null
+    : hasWclClassSpec ? wclClassName : hasUserClassSpec ? playerUserContext?.className ?? null : null
   const effectiveSpecName = selectedUserSource
     ? (hasUserClassSpec ? playerUserContext?.specName ?? null : null)
-    : hasWclClassSpec
-      ? wclSpecName
-      : hasUserClassSpec
-        ? playerUserContext?.specName ?? null
-        : null
+    : hasWclClassSpec ? wclSpecName : hasUserClassSpec ? playerUserContext?.specName ?? null : null
   const specDetectionFailed = !!preview && (!wclClassName || !wclSpecName)
 
   const availableBaselines: AvailableBaseline[] = preview
@@ -345,9 +258,7 @@ export const PlayerAnalysisPage: FC = () => {
     setSelectedCandidateKeysByBaseline((current) => {
       const filtered: Record<string, string> = {}
       for (const baselineKey of Object.keys(current)) {
-        if (nextKeys.has(baselineKey)) {
-          filtered[baselineKey] = current[baselineKey]
-        }
+        if (nextKeys.has(baselineKey)) filtered[baselineKey] = current[baselineKey]
       }
       return filtered
     })
@@ -365,113 +276,53 @@ export const PlayerAnalysisPage: FC = () => {
     }
   }
 
-  const buildRequest = (params?: { forExport?: boolean; playerNameOverride?: string }): PlayerAnalysisExportRequest => {
-    const reportCodes =
-      timeframePreset === 'manualReports'
-        ? selectedReports
-        : undefined
+  const buildRequest = (params?: { forExport?: boolean; playerNameOverride?: string }): PlayerAnalysisExportRequest => ({
+    playerName: params?.playerNameOverride ?? playerName,
+    timeframePreset,
+    reportCodes: timeframePreset === 'manualReports' ? selectedReports : undefined,
+    fightIdsByReport: params?.forExport ? selectedFightIdsByReport : undefined,
+    includeKills,
+    includeWipes,
+    includeTrash,
+    onlyPlayerPresent,
+    views: selectedViews,
+    playerContext: playerUserContext
+      ? { className: playerUserContext.className || undefined, specName: playerUserContext.specName || undefined, role: playerUserContext.specName ? playerUserContext.role : undefined, source: 'userProvided' as const }
+      : undefined,
+    benchmarkContextSource,
+    ...(benchmarkMode !== 'none'
+      ? {
+          benchmark: {
+            requested: true as const,
+            mode: benchmarkMode,
+            targetPercentile: benchmarkMode === 'auto' ? autoBenchmarkConfig.targetPercentile : undefined,
+            metric: benchmarkMode === 'auto' ? autoBenchmarkConfig.metric : undefined,
+            allowSubjectOnlyWithoutBenchmark: benchmarkBlockedReason && allowSubjectOnlyWithoutBenchmark ? true : undefined,
+            ...(benchmarkMode === 'manual' && manualBenchmarkConfig.reportCode.trim() && manualBenchmarkConfig.fightId.trim() && manualBenchmarkConfig.playerName.trim()
+              ? { manualTarget: { reportCode: manualBenchmarkConfig.reportCode.trim(), fightId: Number(manualBenchmarkConfig.fightId), playerName: manualBenchmarkConfig.playerName.trim() } }
+              : {}),
+            ...(benchmarkMode === 'auto' ? { selectedCandidates: buildSelectedCandidates(availableBaselines, benchmarkCandidatesMutation.data ?? null, selectedBaselineKeys, selectedCandidateKeysByBaseline) } : {}),
+          },
+        }
+      : {}),
+  })
 
-    return {
-      playerName: params?.playerNameOverride ?? playerName,
-      timeframePreset,
-      reportCodes,
-      fightIdsByReport: params?.forExport ? selectedFightIdsByReport : undefined,
-      includeKills,
-      includeWipes,
-      includeTrash,
-      onlyPlayerPresent,
-      views: selectedViews,
-      playerContext: playerUserContext
-        ? {
-            className: playerUserContext.className || undefined,
-            specName: playerUserContext.specName || undefined,
-            role: playerUserContext.specName ? playerUserContext.role : undefined,
-            source: 'userProvided' as const,
-          }
-        : undefined,
-      benchmarkContextSource,
-      ...(benchmarkMode !== 'none'
-        ? {
-            benchmark: {
-              requested: true as const,
-              mode: benchmarkMode,
-              targetPercentile: benchmarkMode === 'auto' ? autoBenchmarkConfig.targetPercentile : undefined,
-              metric: benchmarkMode === 'auto' ? autoBenchmarkConfig.metric : undefined,
-              allowSubjectOnlyWithoutBenchmark:
-                benchmarkBlockedReason && allowSubjectOnlyWithoutBenchmark ? true : undefined,
-              ...(benchmarkMode === 'manual' &&
-              manualBenchmarkConfig.reportCode.trim() &&
-              manualBenchmarkConfig.fightId.trim() &&
-              manualBenchmarkConfig.playerName.trim()
-                ? {
-                    manualTarget: {
-                      reportCode: manualBenchmarkConfig.reportCode.trim(),
-                      fightId: Number(manualBenchmarkConfig.fightId),
-                      playerName: manualBenchmarkConfig.playerName.trim(),
-                    },
-                  }
-                : {}),
-              ...(benchmarkMode === 'auto'
-                ? {
-                    selectedCandidates: buildSelectedCandidates(
-                      availableBaselines,
-                      benchmarkCandidatesMutation.data ?? null,
-                      selectedBaselineKeys,
-                      selectedCandidateKeysByBaseline
-                    ),
-                  }
-                : {}),
-            },
-          }
-        : {}),
-    }
-  }
-
-  // Shared benchmark candidate fetch logic. Accepts explicit baselines to avoid stale-state issues
-  // when called synchronously after a state-mutating handler (boss kill selection, preview success).
   const handleFindCandidatesWithKeys = (keysOverride: Set<string>, baselinesOverride?: AvailableBaseline[]) => {
     if (!preview || keysOverride.size === 0 || !preview.detectedPlayer) return
     const baselinesSource = baselinesOverride ?? availableBaselines
     const baselines = baselinesSource
       .filter((b) => keysOverride.has(b.key))
-      .map((b) => ({
-        reportCode: b.reportCode,
-        fightId: b.fightId,
-        encounterId: b.encounterId,
-        encounterName: b.encounterName,
-        difficulty: b.difficulty,
-        durationMs: b.durationMs,
-        playerName: b.playerName,
-        className: b.className,
-        specName: b.specName,
-        itemLevel: b.itemLevel,
-        contextSource,
-      }))
+      .map((b) => ({ reportCode: b.reportCode, fightId: b.fightId, encounterId: b.encounterId, encounterName: b.encounterName, difficulty: b.difficulty, durationMs: b.durationMs, playerName: b.playerName, className: b.className, specName: b.specName, itemLevel: b.itemLevel, contextSource }))
     if (baselines.length === 0) return
     benchmarkCandidatesMutation.mutate(
-      {
-        baselines,
-        targetPercentile: autoBenchmarkConfig.targetPercentile,
-        metric: autoBenchmarkConfig.metric,
-        itemLevelWindow: autoBenchmarkConfig.itemLevelWindow,
-        durationWindowPercent: autoBenchmarkConfig.durationWindowPercent,
-        maxCandidatesPerFight: 10,
-        benchmarkContextSource,
-        playerContext: playerUserContext
-          ? { ...playerUserContext, role: playerUserContext.role, source: 'userProvided' as const }
-          : undefined,
-      },
+      { baselines, targetPercentile: autoBenchmarkConfig.targetPercentile, metric: autoBenchmarkConfig.metric, itemLevelWindow: autoBenchmarkConfig.itemLevelWindow, durationWindowPercent: autoBenchmarkConfig.durationWindowPercent, maxCandidatesPerFight: 10, benchmarkContextSource, playerContext: playerUserContext ? { ...playerUserContext, role: playerUserContext.role, source: 'userProvided' as const } : undefined },
       {
         onSuccess: (data) => {
           const nextSelections: Record<string, string> = {}
           for (const group of data.groups ?? []) {
             const baselineKey = `${group.baseline.reportCode}:${group.baseline.fightId}`
             const recommended = group.selectedCandidate
-            if (
-              recommended?.validation.hasUsableExportTarget &&
-              recommended.reportCode &&
-              typeof recommended.fightId === 'number'
-            ) {
+            if (recommended?.validation.hasUsableExportTarget && recommended.reportCode && typeof recommended.fightId === 'number') {
               nextSelections[baselineKey] = `${recommended.reportCode}:${recommended.fightId}:${recommended.characterName}`
             }
           }
@@ -488,35 +339,19 @@ export const PlayerAnalysisPage: FC = () => {
     previewMutation.mutate(buildRequest({ playerNameOverride }), {
       onSuccess: (data) => {
         if (requestId !== previewRequestSeq.current) return
-
         const defaultFightSelection = buildSingleBossDefaultSelection(data)
         setSelectedFightIdsByReport(defaultFightSelection)
         const nextBaselineKeys = buildBaselineKeysFromFightSelection(data, defaultFightSelection)
         syncSelectedBaselineKeys(nextBaselineKeys)
-
         if (benchmarkContextSource === 'wclDetected' && data.effectiveContext?.source === 'userProvided') {
           setBenchmarkContextSource('userProvided')
         }
-
-        // Auto-trigger benchmark for the default selected boss when class/spec is detected
         if (nextBaselineKeys.size === 0) return
-        const detectedClass = data.detectedPlayer?.className !== 'unknown'
-          ? (data.detectedPlayer?.className ?? null)
-          : null
-        const detectedSpec = data.detectedPlayer?.specName !== 'unknown'
-          ? (data.detectedPlayer?.specName ?? null)
-          : null
-        const autoClass =
-          benchmarkContextSource === 'userProvided' && playerUserContext?.className
-            ? playerUserContext.className
-            : detectedClass
-        const autoSpec =
-          benchmarkContextSource === 'userProvided' && playerUserContext?.specName
-            ? playerUserContext.specName
-            : detectedSpec
-
+        const detectedClass = data.detectedPlayer?.className !== 'unknown' ? (data.detectedPlayer?.className ?? null) : null
+        const detectedSpec = data.detectedPlayer?.specName !== 'unknown' ? (data.detectedPlayer?.specName ?? null) : null
+        const autoClass = benchmarkContextSource === 'userProvided' && playerUserContext?.className ? playerUserContext.className : detectedClass
+        const autoSpec = benchmarkContextSource === 'userProvided' && playerUserContext?.specName ? playerUserContext.specName : detectedSpec
         if (!autoClass || !autoSpec) return
-
         const baselinesForAutoTrigger: AvailableBaseline[] = (data.includedReports ?? [])
           .filter((r) => r.playerPresent)
           .flatMap((r) =>
@@ -566,9 +401,7 @@ export const PlayerAnalysisPage: FC = () => {
         ? (existing.includes(fightId) ? existing : [...existing, fightId])
         : existing.filter((id) => id !== fightId)
       const nextSelection = { ...current, [reportCode]: next }
-      if (preview) {
-        syncSelectedBaselineKeys(buildBaselineKeysFromFightSelection(preview, nextSelection))
-      }
+      if (preview) syncSelectedBaselineKeys(buildBaselineKeysFromFightSelection(preview, nextSelection))
       return nextSelection
     })
   }
@@ -578,10 +411,8 @@ export const PlayerAnalysisPage: FC = () => {
   }
 
   const handleBenchmarkCandidateSelection = (baselineKey: string, candidateKey: string) => {
-    setSelectedCandidateKeysByBaseline((current) => ({
-      ...current,
-      [baselineKey]: candidateKey,
-    }))
+    setSelectedCandidateKeysByBaseline((current) => ({ ...current, [baselineKey]: candidateKey }))
+    setForcedStep(null)
   }
 
   const handleSelectAllEligibleFights = () => {
@@ -594,18 +425,14 @@ export const PlayerAnalysisPage: FC = () => {
   const handleSelectBossKill = (reportCode: string, fightId: number) => {
     if (!preview) return
     const nextSelection: Record<string, number[]> = Object.fromEntries(
-      (preview.includedReports ?? []).map((report) => [
-        report.code,
-        report.code === reportCode ? [fightId] : [],
-      ])
+      (preview.includedReports ?? []).map((report) => [report.code, report.code === reportCode ? [fightId] : []])
     )
     setSelectedFightIdsByReport(nextSelection)
     const nextBaselineKeys = buildBaselineKeysFromFightSelection(preview, nextSelection)
     syncSelectedBaselineKeys(nextBaselineKeys)
+    setForcedStep(null)
 
     if (nextBaselineKeys.size === 0 || !effectiveClassName || !effectiveSpecName) return
-
-    // Compute baselines inline from next selection since state hasn't updated yet
     const baselinesForAutoTrigger: AvailableBaseline[] = (preview.includedReports ?? [])
       .filter((r) => r.playerPresent)
       .flatMap((r) =>
@@ -633,44 +460,37 @@ export const PlayerAnalysisPage: FC = () => {
   const handleClearFightSelection = () => {
     if (!preview) return
     const empty: Record<string, number[]> = {}
-    for (const report of preview.includedReports ?? []) {
-      empty[report.code] = []
-    }
+    for (const report of preview.includedReports ?? []) empty[report.code] = []
     setSelectedFightIdsByReport(empty)
     syncSelectedBaselineKeys(new Set())
   }
 
-  const canFindCandidates =
-    !!preview &&
-    selectedBaselineKeys.size > 0 &&
-    !!preview.detectedPlayer &&
-    !!effectiveClassName &&
-    !!effectiveSpecName
+  const handlePlayerSelect = (player: { name: string }) => {
+    const name = player.name.trim()
+    if (!name || name.toLowerCase() === lastAutoPreviewedName.current) return
+    handleScopeFieldChange(() => setPlayerName(name), { resetUserContext: true })
+    lastAutoPreviewedName.current = name.toLowerCase()
+    setForcedStep(null)
+    handlePreview(name)
+  }
 
-  const selectedBaselineKeysList = [...selectedBaselineKeys]
-  const selectedAutoCandidates = buildSelectedCandidates(
-    availableBaselines,
-    benchmarkCandidatesMutation.data ?? null,
-    selectedBaselineKeys,
-    selectedCandidateKeysByBaseline
-  )
-  const selectedGroupCount =
-    benchmarkCandidatesMutation.data?.groups.filter((group) =>
-      selectedBaselineKeys.has(`${group.baseline.reportCode}:${group.baseline.fightId}`)
-    ).length ?? 0
-  const selectedExportableCount =
-    benchmarkCandidatesMutation.data?.groups.filter((group) => {
-      const baselineKey = `${group.baseline.reportCode}:${group.baseline.fightId}`
-      if (!selectedBaselineKeys.has(baselineKey)) return false
-      const selectedKey = selectedCandidateKeysByBaseline[baselineKey]
-      const selectedCandidate = group.candidates.find((candidate) => {
-        const reportCode = candidate.reportCode ?? ''
-        const fightId = candidate.fightId ?? 0
-        const player = candidate.characterName ?? ''
-        return `${reportCode}:${fightId}:${player}` === selectedKey
-      })
-      return !!selectedCandidate?.validation.hasUsableExportTarget
-    }).length ?? 0
+  const canFindCandidates = !!preview && selectedBaselineKeys.size > 0 && !!preview.detectedPlayer && !!effectiveClassName && !!effectiveSpecName
+
+  const selectedAutoCandidates = buildSelectedCandidates(availableBaselines, benchmarkCandidatesMutation.data ?? null, selectedBaselineKeys, selectedCandidateKeysByBaseline)
+  const selectedGroupCount = benchmarkCandidatesMutation.data?.groups.filter((group) => selectedBaselineKeys.has(`${group.baseline.reportCode}:${group.baseline.fightId}`)).length ?? 0
+  const selectedExportableCount = benchmarkCandidatesMutation.data?.groups.filter((group) => {
+    const baselineKey = `${group.baseline.reportCode}:${group.baseline.fightId}`
+    if (!selectedBaselineKeys.has(baselineKey)) return false
+    const selectedKey = selectedCandidateKeysByBaseline[baselineKey]
+    const selectedCandidate = group.candidates.find((candidate) => {
+      const reportCode = candidate.reportCode ?? ''
+      const fightId = candidate.fightId ?? 0
+      const player = candidate.characterName ?? ''
+      return `${reportCode}:${fightId}:${player}` === selectedKey
+    })
+    return !!selectedCandidate?.validation.hasUsableExportTarget
+  }).length ?? 0
+
   const manualMissingFields: string[] = []
   if (benchmarkMode === 'manual') {
     if (!manualBenchmarkConfig.reportCode.trim()) manualMissingFields.push('report code')
@@ -679,7 +499,7 @@ export const PlayerAnalysisPage: FC = () => {
   }
   const benchmarkAutoGuardReason =
     benchmarkMode === 'auto' && selectedAutoCandidates.length === 0
-      ? selectedBaselineKeysList.length === 0
+      ? selectedBaselineKeys.size === 0
         ? 'Auto benchmark is enabled, but no baseline fights are selected.'
         : selectedGroupCount === 0
           ? 'Auto benchmark is enabled, but no exportable candidates are selected yet. Find candidates first or switch to manual benchmark mode.'
@@ -687,21 +507,13 @@ export const PlayerAnalysisPage: FC = () => {
             ? 'Auto benchmark is enabled, but none of the selected baseline fights has an exportable candidate. Switch to Manual log mode or adjust baseline/context and re-run candidate discovery.'
             : 'Auto benchmark is enabled, but no exportable benchmark candidates are selected.'
       : null
-  const benchmarkManualGuardReason =
-    benchmarkMode === 'manual' && manualMissingFields.length > 0
-      ? `Manual benchmark is enabled, but missing ${manualMissingFields.join(', ')}.`
-      : null
+  const benchmarkManualGuardReason = benchmarkMode === 'manual' && manualMissingFields.length > 0 ? `Manual benchmark is enabled, but missing ${manualMissingFields.join(', ')}.` : null
   const benchmarkBlockedReason = benchmarkAutoGuardReason ?? benchmarkManualGuardReason
   const canUseSubjectOnlyOverride = benchmarkMode !== 'none' && !!benchmarkBlockedReason
-  const exportBlockedReason =
-    benchmarkBlockedReason && !allowSubjectOnlyWithoutBenchmark ? benchmarkBlockedReason : null
+  const exportBlockedReason = benchmarkBlockedReason && !allowSubjectOnlyWithoutBenchmark ? benchmarkBlockedReason : null
 
   const showProgress = exportJob.isStarting || job !== null
-  const showResults =
-    !!job &&
-    (job.status === 'complete' ||
-      job.status === 'partial' ||
-      (job.status === 'failed' && (job.files?.length ?? 0) > 0))
+  const showResults = !!job && (job.status === 'complete' || job.status === 'partial' || (job.status === 'failed' && (job.files?.length ?? 0) > 0))
 
   const players = [...(recentPlayersQuery.data?.players ?? [])].sort((left, right) => {
     const reportDelta = (right.seenInRaidKillReports ?? 0) - (left.seenInRaidKillReports ?? 0)
@@ -713,339 +525,395 @@ export const PlayerAnalysisPage: FC = () => {
     return left.name.localeCompare(right.name)
   })
   const reports = recentReportsQuery.data?.reports ?? []
-  const latestRaidReportCodes = selectLatestRaidReportCodes(reports)
 
   const selectedFightCount = countSelectedFights(selectedFightIdsByReport)
+  const firstBaseline = availableBaselines[0] ?? null
 
-  // Step visibility
-  const showStep2 = previewMutation.isPending || previewMutation.isSuccess || !!previewMutation.error
-  const showStep3 = !!preview && selectedFightCount > 0
-  // Step 4 appears as soon as a fight is selected; content inside varies by benchmark state
-  const showStep4 = showStep3
+  // Derive active step
+  const hasStartedPreview = previewMutation.isPending || previewMutation.isSuccess || !!previewMutation.error
+  const derivedActiveStep =
+    !hasStartedPreview ? 0 :
+    !preview || selectedFightCount === 0 ? 1 :
+    benchmarkMode === 'auto' && selectedAutoCandidates.length === 0 && !allowSubjectOnlyWithoutBenchmark ? 2 :
+    3
+  const activeStep = forcedStep ?? derivedActiveStep
 
   const isSelected = (reportCode: string, fightId: number): boolean =>
     (selectedFightIdsByReport[reportCode] ?? []).includes(fightId)
 
-  // First baseline for export summary display
-  const firstBaseline = availableBaselines[0] ?? null
+  // Step labels
+  const STEP_LABELS = ['Select Player', 'Pick a Fight', 'Find Benchmark', 'Export']
 
   return (
-    <div className="mx-auto max-w-[900px] space-y-4 py-6 px-4">
-      {/* Page header */}
-      <div className="pb-2 text-center">
-        <h1 className="text-2xl font-bold text-slate-100">Player Analysis Export</h1>
-      </div>
+    <div style={{ minHeight: '100vh', backgroundColor: '#1e1f23', color: '#f2f3f5' }}>
 
-      {/* Step 1 — Player */}
-      <section className="rounded-xl border border-slate-800 bg-slate-900/70 p-5">
-        <div className="mb-3 text-[10px] font-semibold uppercase tracking-widest text-slate-500">
-          Player
+      {/* ── Minimal Header ── */}
+      <header style={{
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        padding: '14px 24px', maxWidth: 700, margin: '0 auto',
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span style={{ color: '#5865f2', display: 'flex' }}>
+            <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M5.2 18.8l2-2m8.6-8.6l5.2-5.2h-4V0m0 3h3M3 21l5.2-5.2" />
+              <path d="M18.8 18.8l-2-2M10.2 8.2L5 3H1v4l5.2 5.2" />
+              <path d="M21 21l-5.2-5.2M14 10l-4 4" />
+            </svg>
+          </span>
+          <span style={{ fontSize: 15, fontWeight: 700, color: '#f2f3f5', letterSpacing: '-0.01em' }}>
+            STD Analyzer
+          </span>
         </div>
-        <PlayerAnalysisScopeForm
-          players={players}
-          reports={reports}
-          latestRaidReportCodes={latestRaidReportCodes}
-          recentPlayersLoading={recentPlayersQuery.isLoading}
-          recentPlayersError={
-            recentPlayersQuery.error instanceof Error ? recentPlayersQuery.error.message : null
-          }
-          reportsLoading={recentReportsQuery.isLoading}
-          reportsError={
-            recentReportsQuery.error instanceof Error ? recentReportsQuery.error.message : null
-          }
-          playerName={playerName}
-          timeframePreset={timeframePreset}
-          selectedReports={selectedReports}
-          includeKills={includeKills}
-          includeWipes={includeWipes}
-          includeTrash={includeTrash}
-          onlyPlayerPresent={onlyPlayerPresent}
-          onPlayerNameChange={(value) => {
-            handleScopeFieldChange(() => setPlayerName(value), { resetUserContext: true })
-            // Auto-trigger on exact autocomplete match, guarded against repeats
-            const normalizedValue = value.trim().toLowerCase()
-            if (
-              normalizedValue &&
-              normalizedValue !== lastAutoPreviewedName.current &&
-              players.some((p) => p.name.toLowerCase() === normalizedValue)
-            ) {
-              lastAutoPreviewedName.current = normalizedValue
-              handlePreview(value.trim())
-            }
-          }}
-          onTimeframePresetChange={(value) =>
-            handleScopeFieldChange(() => setTimeframePreset(value))
-          }
-          onSelectedReportsChange={(value) =>
-            handleScopeFieldChange(() => setSelectedReports(value))
-          }
-          onIncludeKillsChange={(value) => handleScopeFieldChange(() => setIncludeKills(value))}
-          onIncludeWipesChange={(value) => handleScopeFieldChange(() => setIncludeWipes(value))}
-          onIncludeTrashChange={(value) => handleScopeFieldChange(() => setIncludeTrash(value))}
-          onOnlyPlayerPresentChange={(value) =>
-            handleScopeFieldChange(() => setOnlyPlayerPresent(value))
-          }
-          onPreview={() => {
-            lastAutoPreviewedName.current = playerName.trim().toLowerCase()
-            handlePreview(playerName.trim() || undefined)
-          }}
-          onCommit={() => {
-            const trimmed = playerName.trim()
-            if (!trimmed) return
-            lastAutoPreviewedName.current = trimmed.toLowerCase()
-            handlePreview(trimmed)
-          }}
-          isPreviewing={previewMutation.isPending}
-        />
-      </section>
+        <AdvancedButton onClick={() => setSidebarOpen(true)} />
+      </header>
 
-      {/* Step 2 — Boss Kill */}
-      {showStep2 && (
-        <section className="rounded-xl border border-slate-800 bg-slate-900/70 p-5">
-          <div className="mb-3 text-[10px] font-semibold uppercase tracking-widest text-slate-500">
-            Boss Kill
-          </div>
+      {/* ── Accordion Steps ── */}
+      <div style={{ maxWidth: 700, margin: '0 auto', padding: '0 24px 60px', display: 'flex', flexDirection: 'column', gap: 6 }}>
+        {STEP_LABELS.map((label, idx) => {
+          const completed = idx < activeStep
+          const active = idx === activeStep
+          if (idx > activeStep) return null
 
-          {previewMutation.isPending && (
-            <p className="text-sm text-slate-400">Loading boss kills…</p>
-          )}
+          const borderColor = active
+            ? 'rgba(255,255,255,0.08)'
+            : completed
+              ? 'rgba(255,255,255,0.06)'
+              : 'rgba(255,255,255,0.06)'
+          const bgColor = active ? 'rgba(55,57,63,0.90)' : 'rgba(43,45,49,0.72)'
 
-          {previewMutation.error && !previewMutation.isPending && (
-            <div className="rounded border border-rose-700/40 bg-rose-950/20 p-3 text-xs text-rose-200">
-              {(previewMutation.error as Error).message}
-            </div>
-          )}
+          return (
+            <div
+              key={idx}
+              style={{
+                borderRadius: active ? 14 : 12,
+                border: `1px solid ${borderColor}`,
+                backgroundColor: bgColor,
+                backdropFilter: 'blur(16px)',
+                WebkitBackdropFilter: 'blur(16px)',
+                transition: 'all 0.25s ease',
+              }}
+            >
+              {/* Step header row */}
+              <div style={{
+                display: 'flex', alignItems: 'center', gap: 12,
+                padding: completed ? '10px 16px' : '14px 16px',
+              }}>
+                <StepDot number={idx + 1} completed={completed} active={active} />
 
-          {preview && !previewMutation.isPending && (
-            <>
-              {preview.recentRaidBossKills.groups.length === 0 && (
-                <p className="text-sm text-slate-400">
-                  No verified raid boss kills found for {preview.requestedPlayerName} in this scope.
-                </p>
-              )}
-
-              <div className="space-y-2">
-                {preview.recentRaidBossKills.groups.flatMap((group) =>
-                  group.fights.map((fight) => (
-                    <BossKillCard
-                      key={`${fight.reportCode}:${fight.fightId}`}
-                      encounterName={group.encounterName}
-                      difficulty={group.difficulty}
-                      durationMs={fight.durationMs}
-                      startTime={fight.startTime}
-                      playerItemLevel={fight.playerItemLevel}
-                      reportCode={fight.reportCode}
-                      fightId={fight.fightId}
-                      isSelected={isSelected(fight.reportCode, fight.fightId)}
-                      onClick={() => handleSelectBossKill(fight.reportCode, fight.fightId)}
-                    />
-                  ))
+                {completed ? (
+                  // Collapsed chip
+                  <>
+                    {idx === 0 && (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 10, flex: 1, minWidth: 0 }}>
+                        <SpecIcon className={effectiveClassName ?? undefined} specName={effectiveSpecName ?? undefined} size={26} />
+                        <span style={{ fontWeight: 600, fontSize: 14, color: classColor(effectiveClassName) }}>{playerName}</span>
+                        {effectiveSpecName && effectiveClassName && (
+                          <span style={{ color: '#6d6f78', fontSize: 12 }}>{effectiveSpecName} {effectiveClassName}</span>
+                        )}
+                        <div style={{ flex: 1 }} />
+                        <ChipChangeBtn onClick={() => { setForcedStep(0); invalidatePreviewState() }} />
+                      </div>
+                    )}
+                    {idx === 1 && firstBaseline && (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 10, flex: 1, minWidth: 0 }}>
+                        <BossImage encounterId={firstBaseline.encounterId} encounterName={firstBaseline.encounterName} size={26} />
+                        <span style={{ fontWeight: 600, fontSize: 13, color: '#f2f3f5' }}>{firstBaseline.encounterName}</span>
+                        <DiffBadge difficulty={firstBaseline.difficulty} />
+                        <span style={{ color: '#6d6f78', fontSize: 12 }}>{formatDuration(firstBaseline.durationMs)}</span>
+                        <div style={{ flex: 1 }} />
+                        <ChipChangeBtn onClick={() => setForcedStep(1)} />
+                      </div>
+                    )}
+                    {idx === 2 && selectedAutoCandidates.length > 0 && (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1, minWidth: 0 }}>
+                        <span style={{ fontSize: 12, color: '#6d6f78' }}>vs</span>
+                        <span style={{ fontWeight: 600, fontSize: 13, color: classColor(selectedAutoCandidates[0].benchmarkClassName) }}>
+                          {selectedAutoCandidates[0].benchmarkPlayerName}
+                        </span>
+                        {selectedAutoCandidates[0].benchmarkPercentile !== undefined && (
+                          <PercentileBar value={selectedAutoCandidates[0].benchmarkPercentile} compact />
+                        )}
+                        {selectedAutoCandidates[0].benchmarkItemLevel != null && (
+                          <span style={{ fontSize: 12, color: '#6d6f78' }}>{selectedAutoCandidates[0].benchmarkItemLevel} ilvl</span>
+                        )}
+                        <div style={{ flex: 1 }} />
+                        <ChipChangeBtn onClick={() => setForcedStep(2)} />
+                      </div>
+                    )}
+                    {idx === 2 && selectedAutoCandidates.length === 0 && (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 10, flex: 1, minWidth: 0 }}>
+                        <span style={{ fontSize: 13, color: '#949ba4' }}>Benchmark</span>
+                        <div style={{ flex: 1 }} />
+                        <ChipChangeBtn onClick={() => setForcedStep(2)} />
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  <span style={{ fontSize: 14, fontWeight: 600, color: active ? '#f2f3f5' : '#6d6f78' }}>
+                    {label}
+                  </span>
                 )}
               </div>
 
-              {preview.recentRaidBossKills.warnings.length > 0 && (
-                <div className="mt-2 rounded border border-amber-700/30 bg-amber-950/20 p-2 text-xs text-amber-200 space-y-1">
-                  {preview.recentRaidBossKills.warnings.map((w) => (
-                    <p key={w}>⚠ {w}</p>
-                  ))}
-                </div>
-              )}
+              {/* Step content */}
+              {active && (
+                <div style={{ padding: '4px 16px 18px', paddingLeft: 56 }}>
 
-              <details className="mt-3 rounded border border-slate-700 bg-slate-950/30 p-2">
-                <summary className="cursor-pointer text-xs text-slate-400 hover:text-slate-300">
-                  Advanced: scope details & manual fight selection
-                </summary>
-                <div className="mt-3">
-                  <PlayerAnalysisPreviewPanel
-                    preview={preview}
-                    selectedFightIdsByReport={selectedFightIdsByReport}
-                    onFightSelectionChange={handleFightSelectionChange}
-                    onSelectAllEligibleFights={handleSelectAllEligibleFights}
-                    onClearFightSelection={handleClearFightSelection}
-                    viewCount={selectedViews.length}
-                  />
-                </div>
-              </details>
-            </>
-          )}
-        </section>
-      )}
-
-      {/* Step 3 — Benchmark */}
-      {showStep3 && (
-        <section className="rounded-xl border border-slate-800 bg-slate-900/70 p-5">
-          <div className="mb-3 text-[10px] font-semibold uppercase tracking-widest text-slate-500">
-            Benchmark
-          </div>
-          <BenchmarkErrorBoundary>
-            <PlayerAnalysisBenchmarkForm
-              benchmarkMode={benchmarkMode}
-              benchmarkConfig={manualBenchmarkConfig}
-              autoConfig={autoBenchmarkConfig}
-              candidatesResult={benchmarkCandidatesMutation.data ?? null}
-              isFindingCandidates={benchmarkCandidatesMutation.isPending}
-              canFindCandidates={canFindCandidates}
-              hasPreview={!!preview}
-              availableBaselines={availableBaselines}
-              selectedBaselineKeys={selectedBaselineKeys}
-              selectedCandidateKeysByBaseline={selectedCandidateKeysByBaseline}
-              specDetectionFailed={specDetectionFailed}
-              detectedContext={preview?.detectedPlayer?.detectedContext}
-              contextWarnings={preview?.contextWarnings ?? []}
-              benchmarkContextSource={benchmarkContextSource}
-              playerUserContext={playerUserContext}
-              onBaselineSelectionChange={handleBaselineSelectionChange}
-              onBenchmarkCandidateSelectionChange={handleBenchmarkCandidateSelection}
-              onClassSpecOverrideChange={setPlayerUserContext}
-              onBenchmarkContextSourceChange={setBenchmarkContextSource}
-              onBenchmarkModeChange={setBenchmarkMode}
-              onBenchmarkConfigChange={setManualBenchmarkConfig}
-              onAutoConfigChange={setAutoBenchmarkConfig}
-              benchmarkBlockedReason={benchmarkBlockedReason}
-              canUseSubjectOnlyOverride={canUseSubjectOnlyOverride}
-              allowSubjectOnlyWithoutBenchmark={allowSubjectOnlyWithoutBenchmark}
-              onAllowSubjectOnlyWithoutBenchmarkChange={setAllowSubjectOnlyWithoutBenchmark}
-              onFindCandidates={handleFindCandidates}
-              isAutoTriggered={true}
-            />
-          </BenchmarkErrorBoundary>
-        </section>
-      )}
-
-      {/* Step 4 — Export */}
-      {showStep4 && (
-        <section className="rounded-xl border border-slate-800 bg-slate-900/70 p-5">
-          <div className="mb-3 text-[10px] font-semibold uppercase tracking-widest text-slate-500">
-            Export
-          </div>
-
-          {/* Benchmark status messages — explain why export may not be ready yet */}
-          {!showProgress && !showResults && benchmarkMode === 'auto' && (
-            <>
-              {benchmarkCandidatesMutation.isPending && (
-                <p className="mb-4 text-sm text-slate-400">
-                  Finding same-spec benchmark candidates…
-                </p>
-              )}
-              {benchmarkCandidatesMutation.isError && (
-                <div className="mb-4 rounded border border-rose-700/30 bg-rose-950/20 p-3 text-xs text-rose-200">
-                  Benchmark discovery failed. Retry from the Benchmark step or use manual benchmark
-                  fallback.
-                </div>
-              )}
-              {benchmarkCandidatesMutation.isSuccess &&
-                selectedAutoCandidates.length === 0 &&
-                !allowSubjectOnlyWithoutBenchmark && (
-                  <div className="mb-4 rounded border border-amber-700/30 bg-amber-950/20 p-3 text-xs text-amber-200">
-                    No exportable benchmark candidate found. Use manual benchmark fallback or enable
-                    subject-only export in the Benchmark step above.
-                  </div>
-                )}
-            </>
-          )}
-
-          {/* Pre-export summary + button */}
-          {!showProgress && !showResults && (
-            <>
-              {firstBaseline && (
-                <div className="mb-4 rounded border border-slate-700 bg-slate-950/40 p-3 text-xs text-slate-300 space-y-1">
-                  <p>
-                    Player: <span className="text-slate-100">{playerName}</span>
-                  </p>
-                  <p>
-                    Fight:{' '}
-                    <span className="text-slate-100">
-                      {firstBaseline.encounterName} —{' '}
-                      {getDifficultyLabel(firstBaseline.difficulty)}
-                    </span>
-                  </p>
-                  {selectedAutoCandidates.length > 0 && (
-                    <p>
-                      Benchmark:{' '}
-                      <span className="text-slate-100">
-                        {selectedAutoCandidates[0].benchmarkPlayerName}
-                      </span>
-                    </p>
+                  {/* ── Step 0: Player Search ── */}
+                  {idx === 0 && (
+                    <PlayerAnalysisScopeForm
+                      players={players}
+                      recentPlayersLoading={recentPlayersQuery.isLoading}
+                      recentPlayersError={recentPlayersQuery.error instanceof Error ? recentPlayersQuery.error.message : null}
+                      playerName={playerName}
+                      onPlayerNameChange={(value) => handleScopeFieldChange(() => setPlayerName(value), { resetUserContext: true })}
+                      onSelect={handlePlayerSelect}
+                      onCommit={() => {
+                        const trimmed = playerName.trim()
+                        if (!trimmed) return
+                        lastAutoPreviewedName.current = trimmed.toLowerCase()
+                        setForcedStep(null)
+                        handlePreview(trimmed)
+                      }}
+                      isPreviewing={previewMutation.isPending}
+                    />
                   )}
-                  {benchmarkMode !== 'none' && effectiveClassName && effectiveSpecName && (
-                    <p className="text-slate-400">
-                      Comparison: same encounter · same difficulty ·{' '}
-                      {effectiveSpecName} {effectiveClassName}
-                    </p>
+
+                  {/* ── Step 1: Fight Selection ── */}
+                  {idx === 1 && (
+                    <div>
+                      {previewMutation.isPending && (
+                        <p style={{ fontSize: 13, color: '#949ba4' }}>Loading boss kills…</p>
+                      )}
+                      {previewMutation.error && !previewMutation.isPending && (
+                        <div style={{ padding: '10px 12px', borderRadius: 8, background: 'rgba(218,55,60,0.08)', border: '1px solid rgba(218,55,60,0.20)', fontSize: 12, color: '#f38ba8' }}>
+                          {(previewMutation.error as Error).message}
+                        </div>
+                      )}
+                      {preview && !previewMutation.isPending && (
+                        <>
+                          {preview.recentRaidBossKills.groups.length === 0 && (
+                            <p style={{ fontSize: 13, color: '#949ba4' }}>
+                              No verified raid boss kills found for {preview.requestedPlayerName} in this scope.
+                            </p>
+                          )}
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                            {preview.recentRaidBossKills.groups.length > 0 && (
+                              <div style={{ fontSize: 12, color: '#6d6f78', marginBottom: 2 }}>
+                                {preview.recentRaidBossKills.groups.length} boss kills from latest raid
+                              </div>
+                            )}
+                            {preview.recentRaidBossKills.groups.flatMap((group) =>
+                              group.fights.map((fight) => (
+                                <BossKillCard
+                                  key={`${fight.reportCode}:${fight.fightId}`}
+                                  encounterName={group.encounterName}
+                                  encounterId={group.encounterId}
+                                  difficulty={group.difficulty}
+                                  durationMs={fight.durationMs}
+                                  startTime={fight.startTime}
+                                  playerItemLevel={fight.playerItemLevel}
+                                  reportCode={fight.reportCode}
+                                  fightId={fight.fightId}
+                                  isSelected={isSelected(fight.reportCode, fight.fightId)}
+                                  onClick={() => handleSelectBossKill(fight.reportCode, fight.fightId)}
+                                />
+                              ))
+                            )}
+                          </div>
+                          {preview.recentRaidBossKills.warnings.length > 0 && (
+                            <div style={{ marginTop: 8, padding: '8px 12px', borderRadius: 8, background: 'rgba(240,178,50,0.06)', border: '1px solid rgba(240,178,50,0.20)', fontSize: 12, color: '#f0b232' }}>
+                              {preview.recentRaidBossKills.warnings.map((w) => <p key={w}>⚠ {w}</p>)}
+                            </div>
+                          )}
+                          <details className="mt-3 rounded border border-white/[0.06] bg-[rgba(26,27,30,0.4)] p-2">
+                            <summary className="cursor-pointer text-xs text-slate-500 hover:text-slate-400">
+                              Advanced: scope details & manual fight selection
+                            </summary>
+                            <div className="mt-3">
+                              <PlayerAnalysisPreviewPanel
+                                preview={preview}
+                                selectedFightIdsByReport={selectedFightIdsByReport}
+                                onFightSelectionChange={handleFightSelectionChange}
+                                onSelectAllEligibleFights={handleSelectAllEligibleFights}
+                                onClearFightSelection={handleClearFightSelection}
+                                viewCount={selectedViews.length}
+                              />
+                            </div>
+                          </details>
+                        </>
+                      )}
+                    </div>
+                  )}
+
+                  {/* ── Step 2: Benchmark ── */}
+                  {idx === 2 && (
+                    <BenchmarkErrorBoundary>
+                      <PlayerAnalysisBenchmarkForm
+                        benchmarkMode={benchmarkMode}
+                        benchmarkConfig={manualBenchmarkConfig}
+                        autoConfig={autoBenchmarkConfig}
+                        candidatesResult={benchmarkCandidatesMutation.data ?? null}
+                        isFindingCandidates={benchmarkCandidatesMutation.isPending}
+                        canFindCandidates={canFindCandidates}
+                        hasPreview={!!preview}
+                        availableBaselines={availableBaselines}
+                        selectedBaselineKeys={selectedBaselineKeys}
+                        selectedCandidateKeysByBaseline={selectedCandidateKeysByBaseline}
+                        specDetectionFailed={specDetectionFailed}
+                        detectedContext={preview?.detectedPlayer?.detectedContext}
+                        contextWarnings={preview?.contextWarnings ?? []}
+                        benchmarkContextSource={benchmarkContextSource}
+                        playerUserContext={playerUserContext}
+                        onBaselineSelectionChange={handleBaselineSelectionChange}
+                        onBenchmarkCandidateSelectionChange={handleBenchmarkCandidateSelection}
+                        onClassSpecOverrideChange={setPlayerUserContext}
+                        onBenchmarkContextSourceChange={setBenchmarkContextSource}
+                        onBenchmarkModeChange={setBenchmarkMode}
+                        onBenchmarkConfigChange={setManualBenchmarkConfig}
+                        onAutoConfigChange={setAutoBenchmarkConfig}
+                        benchmarkBlockedReason={benchmarkBlockedReason}
+                        canUseSubjectOnlyOverride={canUseSubjectOnlyOverride}
+                        allowSubjectOnlyWithoutBenchmark={allowSubjectOnlyWithoutBenchmark}
+                        onAllowSubjectOnlyWithoutBenchmarkChange={setAllowSubjectOnlyWithoutBenchmark}
+                        onFindCandidates={handleFindCandidates}
+                        isAutoTriggered={true}
+                      />
+                    </BenchmarkErrorBoundary>
+                  )}
+
+                  {/* ── Step 3: Export ── */}
+                  {idx === 3 && (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                      {/* Benchmark loading/error/blocked messages */}
+                      {!showProgress && !showResults && benchmarkMode === 'auto' && (
+                        <>
+                          {benchmarkCandidatesMutation.isPending && (
+                            <p style={{ fontSize: 13, color: '#949ba4' }}>Finding same-spec benchmark candidates…</p>
+                          )}
+                          {benchmarkCandidatesMutation.isError && (
+                            <div style={{ padding: '10px 12px', borderRadius: 8, background: 'rgba(218,55,60,0.08)', border: '1px solid rgba(218,55,60,0.20)', fontSize: 12, color: '#f38ba8' }}>
+                              Benchmark discovery failed. Retry from the Benchmark step or use manual benchmark fallback.
+                            </div>
+                          )}
+                        </>
+                      )}
+
+                      {/* Pre-export summary + button */}
+                      {!showProgress && !showResults && (
+                        <>
+                          {firstBaseline && (
+                            <div style={{ padding: '14px 16px', borderRadius: 10, background: 'rgba(43,45,49,0.72)', border: '1px solid rgba(255,255,255,0.06)', backdropFilter: 'blur(16px)' }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
+                                <SpecIcon className={effectiveClassName ?? undefined} specName={effectiveSpecName ?? undefined} size={30} />
+                                <div>
+                                  <span style={{ fontWeight: 600, color: classColor(effectiveClassName) }}>{playerName}</span>
+                                  {selectedAutoCandidates.length > 0 && (
+                                    <>
+                                      <span style={{ color: '#6d6f78', margin: '0 8px' }}>vs</span>
+                                      <span style={{ fontWeight: 600, color: classColor(selectedAutoCandidates[0].benchmarkClassName) }}>
+                                        {selectedAutoCandidates[0].benchmarkPlayerName}
+                                      </span>
+                                    </>
+                                  )}
+                                </div>
+                              </div>
+                              <div style={{ display: 'flex', gap: 14, fontSize: 12, color: '#949ba4', flexWrap: 'wrap' }}>
+                                <span>{firstBaseline.encounterName}</span>
+                                <span>{getDifficultyLabel(firstBaseline.difficulty)}</span>
+                                <span>{formatDuration(firstBaseline.durationMs)}</span>
+                                {benchmarkMode !== 'none' && (
+                                  <span>Target: {autoBenchmarkConfig.targetPercentile}th pct</span>
+                                )}
+                              </div>
+                            </div>
+                          )}
+
+                          <ExportButton
+                            onClick={handleGenerateExport}
+                            disabled={exportJob.isStarting || selectedFightCount === 0 || selectedViews.length === 0 || !!exportBlockedReason}
+                            isStarting={exportJob.isStarting}
+                          />
+
+                          {exportBlockedReason && !allowSubjectOnlyWithoutBenchmark && (
+                            <p style={{ fontSize: 12, color: '#f0b232' }}>{exportBlockedReason}</p>
+                          )}
+                          {selectedViews.length === 0 && (
+                            <p style={{ fontSize: 12, color: '#da373c' }}>
+                              No views selected — enable export views in Advanced options.
+                            </p>
+                          )}
+                          {exportJob.startError && (
+                            <div style={{ padding: '10px 12px', borderRadius: 8, background: 'rgba(218,55,60,0.08)', border: '1px solid rgba(218,55,60,0.20)', fontSize: 12, color: '#f38ba8' }}>
+                              {exportJob.startError}
+                            </div>
+                          )}
+                        </>
+                      )}
+
+                      {showProgress && !showResults && job && <PlayerAnalysisExportProgress job={job} />}
+                      {exportJob.isStarting && !job && (
+                        <div style={{ fontSize: 12, color: '#949ba4' }}>Starting export…</div>
+                      )}
+                      {showResults && job && exportJob.exportId && (
+                        <PlayerAnalysisExportResults job={job} exportId={exportJob.exportId} onReset={exportJob.reset} />
+                      )}
+                      {job?.status === 'failed' && !showResults && (
+                        <button
+                          type="button"
+                          onClick={exportJob.reset}
+                          style={{ width: '100%', padding: '8px 14px', borderRadius: 8, background: 'none', border: '1px solid rgba(255,255,255,0.08)', color: '#949ba4', fontSize: 12, cursor: 'pointer', fontFamily: 'inherit' }}
+                        >
+                          Try again
+                        </button>
+                      )}
+                      {exportJob.pollError && (
+                        <div style={{ padding: '10px 12px', borderRadius: 8, background: 'rgba(240,178,50,0.06)', border: '1px solid rgba(240,178,50,0.20)', fontSize: 12, color: '#f0b232' }}>
+                          {exportJob.pollError}
+                        </div>
+                      )}
+                    </div>
                   )}
                 </div>
               )}
-
-              <button
-                type="button"
-                onClick={handleGenerateExport}
-                disabled={
-                  exportJob.isStarting ||
-                  selectedFightCount === 0 ||
-                  selectedViews.length === 0 ||
-                  !!exportBlockedReason
-                }
-                className="w-full rounded-lg bg-violet-600 px-4 py-3 text-sm font-semibold text-white hover:bg-violet-500 disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                {exportJob.isStarting ? 'Starting export…' : 'Export analysis bundle'}
-              </button>
-
-              {exportBlockedReason && !allowSubjectOnlyWithoutBenchmark && (
-                <p className="mt-2 text-xs text-amber-300">{exportBlockedReason}</p>
-              )}
-              {selectedViews.length === 0 && (
-                <p className="mt-2 text-xs text-rose-300">
-                  No views selected — enable export views in Advanced options below.
-                </p>
-              )}
-            </>
-          )}
-
-          {showProgress && !showResults && job && <PlayerAnalysisExportProgress job={job} />}
-          {exportJob.isStarting && !job && (
-            <div className="text-xs text-slate-400">Starting export…</div>
-          )}
-          {showResults && job && exportJob.exportId && (
-            <PlayerAnalysisExportResults
-              job={job}
-              exportId={exportJob.exportId}
-              onReset={exportJob.reset}
-            />
-          )}
-          {job?.status === 'failed' && !showResults && (
-            <button
-              type="button"
-              onClick={exportJob.reset}
-              className="mt-2 w-full rounded border border-slate-700 bg-slate-800/40 px-3 py-1.5 text-xs text-slate-300 hover:bg-slate-800"
-            >
-              Try again
-            </button>
-          )}
-          {exportJob.startError && (
-            <div className="mt-2 rounded border border-rose-700/40 bg-rose-950/20 p-3 text-xs text-rose-200">
-              {exportJob.startError}
             </div>
-          )}
-          {exportJob.pollError && (
-            <div className="mt-2 rounded border border-amber-700/40 bg-amber-950/20 p-3 text-xs text-amber-200">
-              {exportJob.pollError}
-            </div>
-          )}
-        </section>
-      )}
+          )
+        })}
+      </div>
 
-      {/* Global advanced options */}
-      <details className="rounded-xl border border-slate-700 bg-slate-950/40 p-4">
-        <summary className="cursor-pointer text-xs text-slate-400 hover:text-slate-300">
-          Advanced options
-        </summary>
-        <div className="mt-4 space-y-4">
-          <PlayerAnalysisViewsForm
-            selectedViews={selectedViews}
-            onSelectedViewsChange={setSelectedViews}
-          />
-        </div>
-      </details>
+      {/* ── Advanced Sidebar ── */}
+      <AdvancedSidebar
+        open={sidebarOpen}
+        onClose={() => setSidebarOpen(false)}
+        reports={reports}
+        reportsLoading={recentReportsQuery.isLoading}
+        reportsError={recentReportsQuery.error instanceof Error ? recentReportsQuery.error.message : null}
+        timeframePreset={timeframePreset}
+        selectedReports={selectedReports}
+        includeKills={includeKills}
+        includeWipes={includeWipes}
+        includeTrash={includeTrash}
+        onlyPlayerPresent={onlyPlayerPresent}
+        onTimeframePresetChange={(value) => handleScopeFieldChange(() => setTimeframePreset(value))}
+        onSelectedReportsChange={(value) => handleScopeFieldChange(() => setSelectedReports(value))}
+        onIncludeKillsChange={(value) => handleScopeFieldChange(() => setIncludeKills(value))}
+        onIncludeWipesChange={(value) => handleScopeFieldChange(() => setIncludeWipes(value))}
+        onIncludeTrashChange={(value) => handleScopeFieldChange(() => setIncludeTrash(value))}
+        onOnlyPlayerPresentChange={(value) => handleScopeFieldChange(() => setOnlyPlayerPresent(value))}
+        benchmarkMode={benchmarkMode}
+        manualBenchmarkConfig={manualBenchmarkConfig}
+        autoBenchmarkConfig={autoBenchmarkConfig}
+        onBenchmarkModeChange={setBenchmarkMode}
+        onManualBenchmarkConfigChange={setManualBenchmarkConfig}
+        onAutoConfigChange={setAutoBenchmarkConfig}
+        benchmarkContextSource={benchmarkContextSource}
+        playerUserContext={playerUserContext}
+        onBenchmarkContextSourceChange={setBenchmarkContextSource}
+        onClassSpecOverrideChange={setPlayerUserContext}
+        selectedViews={selectedViews}
+        onSelectedViewsChange={setSelectedViews}
+      />
     </div>
   )
 }
+

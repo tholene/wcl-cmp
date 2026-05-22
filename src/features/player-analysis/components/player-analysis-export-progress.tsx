@@ -1,118 +1,85 @@
 import type { FC } from 'react'
 import type { PlayerAnalysisExportJob } from '../types/player-analysis.types'
 
-type Props = {
+type PlayerAnalysisExportProgressProps = {
   job: PlayerAnalysisExportJob
 }
 
-export const PlayerAnalysisExportProgress: FC<Props> = ({ job }) => {
+export const PlayerAnalysisExportProgress: FC<PlayerAnalysisExportProgressProps> = ({ job }) => {
   const isTerminal = job.status === 'complete' || job.status === 'partial' || job.status === 'failed'
-  const skippedViews = job.viewSummary?.skippedViews ?? []
-  const truncatedViews = job.viewSummary?.truncatedViews ?? []
-  const benchmarkSkipped = job.benchmarkSummary?.skippedCandidates ?? []
   const groupedWarnings = Object.entries(job.warningGroups ?? {})
   const errors = job.errors ?? []
-  const statusLabel =
-    job.status === 'partial'
-      ? 'Export completed with partial data'
-      : job.status === 'complete'
-        ? 'Export complete'
-        : job.status === 'failed'
-          ? 'Export failed'
-          : job.status
+
+  const barColor =
+    job.status === 'failed' ? '#da373c' :
+    job.status === 'complete' ? '#23a55a' :
+    '#5865f2'
 
   return (
-    <div className="rounded-xl border border-slate-800 bg-slate-900/70 p-4 space-y-3">
-      <div className="flex items-center justify-between">
-        <h2 className="text-sm font-semibold text-slate-200">Step 4: Export</h2>
-        <span className={`rounded px-2 py-0.5 text-xs font-medium ${
-          job.status === 'complete' ? 'bg-emerald-900/40 text-emerald-300' :
-          job.status === 'partial' ? 'bg-amber-900/40 text-amber-300' :
-          job.status === 'failed' ? 'bg-rose-900/40 text-rose-300' :
-          'bg-slate-800 text-slate-400'
-        }`}>
-          {statusLabel}
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+      {/* Status + percentage row */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <span style={{ fontSize: 13, color: '#b5bac1' }}>
+          {job.currentStep ?? (job.status === 'complete' ? 'Export complete' : job.status === 'failed' ? 'Export failed' : 'Exporting…')}
+        </span>
+        <span style={{ fontSize: 12, color: '#6d6f78', fontVariantNumeric: 'tabular-nums' }}>
+          {job.percentComplete}%
         </span>
       </div>
 
-      <div className="text-xs text-slate-400">
-        Status: <span className="text-slate-200">{job.status}</span>
+      {/* Progress bar */}
+      <div style={{ height: 4, borderRadius: 3, backgroundColor: '#2b2d31', overflow: 'hidden' }}>
+        <div style={{
+          width: `${Math.min(job.percentComplete ?? 0, 100)}%`,
+          height: '100%',
+          borderRadius: 3,
+          backgroundColor: barColor,
+          boxShadow: `0 0 8px ${barColor}50`,
+          transition: 'width 0.5s ease',
+        }} />
       </div>
 
-      <div className="space-y-1">
-        <div className="flex justify-between text-xs text-slate-400">
-          <span>{job.currentStep}</span>
-          <span>{job.percentComplete}%</span>
-        </div>
-        <div className="h-2 rounded-full bg-slate-800 overflow-hidden">
-          <div
-            className={`h-full rounded-full transition-all duration-500 ${
-              job.status === 'failed' ? 'bg-rose-600' :
-              job.status === 'complete' ? 'bg-emerald-600' :
-              'bg-violet-600'
-            }`}
-            style={{ width: `${job.percentComplete}%` }}
-          />
-        </div>
-        <div className="text-xs text-slate-500">
-          {job.completedSteps} / {job.totalSteps} steps
-        </div>
+      {/* Step counter */}
+      <div style={{ fontSize: 11, color: '#6d6f78' }}>
+        {job.completedSteps} / {job.totalSteps} steps
       </div>
 
+      {/* Benchmark summary */}
       {job.benchmarkSummary && (
-        <div className="rounded border border-slate-700 bg-slate-950/40 p-2 text-xs text-slate-300 space-y-0.5">
-          <p>Benchmark requested/included: {job.benchmarkSummary.requested ? 'yes' : 'no'} / {job.benchmarkSummary.included ? 'yes' : 'no'}</p>
-          <p>Selected/exported/skipped: {job.benchmarkSummary.selectedCount}/{job.benchmarkSummary.exportedCount}/{job.benchmarkSummary.skippedCount}</p>
+        <div style={{ fontSize: 12, color: '#949ba4', padding: '8px 12px', borderRadius: 8, background: 'rgba(43,45,49,0.72)', border: '1px solid rgba(255,255,255,0.06)' }}>
+          Benchmark: {job.benchmarkSummary.exportedCount}/{job.benchmarkSummary.selectedCount} exported
+          {job.benchmarkSummary.skippedCount > 0 && `, ${job.benchmarkSummary.skippedCount} skipped`}
         </div>
       )}
 
-      {(job.currentReportCode || job.currentFightId) && !isTerminal && (
-        <div className="text-xs text-slate-400">
-          {job.currentReportCode && <span>Report: {job.currentReportCode}</span>}
-          {job.currentFightId && <span className="ml-2">Fight: {job.currentFightId}</span>}
+      {/* Partial data warning */}
+      {job.status === 'partial' && (
+        <div style={{ fontSize: 12, color: '#f0b232', padding: '8px 12px', borderRadius: 8, background: 'rgba(240,178,50,0.06)', border: '1px solid rgba(240,178,50,0.20)' }}>
+          Some data could not be exported.
         </div>
       )}
 
-      {job.status === 'partial' && (skippedViews.length > 0 || truncatedViews.length > 0 || benchmarkSkipped.length > 0) && (
-        <div className="rounded border border-amber-700/30 bg-amber-950/20 p-2 space-y-1 text-xs text-amber-200">
-          <p>Partial summary: some requested data could not be exported.</p>
-          {skippedViews.length > 0 && (
-            <p>Skipped view outcomes: {skippedViews.length}</p>
-          )}
-          {truncatedViews.length > 0 && (
-            <p>Truncated view outcomes: {truncatedViews.length}</p>
-          )}
-          {benchmarkSkipped.length > 0 && (
-            <p>Skipped benchmark candidates: {benchmarkSkipped.length}</p>
-          )}
-        </div>
-      )}
-
+      {/* Warnings (collapsed) */}
       {job.warnings.length > 0 && (
-        <div className="rounded border border-amber-700/30 bg-amber-950/20 p-2 space-y-1 text-xs text-amber-200 max-h-32 overflow-y-auto">
-          {job.warnings.map((w, i) => (
-            <p key={i}>Warning: {w}</p>
-          ))}
+        <details className="rounded border border-amber-700/30 bg-amber-950/10 p-2">
+          <summary className="cursor-pointer text-xs text-amber-400">{job.warnings.length} warning{job.warnings.length !== 1 ? 's' : ''}</summary>
+          <div className="mt-2 max-h-32 overflow-y-auto space-y-1">
+            {job.warnings.map((w, i) => <p key={i} className="text-xs text-amber-300">{w}</p>)}
+          </div>
+        </details>
+      )}
+
+      {groupedWarnings.length > 0 && !isTerminal && (
+        <div style={{ fontSize: 11, color: '#6d6f78' }}>
+          {groupedWarnings.map(([group, warnings]) => `${group}: ${warnings.length}`).join(' · ')}
         </div>
       )}
 
-      {groupedWarnings.length > 0 && (
-        <div className="rounded border border-slate-700 bg-slate-950/40 p-2 space-y-1 text-xs text-slate-300 max-h-40 overflow-y-auto">
-          {groupedWarnings.map(([group, warnings]) => (
-            <p key={group}>
-              {group}: {warnings.length}
-            </p>
-          ))}
-        </div>
-      )}
-
+      {/* Errors */}
       {(job.status === 'failed' || errors.length > 0) && (
-        <div className="rounded border border-rose-700/40 bg-rose-950/20 p-2 text-xs text-rose-200">
-          <p className="font-medium">Failure details</p>
-          {job.error && <p className="mt-1">{job.error}</p>}
-          {errors.map((error, index) => (
-            <p key={index} className="mt-1">{error}</p>
-          ))}
+        <div style={{ fontSize: 12, color: '#f38ba8', padding: '10px 12px', borderRadius: 8, background: 'rgba(218,55,60,0.08)', border: '1px solid rgba(218,55,60,0.20)' }}>
+          {job.error && <p>{job.error}</p>}
+          {errors.map((e, i) => <p key={i}>{e}</p>)}
         </div>
       )}
     </div>

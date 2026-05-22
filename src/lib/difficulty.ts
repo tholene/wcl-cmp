@@ -1,4 +1,4 @@
-export function getDifficultyLabel(difficulty?: number | null): string {
+export const getDifficultyLabel = (difficulty?: number | null): string => {
   switch (difficulty) {
     case 3:
       return 'Normal'
