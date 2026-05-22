@@ -9,6 +9,7 @@ import type { ClassSpecOverride } from '@/features/player-analysis/types/class-s
 import { CLASS_NAMES, getSpecsForClass, getRoleForSpec } from '@/features/player-analysis/types/wow-class-spec'
 import { getCandidateKey, getExportabilityReasons } from '@/features/player-analysis/utils/benchmark-candidate-utils'
 import { classColor } from '@/features/player-analysis/lib/class-colors'
+import { SpecIcon } from '@/features/player-analysis/components/spec-icon'
 import { PercentileBar } from '@/features/player-analysis/components/percentile-bar'
 
 type ManualConfig = {
@@ -141,15 +142,7 @@ const CandidateCard: FC<{
       }}
     >
       {/* Avatar */}
-      <div style={{
-        width: 34, height: 34, borderRadius: 8, flexShrink: 0,
-        background: `linear-gradient(135deg, ${cc}28, ${cc}10)`,
-        border: `1px solid ${cc}30`,
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        fontSize: 13, fontWeight: 700, color: cc,
-      }}>
-        {(candidate.characterName ?? '?')[0]}
-      </div>
+      <SpecIcon className={candidate.className} size={34} />
 
       {/* Info */}
       <div style={{ flex: 1, minWidth: 0 }}>

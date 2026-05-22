@@ -1,5 +1,5 @@
-import type { FC } from 'react'
-import { classColor } from '../lib/class-colors'
+import { useState, type FC } from 'react'
+import { getWowClassColor, getWowClassIconUrl } from '@/lib/wow-class'
 
 type Props = {
   className?: string | null
@@ -8,15 +8,20 @@ type Props = {
 }
 
 export const SpecIcon: FC<Props> = ({ className, specName, size = 28 }) => {
-  const color = classColor(className)
+  const [iconFailed, setIconFailed] = useState(false)
+  const color = getWowClassColor(className)
+  const iconUrl = getWowClassIconUrl(className)
   const letter = (specName ?? className ?? '?')[0]
+  const radius = Math.round(size * 0.25)
+
   return (
     <div
       style={{
         width: size,
         height: size,
-        borderRadius: Math.round(size * 0.25),
+        borderRadius: radius,
         flexShrink: 0,
+        overflow: 'hidden',
         background: `linear-gradient(135deg, ${color}28 0%, ${color}10 100%)`,
         border: `1px solid ${color}40`,
         display: 'flex',
@@ -27,7 +32,18 @@ export const SpecIcon: FC<Props> = ({ className, specName, size = 28 }) => {
         color,
       }}
     >
-      {letter}
+      {iconUrl && !iconFailed ? (
+        <img
+          src={iconUrl}
+          alt={`${className ?? 'Unknown'} class icon`}
+          width={size}
+          height={size}
+          style={{ display: 'block', objectFit: 'cover' }}
+          onError={() => setIconFailed(true)}
+        />
+      ) : (
+        letter
+      )}
     </div>
   )
 }
