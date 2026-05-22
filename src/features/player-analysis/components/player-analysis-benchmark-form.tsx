@@ -142,7 +142,7 @@ const CandidateCard: FC<{
       }}
     >
       {/* Avatar */}
-      <SpecIcon className={candidate.className} size={34} />
+      <SpecIcon className={candidate.className} specName={candidate.specName} size={34} />
 
       {/* Info */}
       <div style={{ flex: 1, minWidth: 0 }}>

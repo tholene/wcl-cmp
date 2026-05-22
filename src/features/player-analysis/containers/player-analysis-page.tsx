@@ -1,5 +1,7 @@
 import { type FC } from 'react'
+import { VennLogo } from '@/components/venn-logo'
 import { getDifficultyLabel } from '@/lib/difficulty'
+import { getWowClassColor } from '@/lib/wow-class'
 import { AdvancedButton } from '@/features/player-analysis/components/advanced-button'
 import { AdvancedSidebar } from '@/features/player-analysis/components/advanced-sidebar'
 import { BenchmarkErrorBoundary } from '@/features/player-analysis/components/benchmark-error-boundary'
@@ -34,15 +36,9 @@ export const PlayerAnalysisPage: FC = () => {
         padding: '14px 24px', maxWidth: 700, margin: '0 auto',
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <span style={{ color: '#5865f2', display: 'flex' }}>
-            <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M5.2 18.8l2-2m8.6-8.6l5.2-5.2h-4V0m0 3h3M3 21l5.2-5.2" />
-              <path d="M18.8 18.8l-2-2M10.2 8.2L5 3H1v4l5.2 5.2" />
-              <path d="M21 21l-5.2-5.2M14 10l-4 4" />
-            </svg>
-          </span>
+          <VennLogo size={28} colorMode="blurple" />
           <span style={{ fontSize: 15, fontWeight: 700, color: '#f2f3f5', letterSpacing: '-0.01em' }}>
-            STD Analyzer
+            WCL Compare
           </span>
         </div>
         <AdvancedButton onClick={() => s.setSidebarOpen(true)} />
@@ -75,7 +71,17 @@ export const PlayerAnalysisPage: FC = () => {
                 display: 'flex', alignItems: 'center', gap: 12,
                 padding: completed ? '10px 16px' : '14px 16px',
               }}>
-                <StepDot number={idx + 1} completed={completed} active={active} />
+                <StepDot
+                  number={idx + 1}
+                  completed={completed}
+                  active={active}
+                  loading={
+                    (idx === 1 && s.previewMutation.isPending) ||
+                    (idx === 2 && s.benchmarkCandidatesMutation.isPending) ||
+                    (idx === 3 && s.benchmarkCandidatesMutation.isPending)
+                  }
+                  loadingColor={s.effectiveClassName ? getWowClassColor(s.effectiveClassName) : undefined}
+                />
 
                 {completed ? (
                   <>
@@ -125,9 +131,21 @@ export const PlayerAnalysisPage: FC = () => {
                     )}
                   </>
                 ) : (
-                  <span style={{ fontSize: 14, fontWeight: 600, color: active ? '#f2f3f5' : '#6d6f78' }}>
-                    {label}
-                  </span>
+                  <>
+                    <span style={{ fontSize: 14, fontWeight: 600, color: active ? '#f2f3f5' : '#6d6f78' }}>
+                      {label}
+                    </span>
+                    {active && (
+                      (idx === 1 && s.previewMutation.isPending) ||
+                      (idx === 2 && s.benchmarkCandidatesMutation.isPending) ||
+                      (idx === 3 && s.benchmarkCandidatesMutation.isPending)
+                    ) && (
+                      <>
+                        <div style={{ flex: 1 }} />
+                        <span style={{ fontSize: 11, color: '#6d6f78' }}>Loading…</span>
+                      </>
+                    )}
+                  </>
                 )}
               </div>
 
@@ -159,7 +177,17 @@ export const PlayerAnalysisPage: FC = () => {
                   {idx === 1 && (
                     <div>
                       {s.previewMutation.isPending && (
-                        <p style={{ fontSize: 13, color: '#949ba4' }}>Loading boss kills…</p>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                          {[44, 44, 44].map((sq, i) => (
+                            <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 14px', backgroundColor: 'rgba(30,31,35,0.5)', borderRadius: 10, border: '1px solid rgba(255,255,255,0.03)' }}>
+                              <div style={{ width: sq, height: sq, borderRadius: 10, flexShrink: 0, background: 'linear-gradient(90deg,#2b2d31 25%,#383a40 50%,#2b2d31 75%)', backgroundSize: '200% 100%', animation: 'shimmer 1.5s ease infinite' }} />
+                              <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 6 }}>
+                                <div style={{ width: '60%', height: 14, borderRadius: 6, background: 'linear-gradient(90deg,#2b2d31 25%,#383a40 50%,#2b2d31 75%)', backgroundSize: '200% 100%', animation: 'shimmer 1.5s ease infinite' }} />
+                                <div style={{ width: '40%', height: 10, borderRadius: 6, background: 'linear-gradient(90deg,#2b2d31 25%,#383a40 50%,#2b2d31 75%)', backgroundSize: '200% 100%', animation: 'shimmer 1.5s ease infinite' }} />
+                              </div>
+                            </div>
+                          ))}
+                        </div>
                       )}
                       {s.previewMutation.error && !s.previewMutation.isPending && (
                         <div style={{ padding: '10px 12px', borderRadius: 8, background: 'rgba(218,55,60,0.08)', border: '1px solid rgba(218,55,60,0.20)', fontSize: 12, color: '#f38ba8' }}>
@@ -268,7 +296,17 @@ export const PlayerAnalysisPage: FC = () => {
                       {!s.showProgress && !s.showResults && s.benchmarkMode === 'auto' && (
                         <>
                           {s.benchmarkCandidatesMutation.isPending && (
-                            <p style={{ fontSize: 13, color: '#949ba4' }}>Finding same-spec benchmark candidates…</p>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                              {[34, 34, 34].map((sq, i) => (
+                                <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 14px', backgroundColor: 'rgba(30,31,35,0.5)', borderRadius: 10, border: '1px solid rgba(255,255,255,0.03)' }}>
+                                  <div style={{ width: sq, height: sq, borderRadius: 8, flexShrink: 0, background: 'linear-gradient(90deg,#2b2d31 25%,#383a40 50%,#2b2d31 75%)', backgroundSize: '200% 100%', animation: 'shimmer 1.5s ease infinite' }} />
+                                  <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 6 }}>
+                                    <div style={{ width: '60%', height: 14, borderRadius: 6, background: 'linear-gradient(90deg,#2b2d31 25%,#383a40 50%,#2b2d31 75%)', backgroundSize: '200% 100%', animation: 'shimmer 1.5s ease infinite' }} />
+                                    <div style={{ width: '40%', height: 10, borderRadius: 6, background: 'linear-gradient(90deg,#2b2d31 25%,#383a40 50%,#2b2d31 75%)', backgroundSize: '200% 100%', animation: 'shimmer 1.5s ease infinite' }} />
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
                           )}
                           {s.benchmarkCandidatesMutation.isError && (
                             <div style={{ padding: '10px 12px', borderRadius: 8, background: 'rgba(218,55,60,0.08)', border: '1px solid rgba(218,55,60,0.20)', fontSize: 12, color: '#f38ba8' }}>

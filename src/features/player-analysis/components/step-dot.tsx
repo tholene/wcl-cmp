@@ -1,8 +1,15 @@
 import type { FC } from 'react'
+import { VennLogo } from '@/components/venn-logo'
 
-type StepDotProps = { number: number; completed: boolean; active: boolean }
+type StepDotProps = {
+  number: number
+  completed: boolean
+  active: boolean
+  loading?: boolean
+  loadingColor?: string
+}
 
-export const StepDot: FC<StepDotProps> = ({ number, completed, active }) => {
+export const StepDot: FC<StepDotProps> = ({ number, completed, active, loading, loadingColor }) => {
   if (completed) {
     return (
       <div
@@ -50,7 +57,17 @@ export const StepDot: FC<StepDotProps> = ({ number, completed, active }) => {
         color: active ? '#c9cdfb' : '#6d6f78',
       }}
     >
-      {number}
+      {active && loading ? (
+        <VennLogo
+          size={16}
+          animate
+          speed="fast"
+          colorMode={loadingColor ? 'custom' : 'blurple'}
+          color={loadingColor}
+        />
+      ) : (
+        number
+      )}
     </div>
   )
 }

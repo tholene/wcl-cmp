@@ -28,6 +28,11 @@ a {
   color: inherit;
 }
 
+@keyframes shimmer {
+  0%   { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
 .glass {
   background: rgba(43, 45, 49, 0.72);
   backdrop-filter: blur(16px);
