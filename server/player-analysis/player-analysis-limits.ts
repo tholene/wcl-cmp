@@ -4,7 +4,7 @@ export const PLAYER_ANALYSIS_EXPORT_DEFAULT_LIMITS: PlayerAnalysisExportLimits =
   maxReports: 5,
   maxFights: 30,
   maxRowsPerCsv: 20_000,
-  maxEventsPerFightPerView: 5_000,
+  maxEventsPerFightPerView: Number.MAX_SAFE_INTEGER,
   maxTotalExportBytes: 25 * 1024 * 1024,
 }
 
@@ -12,7 +12,7 @@ export const PLAYER_ANALYSIS_EXPORT_HARD_LIMITS: PlayerAnalysisExportLimits = {
   maxReports: 10,
   maxFights: 60,
   maxRowsPerCsv: 100_000,
-  maxEventsPerFightPerView: 20_000,
+  maxEventsPerFightPerView: Number.MAX_SAFE_INTEGER,
   maxTotalExportBytes: 100 * 1024 * 1024,
 }
 
