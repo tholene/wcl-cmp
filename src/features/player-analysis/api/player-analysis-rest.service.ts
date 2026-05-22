@@ -7,6 +7,7 @@ import type {
   PlayerAnalysisExportStartResponse,
   BenchmarkCandidatesRequest,
   BenchmarkCandidatesResponse,
+  RecentPlayersResponse,
 } from '../types/player-analysis.types'
 
 export const PlayerAnalysisRestService = {
@@ -33,4 +34,7 @@ export const PlayerAnalysisRestService = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(request),
     }),
+
+  getRecentPlayers: (): Promise<RecentPlayersResponse> =>
+    apiFetch(apiUrl('/api/players/recent')),
 }

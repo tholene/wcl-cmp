@@ -480,3 +480,16 @@ export type BenchmarkCandidatesResponse = {
   groups: BenchmarkCandidateGroup[]
   warnings: string[]
 }
+
+export type RecentPlayer = {
+  name: string
+  className?: string | null
+  lastSeenAt?: number | null
+  seenInRaidKillReports?: number
+  seenInRaidKillFights?: number
+}
+
+export type RecentPlayersResponse = {
+  players: RecentPlayer[]
+  generatedAt: number
+}
