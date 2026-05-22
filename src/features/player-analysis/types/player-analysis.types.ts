@@ -41,6 +41,7 @@ export const VIEW_LABELS: Record<PlayerAnalysisExportView, string> = {
 }
 
 export type PlayerAnalysisTimeframePreset =
+  | 'last30Days'
   | 'latestRaid'
   | 'last7Days'
   | 'previousCalendarWeek'
@@ -228,6 +229,7 @@ export type PlayerAnalysisExportPreview = {
       playerPresent: boolean
       presenceVerified?: boolean
       playerItemLevel?: number | null
+      playerSpecName?: string | null
     }>
     skippedFights: Array<{
       fightId: number
@@ -248,6 +250,7 @@ export type PlayerAnalysisExportPreview = {
         startTime: number
         durationMs: number
         playerItemLevel?: number | null
+        playerSpecName?: string | null
       }>
     }>
     warnings: string[]

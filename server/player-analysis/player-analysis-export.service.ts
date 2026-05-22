@@ -136,6 +136,10 @@ function resolveTimeframe(
     return { since, until }
   }
 
+  if (preset === 'last30Days') {
+    return { since: nowMs - 30 * 24 * 60 * 60 * 1000, until: nowMs }
+  }
+
   if (preset === 'last7Days') {
     return { since: nowMs - 7 * 24 * 60 * 60 * 1000, until: nowMs }
   }
@@ -1202,6 +1206,17 @@ export async function getExportPreview(
   let reportCodes: string[]
   if (request.reportCodes?.length) {
     reportCodes = request.reportCodes.slice(0, limits.maxReports)
+  } else if (request.timeframePreset === 'last30Days') {
+    const windowMs = 30 * 24 * 60 * 60 * 1000
+    const windowStart = Date.now() - windowMs
+    const recentReports = await WclService.listRecentReports(config, 25, windowStart)
+    const raidReports = recentReports.filter((r) => classifyRaidZone(r).isRaid)
+    reportCodes = raidReports.map((r) => r.code)
+    if (reportCodes.length === 0) {
+      warnings.push(
+        `No raid reports found in the last 30 days for ${playerName}. Try manual report selection.`
+      )
+    }
   } else {
     const recentReports = await WclService.listRecentReports(config, limits.maxReports)
     if (request.timeframePreset === 'latestRaid') {
@@ -1320,10 +1335,12 @@ export async function getExportPreview(
       const fightDurationMs = Math.max(fight.endTime - fight.startTime, 0)
       let presenceVerified: boolean | undefined
       let playerItemLevel: number | null | undefined
+      let playerSpecName: string | null | undefined
 
       if (fight.kill && fight.encounterId > 0) {
         presenceVerified = false
         playerItemLevel = null
+        playerSpecName = null
 
         if (playerPresent && actor) {
           try {
@@ -1342,6 +1359,7 @@ export async function getExportPreview(
               presenceVerified = true
               const details = extractCombatantDetails(combatantResult.events, actor.id)
               playerItemLevel = details.itemLevel
+              playerSpecName = details.specName ?? null
             }
           } catch {
             warnings.push(`CombatantInfo presence verification failed for ${report.code}#${fight.id}.`)
@@ -1360,6 +1378,7 @@ export async function getExportPreview(
         playerPresent,
         presenceVerified,
         playerItemLevel,
+        playerSpecName,
       })
       fightsIncluded += 1
 
@@ -1526,6 +1545,7 @@ export async function getExportPreview(
         startTime: fight.startTime ?? report.startTime,
         durationMs: fight.durationMs,
         playerItemLevel: fight.playerItemLevel ?? null,
+        playerSpecName: fight.playerSpecName ?? null,
       }))
   )
 
@@ -1543,6 +1563,7 @@ export async function getExportPreview(
         startTime: number
         durationMs: number
         playerItemLevel?: number | null
+        playerSpecName?: string | null
       }>
     }
   >()
@@ -1559,6 +1580,7 @@ export async function getExportPreview(
         startTime: fight.startTime,
         durationMs: fight.durationMs,
         playerItemLevel: fight.playerItemLevel,
+        playerSpecName: fight.playerSpecName,
       })
       continue
     }
@@ -1575,6 +1597,7 @@ export async function getExportPreview(
           startTime: fight.startTime,
           durationMs: fight.durationMs,
           playerItemLevel: fight.playerItemLevel,
+          playerSpecName: fight.playerSpecName,
         },
       ],
     })

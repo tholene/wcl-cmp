@@ -18,15 +18,20 @@ Build a single-purpose Warcraft Logs Player Analysis Export tool that lets offic
 - Do not return raw high-volume event payloads through API responses.
 - WCL credentials stay server-side.
 
-## Completed slices (as of 2026-05-19)
+## Completed slices (as of 2026-05-22)
 
 - Player Analysis Export is primary route and primary nav.
 - 4-step workflow (player, raid/boss, benchmark, export).
-- Latest-raid scope defaults to raid-only logs.
+- Default scope is last-30-days raid-only (replaces latest-session heuristic).
+- `latestRaid` session heuristic retained as advanced sidebar option.
+- Per-fight spec stored from CombatantInfo and used in baseline derivation.
+- `selectedPlayerFightContext` — fight-specific class/spec/ilvl with source metadata.
+- Item level warning shown in benchmark form when fight ilvl unavailable.
 - One-boss default selection with explicit multi-fight opt-in.
 - Explicit benchmark candidate selection wired to export payload.
 - Subject vs benchmark item-level source separation + mismatch warning.
 - README AI instruction block and output structure.
+- CJK font fallbacks in global CSS (Noto Sans SC, Microsoft YaHei, PingFang SC).
 
 ## Work Packages
 
@@ -75,8 +80,9 @@ Scope completed:
 
 ## Follow-ups
 
-- Investigate ranking item-level vs CombatantInfo item-level source mismatches.
+- Verify last-30-days window produces correct boss kill list in production (real guild logs).
 - Maintain and periodically validate raid-zone classification config in [raid-zone-classifier.ts](/home/tholene/Projects/git/std-analyzer/server/warcraft-logs/raid-zone-classifier.ts) (`raidZoneIds`, `raidZoneNames`, `raidZoneAliases`).
 - Add optional automated smoke tests for MVP flow.
+- Consider adding parse/percentile from WCL character rankings to boss kill card display (currently only ilvl is shown).
 - Visual polish pass (status icons/spec imagery/visual hierarchy only).
 - Remove remaining legacy routes/endpoints after confidence window.

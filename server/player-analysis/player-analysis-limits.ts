@@ -1,7 +1,7 @@
 import type { PlayerAnalysisExportLimits } from './player-analysis.types'
 
 export const PLAYER_ANALYSIS_EXPORT_DEFAULT_LIMITS: PlayerAnalysisExportLimits = {
-  maxReports: 5,
+  maxReports: 15,
   maxFights: 30,
   maxRowsPerCsv: 20_000,
   maxEventsPerFightPerView: Number.MAX_SAFE_INTEGER,
@@ -9,7 +9,7 @@ export const PLAYER_ANALYSIS_EXPORT_DEFAULT_LIMITS: PlayerAnalysisExportLimits =
 }
 
 export const PLAYER_ANALYSIS_EXPORT_HARD_LIMITS: PlayerAnalysisExportLimits = {
-  maxReports: 10,
+  maxReports: 25,
   maxFights: 60,
   maxRowsPerCsv: 100_000,
   maxEventsPerFightPerView: Number.MAX_SAFE_INTEGER,

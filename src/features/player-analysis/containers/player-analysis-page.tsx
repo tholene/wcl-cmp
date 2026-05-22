@@ -178,7 +178,7 @@ export const PlayerAnalysisPage: FC = () => {
   const benchmarkCandidatesMutation = useBenchmarkCandidates()
 
   const [playerName, setPlayerName] = useState('')
-  const [timeframePreset, setTimeframePreset] = useState<PlayerAnalysisTimeframePreset>('latestRaid')
+  const [timeframePreset, setTimeframePreset] = useState<PlayerAnalysisTimeframePreset>('last30Days')
   const [selectedReports, setSelectedReports] = useState<string[]>([])
   const [includeKills, setIncludeKills] = useState(true)
   const [includeWipes, setIncludeWipes] = useState(false)
@@ -243,7 +243,7 @@ export const PlayerAnalysisPage: FC = () => {
               kill: f.kill,
               playerName: preview.detectedPlayer?.characterName ?? '',
               className: effectiveClassName ?? 'unknown',
-              specName: effectiveSpecName ?? 'unknown',
+              specName: f.playerSpecName ?? effectiveSpecName ?? 'unknown',
               itemLevel: f.playerItemLevel ?? null,
             }))
         )
@@ -252,6 +252,41 @@ export const PlayerAnalysisPage: FC = () => {
   const contextSource = hasWclClassSpec && benchmarkContextSource !== 'userProvided'
     ? ('wclDetected' as const)
     : ('userProvided' as const)
+
+  const selectedPlayerFightContext = (() => {
+    if (!preview) return null
+    const selectedKeys = new Set(
+      Object.entries(selectedFightIdsByReport).flatMap(([code, ids]) => ids.map((id) => `${code}:${id}`))
+    )
+    if (selectedKeys.size !== 1) return null
+    const key = [...selectedKeys][0]
+    for (const r of preview.includedReports) {
+      for (const f of r.includedFights) {
+        if (`${r.code}:${f.fightId}` !== key) continue
+        const itemLevel = f.playerItemLevel ?? null
+        return {
+          playerName: preview.detectedPlayer?.characterName ?? playerName,
+          reportCode: r.code,
+          fightId: f.fightId,
+          encounterId: f.encounterId ?? 0,
+          difficulty: f.difficulty,
+          className: effectiveClassName ?? 'unknown',
+          specName: f.playerSpecName ?? effectiveSpecName ?? 'unknown',
+          itemLevel,
+          itemLevelSource: itemLevel != null
+            ? ('selectedFightCombatantInfo' as const)
+            : ('unknown' as const),
+          specSource: f.playerSpecName != null
+            ? ('selectedFightCombatantInfo' as const)
+            : effectiveSpecName != null
+              ? ('detectedContext' as const)
+              : ('unknown' as const),
+          warnings: itemLevel == null ? ['Item level unavailable for selected fight — benchmark delta will not be shown'] : [],
+        }
+      }
+    }
+    return null
+  })()
 
   const syncSelectedBaselineKeys = (nextKeys: Set<string>) => {
     setSelectedBaselineKeys(nextKeys)
@@ -762,7 +797,7 @@ export const PlayerAnalysisPage: FC = () => {
                         selectedCandidateKeysByBaseline={selectedCandidateKeysByBaseline}
                         specDetectionFailed={specDetectionFailed}
                         detectedContext={preview?.detectedPlayer?.detectedContext}
-                        contextWarnings={preview?.contextWarnings ?? []}
+                        contextWarnings={[...(preview?.contextWarnings ?? []), ...(selectedPlayerFightContext?.warnings ?? [])]}
                         benchmarkContextSource={benchmarkContextSource}
                         playerUserContext={playerUserContext}
                         onBaselineSelectionChange={handleBaselineSelectionChange}

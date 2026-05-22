@@ -7,14 +7,14 @@ Player Analysis Export builds an evidence bundle from Warcraft Logs for one raid
 ## Step-by-step flow
 
 1. Open `/player-analysis`.
-2. Enter player name.
-3. Choose scope (`Latest raid` or `Manual report selection`).
-4. Click preview.
-5. Choose fights (default is one eligible boss kill).
-6. Optional: configure benchmark mode and candidate selection.
-7. Click generate export.
-8. Download `bundle.zip`.
-9. Upload ZIP to ChatGPT and follow `README.md`.
+2. Enter player name — the app searches raid boss kills from the last 30 days automatically.
+3. Select a boss kill from the list (grouped by encounter and difficulty).
+4. Optional: configure benchmark mode and candidate selection.
+5. Click generate export.
+6. Download `bundle.zip`.
+7. Upload ZIP to ChatGPT and follow `README.md`.
+
+The default scope is last 30 days, raid-only, kills only. Dungeons and wipes are excluded by default. Use the Advanced sidebar to change the scope or switch to manual report selection.
 
 ## ZIP contents
 
@@ -51,10 +51,12 @@ The README defines required output sections and caveats for fair, evidence-based
 
 - Player not found or no fights included:
   Verify player name, include player-present fights, and re-run preview.
-- Latest raid misses expected raid logs:
-  Latest-raid classification uses explicit zone ID/name/alias rules plus fallback hints in [raid-zone-classifier.ts](/home/tholene/Projects/git/std-analyzer/server/warcraft-logs/raid-zone-classifier.ts). If your guild uses a new shorthand zone label, add it under `raidZoneAliases` (and optionally `raidZoneIds` / `raidZoneNames`).
-- Latest raid returns no raid reports:
-  Preview warnings now include compact diagnostics (`recent zones seen`, `rejected non-raid zones`, `raid reports without player presence`) to show why reports were excluded.
+- No recent boss kills found (last 30 days):
+  The boss list scans raid reports from the last 30 days. If no raid reports are found, the preview warning will say so. Use `Advanced → Timeframe → Manual report selection` to enter specific report codes.
+- Latest raid session heuristic:
+  The `Latest raid session` option (Advanced sidebar) uses the most recent raid session in the last N guild reports. This can miss older raids if the guild has been doing M+ dungeons recently. Prefer `Last 30 days` (default).
+- Item level looks wrong:
+  Item level is taken from the CombatantInfo snapshot in the specific fight log — it reflects gear at the time of that kill, not current armory data. If the fight is from an older kill, item level will be lower.
 - Benchmark requested but missing:
   Select an exportable candidate or enable the subject-only override.
 - Partial export with skipped/truncated data:

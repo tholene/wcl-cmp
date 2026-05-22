@@ -203,9 +203,9 @@ type AggregatedBossSource = {
 const RECENT_REPORT_LIMIT = 15
 
 const REPORTS_BY_GUILD_QUERY = `
-  query ReportsByGuild($guildId: Int!, $limit: Int!) {
+  query ReportsByGuild($guildId: Int!, $limit: Int!, $startTime: Float) {
     reportData {
-      reports(guildID: $guildId, limit: $limit) {
+      reports(guildID: $guildId, limit: $limit, startTime: $startTime) {
         data {
           code
           title
@@ -964,13 +964,14 @@ const aggregateRecentBossData = async (
 }
 
 export const WclService = {
-  listRecentReports: async (config: WclConfig, limit = RECENT_REPORT_LIMIT): Promise<WclReportSummary[]> => {
+  listRecentReports: async (config: WclConfig, limit = RECENT_REPORT_LIMIT, startTime?: number): Promise<WclReportSummary[]> => {
     const queryResponse = await queryWclGraphQl<ReportsQueryResponse>({
       config,
       query: REPORTS_BY_GUILD_QUERY,
       variables: {
         guildId: Number(config.WCL_GUILD_ID),
         limit,
+        startTime,
       },
     })
 

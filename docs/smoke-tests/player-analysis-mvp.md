@@ -1,5 +1,18 @@
 # Player Analysis MVP Smoke Checklist
 
+## Reliability slice smoke checks (2026-05-22)
+
+- [ ] Search/select Bagge.
+- [ ] Boss list uses last 30 days (no manual scope needed); only raid kills appear by default.
+- [ ] Dungeons/M+ reports do not appear.
+- [ ] Player was present in all shown fights (presence verified).
+- [ ] Select Vorasius (or any boss) — if Mythic and Heroic both exist, both rows appear.
+- [ ] Selected fight item level source is `selectedFightCombatantInfo` (most recent raid; expect ~285).
+- [ ] Benchmark candidates use that fight's class/spec/encounterId/difficulty.
+- [ ] CJK player name 想得开挺得住 renders correctly in candidate card (no boxes/fallback glyphs).
+- [ ] Export completes successfully.
+- [ ] Exported README item level matches selected fight, not WCL ranking snapshot.
+
 ## Preconditions
 
 - Install deps.

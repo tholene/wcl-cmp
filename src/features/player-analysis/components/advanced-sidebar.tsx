@@ -206,7 +206,8 @@ export const AdvancedSidebar: FC<AdvancedSidebarProps> = ({
               onChange={(e) => onTimeframePresetChange(e.target.value as PlayerAnalysisTimeframePreset)}
               style={selectStyle}
             >
-              <option value="latestRaid">Latest raid</option>
+              <option value="last30Days">Last 30 days (default)</option>
+              <option value="latestRaid">Latest raid session</option>
               <option value="last7Days">Last 7 days</option>
               <option value="last14Days">Last 14 days</option>
               <option value="previousCalendarWeek">Previous calendar week</option>
