@@ -64,6 +64,49 @@ const CLASS_ICON_KEYS: Record<WowClassName, string> = {
   Warrior:        'classicon_warrior',
 }
 
+// Keyed by "${normalizedClass}:${normalizedSpec}" (lowercase, no spaces).
+const SPEC_ICON_KEYS: Record<string, string> = {
+  'deathknight:blood':       'spec_deathknight_blood',
+  'deathknight:frost':       'spec_deathknight_frost',
+  'deathknight:unholy':      'spec_deathknight_unholy',
+  'demonhunter:havoc':       'spec_demonhunter_havoc',
+  'demonhunter:vengeance':   'spec_demonhunter_vengeance',
+  'druid:balance':           'spec_druid_balance',
+  'druid:feral':             'spec_druid_feral',
+  'druid:guardian':          'spec_druid_guardian',
+  'druid:restoration':       'spec_druid_restoration',
+  'evoker:devastation':      'spec_evoker_devastation',
+  'evoker:preservation':     'spec_evoker_preservation',
+  'evoker:augmentation':     'spec_evoker_augmentation',
+  'hunter:beastmastery':     'spec_hunter_beastmastery',
+  'hunter:marksmanship':     'spec_hunter_marksmanship',
+  'hunter:survival':         'spec_hunter_survival',
+  'mage:arcane':             'spec_mage_arcane',
+  'mage:fire':               'spec_mage_fire',
+  'mage:frost':              'spec_mage_frost',
+  'monk:brewmaster':         'spec_monk_brewmaster',
+  'monk:mistweaver':         'spec_monk_mistweaver',
+  'monk:windwalker':         'spec_monk_windwalker',
+  'paladin:holy':            'spec_paladin_holy',
+  'paladin:protection':      'spec_paladin_protection',
+  'paladin:retribution':     'spec_paladin_retribution',
+  'priest:discipline':       'spec_priest_discipline',
+  'priest:holy':             'spec_priest_holy',
+  'priest:shadow':           'spec_priest_shadow',
+  'rogue:assassination':     'spec_rogue_assassination',
+  'rogue:outlaw':            'spec_rogue_outlaw',
+  'rogue:subtlety':          'spec_rogue_subtlety',
+  'shaman:elemental':        'spec_shaman_elemental',
+  'shaman:enhancement':      'spec_shaman_enhancement',
+  'shaman:restoration':      'spec_shaman_restoration',
+  'warlock:affliction':      'spec_warlock_affliction',
+  'warlock:demonology':      'spec_warlock_demonology',
+  'warlock:destruction':     'spec_warlock_destruction',
+  'warrior:arms':            'spec_warrior_arms',
+  'warrior:fury':            'spec_warrior_fury',
+  'warrior:protection':      'spec_warrior_protection',
+}
+
 const WCL_ABILITY_ICON_BASE = 'https://assets.rpglogs.com/img/warcraft/abilities'
 const FALLBACK_COLOR = '#b5bac1'
 
@@ -85,4 +128,14 @@ export function getWowClassIconUrl(value?: string | null): string | null {
   const name = normalizeWowClassName(value)
   if (!name) return null
   return `${WCL_ABILITY_ICON_BASE}/${CLASS_ICON_KEYS[name]}.jpg`
+}
+
+/** RPGLogs CDN URL for the spec icon, or null if the class+spec combination is unknown. */
+export function getWowSpecIconUrl(className?: string | null, specName?: string | null): string | null {
+  if (!className || !specName) return null
+  const normalizedClass = className.toLowerCase().replace(/\s+/g, '')
+  const normalizedSpec = specName.toLowerCase().replace(/\s+/g, '')
+  const key = SPEC_ICON_KEYS[`${normalizedClass}:${normalizedSpec}`]
+  if (!key) return null
+  return `${WCL_ABILITY_ICON_BASE}/${key}.jpg`
 }

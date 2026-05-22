@@ -1,5 +1,5 @@
 import { useState, type FC } from 'react'
-import { getWowClassColor, getWowClassIconUrl } from '@/lib/wow-class'
+import { getWowClassColor, getWowClassIconUrl, getWowSpecIconUrl } from '@/lib/wow-class'
 
 type Props = {
   className?: string | null
@@ -8,11 +8,23 @@ type Props = {
 }
 
 export const SpecIcon: FC<Props> = ({ className, specName, size = 28 }) => {
-  const [iconFailed, setIconFailed] = useState(false)
+  // Track which prop combination triggered each failure so failures auto-clear on prop change.
+  const [specFailedKey, setSpecFailedKey] = useState<string | null>(null)
+  const [classFailedKey, setClassFailedKey] = useState<string | null>(null)
+
   const color = getWowClassColor(className)
-  const iconUrl = getWowClassIconUrl(className)
+  const specIconUrl = getWowSpecIconUrl(className, specName)
+  const classIconUrl = getWowClassIconUrl(className)
   const letter = (specName ?? className ?? '?')[0]
   const radius = Math.round(size * 0.25)
+
+  const currentSpecKey = `${className ?? ''}:${specName ?? ''}`
+  const currentClassKey = className ?? ''
+  const specFailed = specFailedKey === currentSpecKey
+  const classFailed = classFailedKey === currentClassKey
+
+  const showSpec = !!specIconUrl && !specFailed
+  const showClass = !showSpec && !!classIconUrl && !classFailed
 
   return (
     <div
@@ -32,18 +44,27 @@ export const SpecIcon: FC<Props> = ({ className, specName, size = 28 }) => {
         color,
       }}
     >
-      {iconUrl && !iconFailed ? (
+      {showSpec && (
         <img
-          src={iconUrl}
+          src={specIconUrl}
+          alt={`${specName ?? ''} ${className ?? ''} icon`}
+          width={size}
+          height={size}
+          style={{ display: 'block', objectFit: 'cover' }}
+          onError={() => setSpecFailedKey(currentSpecKey)}
+        />
+      )}
+      {showClass && (
+        <img
+          src={classIconUrl}
           alt={`${className ?? 'Unknown'} class icon`}
           width={size}
           height={size}
           style={{ display: 'block', objectFit: 'cover' }}
-          onError={() => setIconFailed(true)}
+          onError={() => setClassFailedKey(currentClassKey)}
         />
-      ) : (
-        letter
       )}
+      {!showSpec && !showClass && letter}
     </div>
   )
 }

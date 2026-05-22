@@ -1,6 +1,1 @@
-export type ApiErrorResponse = {
-  error: string
-  hint?: string
-  code?: string
-  details?: Record<string, unknown>
-}
+export type { ApiErrorResponse } from '@/lib/api-error'
