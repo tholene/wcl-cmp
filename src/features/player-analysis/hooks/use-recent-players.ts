@@ -1,4 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
+import { apiUrl } from '@/lib/api-base-url'
 import { playerAnalysisQueryKeys } from '@/lib/query-keys'
 
 type RecentPlayer = {
@@ -11,7 +12,7 @@ type RecentPlayer = {
 type RecentPlayersResponse = { players: RecentPlayer[]; generatedAt: number }
 
 const fetchRecentPlayers = async (): Promise<RecentPlayersResponse> => {
-  const response = await fetch('/api/players/recent')
+  const response = await fetch(apiUrl('/api/players/recent'))
   const text = await response.text()
   if (!text.trim()) {
     throw new Error(

@@ -1,9 +1,10 @@
+import { apiUrl } from '@/lib/api-base-url'
 import type { ApiErrorResponse } from '@/features/reports/types/api-error-response'
 import type { FightReview } from '../types/fight-review'
 
 export const FightsRestService = {
   getFightReview: async (code: string, fightId: number): Promise<FightReview> => {
-    const response = await fetch(`/api/reports/${code}/fights/${fightId}/review`)
+    const response = await fetch(apiUrl(`/api/reports/${code}/fights/${fightId}/review`))
 
     if (!response.ok) {
       const data = (await response.json()) as ApiErrorResponse

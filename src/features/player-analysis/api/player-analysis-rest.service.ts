@@ -1,3 +1,4 @@
+import { apiUrl } from '@/lib/api-base-url'
 import type { ApiErrorResponse } from '@/features/reports/types/api-error-response'
 import type {
   PlayerAnalysisExportJob,
@@ -48,7 +49,7 @@ async function safeParseResponse<T>(response: Response): Promise<T> {
 
 export const PlayerAnalysisRestService = {
   getExportPreview: async (request: PlayerAnalysisExportRequest): Promise<PlayerAnalysisExportPreview> => {
-    const response = await fetch('/api/player-analysis/export-preview', {
+    const response = await fetch(apiUrl('/api/player-analysis/export-preview'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(request),
@@ -57,7 +58,7 @@ export const PlayerAnalysisRestService = {
   },
 
   startExport: async (request: PlayerAnalysisExportRequest): Promise<PlayerAnalysisExportStartResponse> => {
-    const response = await fetch('/api/player-analysis/export', {
+    const response = await fetch(apiUrl('/api/player-analysis/export'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(request),
@@ -66,12 +67,12 @@ export const PlayerAnalysisRestService = {
   },
 
   getExportStatus: async (exportId: string): Promise<PlayerAnalysisExportJob> => {
-    const response = await fetch(`/api/player-analysis/exports/${exportId}/status`)
+    const response = await fetch(apiUrl(`/api/player-analysis/exports/${exportId}/status`))
     return safeParseResponse<PlayerAnalysisExportJob>(response)
   },
 
   getBenchmarkCandidates: async (request: BenchmarkCandidatesRequest): Promise<BenchmarkCandidatesResponse> => {
-    const response = await fetch('/api/player-analysis/benchmark-candidates', {
+    const response = await fetch(apiUrl('/api/player-analysis/benchmark-candidates'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(request),

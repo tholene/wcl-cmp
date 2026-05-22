@@ -1,9 +1,10 @@
+import { apiUrl } from '@/lib/api-base-url'
 import type { ReportDetails } from '../types/report-details'
 import type { RecentReportsResponse } from '../types/recent-reports-response'
 
 export const ReportsRestService = {
   listRecentReports: async (): Promise<RecentReportsResponse> => {
-    const response = await fetch('/api/reports/recent')
+    const response = await fetch(apiUrl('/api/reports/recent'))
     const text = await response.text()
     if (!text.trim()) {
       throw new Error(
@@ -29,7 +30,7 @@ export const ReportsRestService = {
   },
 
   getReportDetails: async (code: string): Promise<ReportDetails> => {
-    const response = await fetch(`/api/reports/${code}`)
+    const response = await fetch(apiUrl(`/api/reports/${code}`))
     const text = await response.text()
     if (!text.trim()) {
       throw new Error(
