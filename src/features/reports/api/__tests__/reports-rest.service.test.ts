@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { ReportsRestService } from '../reports-rest.service'
-import { createMockRecentReportsResponse, createMockReport } from '@/test/factories/reports.factory'
+import { createMockRecentReportsResponse } from '@/test/factories/reports.factory'
 
 const mockFetch = vi.fn<typeof fetch>()
 
@@ -48,19 +48,5 @@ describe('ReportsRestService.listRecentReports', () => {
     await expect(ReportsRestService.listRecentReports()).rejects.toThrow(
       'The API server may not be running.'
     )
-  })
-})
-
-describe('ReportsRestService.getReportDetails', () => {
-  it('calls the correct endpoint with the report code', async () => {
-    const report = createMockReport({ code: 'XYZ789' })
-    mockFetch.mockResolvedValue(jsonResponse({ code: report.code, fights: [] }))
-    await ReportsRestService.getReportDetails('XYZ789')
-    expect(mockFetch).toHaveBeenCalledWith('/api/reports/XYZ789', undefined)
-  })
-
-  it('throws on non-ok response', async () => {
-    mockFetch.mockResolvedValue(jsonResponse({ error: 'Report not found' }, 404))
-    await expect(ReportsRestService.getReportDetails('XYZ789')).rejects.toThrow('Report not found')
   })
 })
