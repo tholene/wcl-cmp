@@ -1,5 +1,11 @@
 @import 'tailwindcss';
 
+/* Override Tailwind's font-sans so any font-sans utility also carries the CJK stack */
+@theme {
+  --font-sans: 'DM Sans', 'Noto Sans SC', 'Noto Sans', 'Microsoft YaHei', 'PingFang SC',
+    'Hiragino Sans GB', 'Source Han Sans SC', Arial, sans-serif;
+}
+
 :root {
   color-scheme: dark;
 }
@@ -9,7 +15,8 @@ body {
   min-height: 100vh;
   background: #1e1f23;
   color: #f2f3f5;
-  font-family: 'DM Sans', 'Noto Sans SC', 'Microsoft YaHei', 'PingFang SC', 'Hiragino Sans GB', system-ui, -apple-system, sans-serif;
+  font-family: 'DM Sans', 'Noto Sans SC', 'Noto Sans', 'Microsoft YaHei', 'PingFang SC',
+    'Hiragino Sans GB', 'Source Han Sans SC', Arial, sans-serif;
   -webkit-font-smoothing: antialiased;
 }
 

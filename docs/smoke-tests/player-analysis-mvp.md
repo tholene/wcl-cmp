@@ -9,7 +9,10 @@
 - [ ] Select Vorasius (or any boss) — if Mythic and Heroic both exist, both rows appear.
 - [ ] Selected fight item level source is `selectedFightCombatantInfo` (most recent raid; expect ~285).
 - [ ] Benchmark candidates use that fight's class/spec/encounterId/difficulty.
-- [ ] CJK player name 想得开挺得住 renders correctly in candidate card (no boxes/fallback glyphs).
+- [ ] CJK player names 传奇爆破手 and 想得开挺得住 render correctly in candidate cards (no tofu boxes/squares).
+- [ ] Latin names Bagge and Lazyslam still render normally alongside CJK names.
+- [ ] Autocomplete suggestions render CJK names correctly.
+- [ ] Candidate card avatar initial letter renders correctly for CJK first character (e.g., 传 from 传奇爆破手).
 - [ ] Export completes successfully.
 - [ ] Exported README item level matches selected fight, not WCL ranking snapshot.
 
