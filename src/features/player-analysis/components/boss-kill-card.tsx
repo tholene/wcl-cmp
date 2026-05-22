@@ -25,6 +25,7 @@ type BossKillCardProps = {
   reportCode: string
   fightId: number
   isSelected: boolean
+  duplicateReportCount?: number
   onClick: () => void
 }
 
@@ -36,6 +37,7 @@ export const BossKillCard: FC<BossKillCardProps> = ({
   startTime,
   playerItemLevel,
   isSelected,
+  duplicateReportCount,
   onClick,
 }) => {
   const [hovered, setHovered] = useState(false)
@@ -103,6 +105,11 @@ export const BossKillCard: FC<BossKillCardProps> = ({
           {playerItemLevel != null && <span>{playerItemLevel} ilvl</span>}
           <span>{new Date(startTime).toLocaleDateString()}</span>
         </div>
+        {duplicateReportCount != null && duplicateReportCount > 0 && (
+          <div style={{ fontSize: 11, color: '#6d6f78', marginTop: 2 }}>
+            Also found in {duplicateReportCount} other {duplicateReportCount === 1 ? 'report' : 'reports'}
+          </div>
+        )}
       </div>
 
       {isSelected && (

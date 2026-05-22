@@ -251,6 +251,8 @@ export type PlayerAnalysisExportPreview = {
         durationMs: number
         playerItemLevel?: number | null
         playerSpecName?: string | null
+        duplicateReportCount?: number
+        duplicateReports?: Array<{ reportCode: string; reportTitle: string; fightId: number }>
       }>
     }>
     warnings: string[]

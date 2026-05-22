@@ -1187,6 +1187,64 @@ function buildReadme(params: {
 }
 
 // ---------------------------------------------------------------------------
+// Boss-kill deduplication
+// ---------------------------------------------------------------------------
+
+type BossKillFightEntry = {
+  reportCode: string
+  reportTitle: string
+  reportUrl: string
+  fightId: number
+  startTime: number
+  durationMs: number
+  playerItemLevel?: number | null
+  playerSpecName?: string | null
+  duplicateReportCount?: number
+  duplicateReports?: Array<{ reportCode: string; reportTitle: string; fightId: number }>
+}
+
+const START_TIME_TOLERANCE_MS = 5_000
+const DURATION_TOLERANCE_MS = 3_000
+
+function deduplicateBossKillFights(fights: BossKillFightEntry[]): BossKillFightEntry[] {
+  const sorted = [...fights].sort((a, b) => a.startTime - b.startTime)
+  const clusters: BossKillFightEntry[][] = []
+
+  for (const fight of sorted) {
+    let placed = false
+    for (const cluster of clusters) {
+      const rep = cluster[0]
+      if (
+        Math.abs(fight.startTime - rep.startTime) <= START_TIME_TOLERANCE_MS &&
+        Math.abs(fight.durationMs - rep.durationMs) <= DURATION_TOLERANCE_MS
+      ) {
+        cluster.push(fight)
+        placed = true
+        break
+      }
+    }
+    if (!placed) clusters.push([fight])
+  }
+
+  return clusters.map((members) => {
+    if (members.length === 1) return members[0]
+
+    // Prefer representative with more player data available
+    const best = members.reduce((acc, cur) => {
+      const curScore = (cur.playerItemLevel != null ? 2 : 0) + (cur.playerSpecName != null ? 1 : 0)
+      const accScore = (acc.playerItemLevel != null ? 2 : 0) + (acc.playerSpecName != null ? 1 : 0)
+      return curScore > accScore ? cur : acc
+    })
+    const others = members.filter((m) => m !== best)
+    return {
+      ...best,
+      duplicateReportCount: others.length,
+      duplicateReports: others.map((o) => ({ reportCode: o.reportCode, reportTitle: o.reportTitle, fightId: o.fightId })),
+    }
+  })
+}
+
+// ---------------------------------------------------------------------------
 // Export preview (sync, no event data)
 // ---------------------------------------------------------------------------
 
@@ -1551,21 +1609,7 @@ export async function getExportPreview(
 
   const recentRaidBossKillMap = new Map<
     string,
-    {
-      encounterId: number
-      encounterName: string
-      difficulty: number
-      fights: Array<{
-        reportCode: string
-        reportTitle: string
-        reportUrl: string
-        fightId: number
-        startTime: number
-        durationMs: number
-        playerItemLevel?: number | null
-        playerSpecName?: string | null
-      }>
-    }
+    { encounterId: number; encounterName: string; difficulty: number; fights: BossKillFightEntry[] }
   >()
 
   for (const fight of recentRaidBossKillEntries) {
@@ -1607,7 +1651,7 @@ export async function getExportPreview(
     groups: Array.from(recentRaidBossKillMap.values())
       .map((group) => ({
         ...group,
-        fights: [...group.fights].sort((left, right) => right.startTime - left.startTime),
+        fights: deduplicateBossKillFights(group.fights).sort((left, right) => right.startTime - left.startTime),
       }))
       .sort((left, right) => {
         const leftLatest = left.fights[0]?.startTime ?? 0

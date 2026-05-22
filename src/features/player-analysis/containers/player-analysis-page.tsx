@@ -751,6 +751,7 @@ export const PlayerAnalysisPage: FC = () => {
                                   reportCode={fight.reportCode}
                                   fightId={fight.fightId}
                                   isSelected={isSelected(fight.reportCode, fight.fightId)}
+                                  duplicateReportCount={fight.duplicateReportCount}
                                   onClick={() => handleSelectBossKill(fight.reportCode, fight.fightId)}
                                 />
                               ))
