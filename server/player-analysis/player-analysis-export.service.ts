@@ -1759,10 +1759,11 @@ export function startExportJob(config: WclConfig, request: PlayerAnalysisExportR
   const benchmarkValidation = validateExportBenchmarkRequest(request)
 
   // Estimate total steps: report scanning + (fights × views) + benchmark + write + zip
-  const estimatedFights = Math.min(
-    request.limits?.maxFights ?? 30,
-    30
-  )
+  const requestedFightCount = Object.values(request.fightIdsByReport ?? {})
+    .reduce((sum, ids) => sum + ids.length, 0)
+  const estimatedFights = requestedFightCount > 0
+    ? Math.min(requestedFightCount, request.limits?.maxFights ?? requestedFightCount)
+    : Math.min(request.limits?.maxFights ?? 5, 30)
   const viewCount = request.views.length
   const selectedCandidateCount = benchmarkValidation.exportableSelectedCandidates.length
   const benchmarkSteps = benchmarkValidation.benchmarkRequested

@@ -78,17 +78,21 @@ export const PlayerAnalysisPage: FC = () => {
                   loading={
                     (idx === 1 && s.previewMutation.isPending) ||
                     (idx === 2 && s.benchmarkCandidatesMutation.isPending) ||
-                    (idx === 3 && s.benchmarkCandidatesMutation.isPending)
+                    (idx === 3 && (
+                      s.benchmarkCandidatesMutation.isPending ||
+                      s.exportJob.isStarting ||
+                      s.job?.status === 'running'
+                    ))
                   }
-                  loadingColor={s.effectiveClassName ? getWowClassColor(s.effectiveClassName) : undefined}
+                  loadingColor={(s.effectiveClassName ?? s.pendingClassName) ? getWowClassColor((s.effectiveClassName ?? s.pendingClassName)!) : undefined}
                 />
 
                 {completed ? (
                   <>
                     {idx === 0 && (
                       <div style={{ display: 'flex', alignItems: 'center', gap: 10, flex: 1, minWidth: 0 }}>
-                        <SpecIcon className={s.effectiveClassName ?? undefined} specName={s.effectiveSpecName ?? undefined} size={26} />
-                        <span style={{ fontWeight: 600, fontSize: 14, color: classColor(s.effectiveClassName) }}>{s.playerName}</span>
+                        <SpecIcon className={(s.effectiveClassName ?? s.pendingClassName) ?? undefined} specName={s.effectiveSpecName ?? undefined} size={26} />
+                        <span style={{ fontWeight: 600, fontSize: 14, color: classColor(s.effectiveClassName ?? s.pendingClassName) }}>{s.playerName}</span>
                         {s.effectiveSpecName && s.effectiveClassName && (
                           <span style={{ color: '#6d6f78', fontSize: 12 }}>{s.effectiveSpecName} {s.effectiveClassName}</span>
                         )}
@@ -138,7 +142,11 @@ export const PlayerAnalysisPage: FC = () => {
                     {active && (
                       (idx === 1 && s.previewMutation.isPending) ||
                       (idx === 2 && s.benchmarkCandidatesMutation.isPending) ||
-                      (idx === 3 && s.benchmarkCandidatesMutation.isPending)
+                      (idx === 3 && (
+                        s.benchmarkCandidatesMutation.isPending ||
+                        s.exportJob.isStarting ||
+                        s.job?.status === 'running'
+                      ))
                     ) && (
                       <>
                         <div style={{ flex: 1 }} />

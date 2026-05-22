@@ -45,8 +45,8 @@ export const PlayerAutocomplete: FC<PlayerAutocompleteProps> = ({
 
   const query = value.trim().toLowerCase()
   const filtered = query
-    ? players.filter((p) => p.name.toLowerCase().includes(query))
-    : players
+    ? players.filter((p) => !!p.className && p.name.toLowerCase().includes(query))
+    : players.filter((p) => !!p.className)
 
   useEffect(() => {
     const handler = (e: MouseEvent) => {

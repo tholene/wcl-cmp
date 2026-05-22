@@ -57,6 +57,7 @@ export const usePlayerAnalysisState = () => {
   const [onlyPlayerPresent, setOnlyPlayerPresent] = useState(true)
   const [selectedViews, setSelectedViews] = useState<PlayerAnalysisExportView[]>([...STABLE_EXPORT_VIEWS])
   const [selectedFightIdsByReport, setSelectedFightIdsByReport] = useState<Record<string, number[]>>({})
+  const [pendingClassName, setPendingClassName] = useState<string | null>(null)
 
   // ── Benchmark state ─────────────────────────────────────────────────────────
   const [benchmarkMode, setBenchmarkMode] = useState<'none' | 'manual' | 'auto'>('auto')
@@ -424,9 +425,10 @@ export const usePlayerAnalysisState = () => {
     syncSelectedBaselineKeys(new Set())
   }
 
-  const handlePlayerSelect = (player: { name: string }) => {
+  const handlePlayerSelect = (player: { name: string; className?: string | null }) => {
     const name = player.name.trim()
     if (!name || name.toLowerCase() === lastAutoPreviewedName.current) return
+    setPendingClassName(player.className ?? null)
     handleScopeFieldChange(() => setPlayerName(name), { resetUserContext: true })
     lastAutoPreviewedName.current = name.toLowerCase()
     setForcedStep(null)
@@ -488,6 +490,7 @@ export const usePlayerAnalysisState = () => {
     setForcedStep,
     // Derived state
     effectiveClassName,
+    pendingClassName,
     effectiveSpecName,
     specDetectionFailed,
     availableBaselines,
