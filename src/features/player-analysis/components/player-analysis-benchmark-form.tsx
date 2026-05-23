@@ -19,7 +19,7 @@ type ManualConfig = {
 }
 
 type AutoConfig = {
-  targetPercentile: 50 | 75 | 90
+  targetPercentile: 50 | 75 | 90 | 95 | 99 | 100
   metric: string
   itemLevelWindow: number
   durationWindowPercent: number

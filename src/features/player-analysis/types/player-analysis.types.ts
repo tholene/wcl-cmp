@@ -48,7 +48,7 @@ export type PlayerAnalysisTimeframePreset =
   | 'last14Days'
   | 'manualReports'
 
-export type PlayerBenchmarkTargetPercentile = 50 | 75 | 90
+export type PlayerBenchmarkTargetPercentile = 50 | 75 | 90 | 95 | 99 | 100
 
 export type BenchmarkBaseline = {
   reportCode: string
@@ -67,7 +67,7 @@ export type BenchmarkBaseline = {
 export type AutomatedBenchmarkConfig = {
   mode: 'auto'
   baselines: BenchmarkBaseline[]
-  targetPercentile: 50 | 75 | 90
+  targetPercentile: 50 | 75 | 90 | 95 | 99 | 100
   metric: string
   maxCandidates?: number
   itemLevelWindow?: number
@@ -398,7 +398,7 @@ export type PlayerAnalysisExportStartResponse = {
 
 export type BenchmarkCandidatesRequest = {
   baselines: BenchmarkBaseline[]
-  targetPercentile: 50 | 75 | 90
+  targetPercentile: 50 | 75 | 90 | 95 | 99 | 100
   metric: string
   itemLevelWindow?: number
   durationWindowPercent?: number

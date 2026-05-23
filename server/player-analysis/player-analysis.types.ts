@@ -50,7 +50,7 @@ export type PlayerAnalysisExportLimits = {
   maxTotalExportBytes: number
 }
 
-export type PlayerBenchmarkTargetPercentile = 50 | 75 | 90
+export type PlayerBenchmarkTargetPercentile = 50 | 75 | 90 | 95 | 99 | 100
 
 export type BenchmarkBaseline = {
   reportCode: string
@@ -299,7 +299,7 @@ export type PlayerBenchmarkCandidate = {
 
 export type BenchmarkCandidatesRequest = {
   baselines: BenchmarkBaseline[]
-  targetPercentile: 50 | 75 | 90
+  targetPercentile: 50 | 75 | 90 | 95 | 99 | 100
   metric: string
   itemLevelWindow?: number
   durationWindowPercent?: number

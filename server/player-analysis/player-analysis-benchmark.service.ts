@@ -326,13 +326,13 @@ type BaselineContext = {
   itemLevel?: number
   durationMs?: number
   metric: string
-  targetPercentile: 50 | 75 | 90
+  targetPercentile: 50 | 75 | 90 | 95 | 99 | 100
 }
 
 async function findCandidatesForBaseline(
   config: WclConfig,
   baseline: BenchmarkBaseline,
-  options: { targetPercentile: 50 | 75 | 90; metric: string; maxCandidates: number }
+  options: { targetPercentile: 50 | 75 | 90 | 95 | 99 | 100; metric: string; maxCandidates: number }
 ): Promise<BenchmarkCandidateGroup> {
   const context: BaselineContext = {
     playerName: baseline.playerName,

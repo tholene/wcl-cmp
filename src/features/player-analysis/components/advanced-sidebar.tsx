@@ -32,7 +32,7 @@ type ManualBenchmarkConfig = {
 }
 
 type AutoBenchmarkConfig = {
-  targetPercentile: 50 | 75 | 90
+  targetPercentile: 50 | 75 | 90 | 95 | 99 | 100
   metric: string
   itemLevelWindow: number
   durationWindowPercent: number
@@ -268,7 +268,7 @@ export const AdvancedSidebar: FC<AdvancedSidebarProps> = ({
                 <SBLabel>Target percentile</SBLabel>
                 <select
                   value={autoBenchmarkConfig.targetPercentile}
-                  onChange={(e) => onAutoConfigChange({ ...autoBenchmarkConfig, targetPercentile: Number(e.target.value) as 50 | 75 | 90 })}
+                  onChange={(e) => onAutoConfigChange({ ...autoBenchmarkConfig, targetPercentile: Number(e.target.value) as 50 | 75 | 90 | 95 | 99 | 100 })}
                   style={selectStyle}
                 >
                   <option value={50}>50th</option>
