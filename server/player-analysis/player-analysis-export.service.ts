@@ -143,6 +143,16 @@ const FIGHT_RANKINGS_QUERY = `
   }
 `
 
+const FIGHT_RANKINGS_QUERY_HISTORICAL = `
+  query FightRankingsHistorical($code: String!, $fightId: Int!) {
+    reportData {
+      report(code: $code) {
+        rankings(fightIDs: [$fightId], timeframe: Historical)
+      }
+    }
+  }
+`
+
 type PlayerRankingData = {
   parse: number | null
   itemLevel: number | null
@@ -1517,20 +1527,34 @@ export async function getExportPreview(
               playerItemLevel = details.itemLevel
               playerSpecName = details.specName ?? null
 
+              // Try historical parse first (compares against kills from the same time period).
+              // Fall back to partition (current leaderboard) only when historical has no entry for this player.
+              let rankingData: PlayerRankingData | null = null
               try {
-                const rankingsResp = await queryWclGraphQl<FightRankingsQueryResponse>({
+                const historicalResp = await queryWclGraphQl<FightRankingsQueryResponse>({
                   config,
-                  query: FIGHT_RANKINGS_QUERY,
+                  query: FIGHT_RANKINGS_QUERY_HISTORICAL,
                   variables: { code: report.code, fightId: fight.id },
                 })
-                const rankingData = extractPlayerFromRankings(rankingsResp.reportData?.report?.rankings, playerName)
-                if (rankingData) {
-                  playerParse = rankingData.parse
-                  // Prefer WCL's authoritative ilvl over CombatantInfo average
-                  if (rankingData.itemLevel !== null) playerItemLevel = rankingData.itemLevel
-                }
+                rankingData = extractPlayerFromRankings(historicalResp.reportData?.report?.rankings, playerName)
               } catch {
-                // Non-fatal: parse/ilvl from rankings unavailable
+                // non-fatal
+              }
+              if (!rankingData) {
+                try {
+                  const partitionResp = await queryWclGraphQl<FightRankingsQueryResponse>({
+                    config,
+                    query: FIGHT_RANKINGS_QUERY,
+                    variables: { code: report.code, fightId: fight.id },
+                  })
+                  rankingData = extractPlayerFromRankings(partitionResp.reportData?.report?.rankings, playerName)
+                } catch {
+                  // non-fatal
+                }
+              }
+              if (rankingData) {
+                playerParse = rankingData.parse
+                if (rankingData.itemLevel !== null) playerItemLevel = rankingData.itemLevel
               }
             }
           } catch {
