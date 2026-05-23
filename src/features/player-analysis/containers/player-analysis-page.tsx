@@ -1,6 +1,7 @@
-import { useState, type FC } from 'react'
+import { type FC } from 'react'
 import { VennLogo } from '@/components/venn-logo'
 import { getDifficultyLabel } from '@/lib/difficulty'
+import { cn } from '@/lib/utils'
 import { getWowClassColor } from '@/lib/wow-class'
 import { AdvancedButton } from '@/features/player-analysis/components/advanced-button'
 import { AdvancedSidebar } from '@/features/player-analysis/components/advanced-sidebar'
@@ -25,20 +26,32 @@ import type { AvailableBaseline } from '@/features/player-analysis/types/availab
 
 const STEP_LABELS = ['Select Player', 'Pick a Fight', 'Find Benchmark', 'Export']
 
+// Repeated in two steps — extracted to avoid duplication
+const ShimmerRows: FC<{ sq: number }> = ({ sq }) => (
+  <div className="flex flex-col gap-2">
+    {[0, 1, 2].map((i) => (
+      <div key={i} className="shimmer-row">
+        <div className="shimmer-gradient shrink-0 rounded-[10px]" style={{ width: sq, height: sq }} />
+        <div className="flex flex-1 flex-col gap-1.5">
+          <div className="shimmer-gradient h-[14px] w-[60%] rounded-[6px]" />
+          <div className="shimmer-gradient h-[10px] w-[40%] rounded-[6px]" />
+        </div>
+      </div>
+    ))}
+  </div>
+)
+
 export const PlayerAnalysisPage: FC = () => {
   const s = usePlayerAnalysisState()
 
   return (
-    <div style={{ minHeight: '100vh', backgroundColor: '#1e1f23', color: '#f2f3f5' }}>
+    <div className="min-h-screen">
 
       {/* ── Minimal Header ── */}
-      <header style={{
-        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-        padding: '14px 24px', maxWidth: 700, margin: '0 auto',
-      }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+      <header className="mx-auto flex max-w-[700px] items-center justify-between px-6 py-[14px]">
+        <div className="flex items-center gap-2">
           <VennLogo size={28} colorMode="blurple" />
-          <span style={{ fontSize: 15, fontWeight: 700, color: '#f2f3f5', letterSpacing: '-0.01em' }}>
+          <span className="text-[15px] font-bold tracking-[-0.01em]">
             WCL Compare
           </span>
         </div>
@@ -46,32 +59,19 @@ export const PlayerAnalysisPage: FC = () => {
       </header>
 
       {/* ── Accordion Steps ── */}
-      <div style={{ maxWidth: 700, margin: '0 auto', padding: '0 24px 60px', display: 'flex', flexDirection: 'column', gap: 6 }}>
+      <div className="mx-auto flex max-w-[700px] flex-col gap-1.5 px-6 pb-[60px]">
         {STEP_LABELS.map((label, idx) => {
           const completed = idx < s.activeStep
           const active = idx === s.activeStep
           if (idx > s.activeStep) return null
 
-          const borderColor = active ? 'rgba(255,255,255,0.08)' : 'rgba(255,255,255,0.06)'
-          const bgColor = active ? 'rgba(55,57,63,0.90)' : 'rgba(43,45,49,0.72)'
-
           return (
             <div
               key={idx}
-              style={{
-                borderRadius: active ? 14 : 12,
-                border: `1px solid ${borderColor}`,
-                backgroundColor: bgColor,
-                backdropFilter: 'blur(16px)',
-                WebkitBackdropFilter: 'blur(16px)',
-                transition: 'all 0.25s ease',
-              }}
+              className={cn('glass transition-all duration-[250ms]', active && 'glass-active')}
             >
               {/* Step header row */}
-              <div style={{
-                display: 'flex', alignItems: 'center', gap: 12,
-                padding: completed ? '10px 16px' : '14px 16px',
-              }}>
+              <div className={cn('flex items-center gap-3 px-4', completed ? 'py-[10px]' : 'py-[14px]')}>
                 <StepDot
                   number={idx + 1}
                   completed={completed}
@@ -91,53 +91,53 @@ export const PlayerAnalysisPage: FC = () => {
                 {completed ? (
                   <>
                     {idx === 0 && (
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 10, flex: 1, minWidth: 0 }}>
+                      <div className="flex flex-1 min-w-0 items-center gap-2.5">
                         <SpecIcon className={(s.effectiveClassName ?? s.pendingClassName) ?? undefined} specName={s.effectiveSpecName ?? undefined} size={26} />
-                        <span style={{ fontWeight: 600, fontSize: 14, color: classColor(s.effectiveClassName ?? s.pendingClassName) }}>{s.playerName}</span>
+                        <span className="text-sm font-semibold" style={{ color: classColor(s.effectiveClassName ?? s.pendingClassName) }}>{s.playerName}</span>
                         {s.effectiveSpecName && s.effectiveClassName && (
-                          <span style={{ color: '#6d6f78', fontSize: 12 }}>{s.effectiveSpecName} {s.effectiveClassName}</span>
+                          <span className="text-xs text-hint">{s.effectiveSpecName} {s.effectiveClassName}</span>
                         )}
-                        <div style={{ flex: 1 }} />
+                        <div className="flex-1" />
                         <ChipChangeBtn onClick={() => { s.setForcedStep(0); s.handleScopeFieldChange(() => {}) }} />
                       </div>
                     )}
                     {idx === 1 && s.firstBaseline && (
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 10, flex: 1, minWidth: 0 }}>
+                      <div className="flex flex-1 min-w-0 items-center gap-2.5">
                         <BossImage encounterId={s.firstBaseline.encounterId} encounterName={s.firstBaseline.encounterName} size={26} />
-                        <span style={{ fontWeight: 600, fontSize: 13, color: '#f2f3f5' }}>{s.firstBaseline.encounterName}</span>
+                        <span className="text-[13px] font-semibold">{s.firstBaseline.encounterName}</span>
                         <DiffBadge difficulty={s.firstBaseline.difficulty} />
-                        <span style={{ color: '#6d6f78', fontSize: 12 }}>{formatDuration(s.firstBaseline.durationMs)}</span>
-                        <div style={{ flex: 1 }} />
+                        <span className="text-xs text-hint">{formatDuration(s.firstBaseline.durationMs)}</span>
+                        <div className="flex-1" />
                         <ChipChangeBtn onClick={() => s.setForcedStep(1)} />
                       </div>
                     )}
                     {idx === 2 && s.selectedAutoCandidates.length > 0 && (
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1, minWidth: 0 }}>
-                        <span style={{ fontSize: 12, color: '#6d6f78' }}>vs</span>
-                        <span style={{ fontWeight: 600, fontSize: 13, color: classColor(s.selectedAutoCandidates[0].benchmarkClassName) }}>
+                      <div className="flex flex-1 min-w-0 items-center gap-2">
+                        <span className="text-xs text-hint">vs</span>
+                        <span className="text-[13px] font-semibold" style={{ color: classColor(s.selectedAutoCandidates[0].benchmarkClassName) }}>
                           {s.selectedAutoCandidates[0].benchmarkPlayerName}
                         </span>
                         {s.selectedAutoCandidates[0].benchmarkPercentile !== undefined && (
                           <PercentileBar value={s.selectedAutoCandidates[0].benchmarkPercentile} compact />
                         )}
                         {s.selectedAutoCandidates[0].benchmarkItemLevel != null && (
-                          <span style={{ fontSize: 12, color: '#6d6f78' }}>{s.selectedAutoCandidates[0].benchmarkItemLevel} ilvl</span>
+                          <span className="text-xs text-hint">{s.selectedAutoCandidates[0].benchmarkItemLevel} ilvl</span>
                         )}
-                        <div style={{ flex: 1 }} />
+                        <div className="flex-1" />
                         <ChipChangeBtn onClick={() => s.setForcedStep(2)} />
                       </div>
                     )}
                     {idx === 2 && s.selectedAutoCandidates.length === 0 && (
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 10, flex: 1, minWidth: 0 }}>
-                        <span style={{ fontSize: 13, color: '#949ba4' }}>Benchmark</span>
-                        <div style={{ flex: 1 }} />
+                      <div className="flex flex-1 min-w-0 items-center gap-2.5">
+                        <span className="text-[13px] text-muted">Benchmark</span>
+                        <div className="flex-1" />
                         <ChipChangeBtn onClick={() => s.setForcedStep(2)} />
                       </div>
                     )}
                   </>
                 ) : (
                   <>
-                    <span style={{ fontSize: 14, fontWeight: 600, color: active ? '#f2f3f5' : '#6d6f78' }}>
+                    <span className={cn('text-sm font-semibold', !active && 'text-hint')}>
                       {label}
                     </span>
                     {active && (
@@ -150,8 +150,8 @@ export const PlayerAnalysisPage: FC = () => {
                       ))
                     ) && (
                       <>
-                        <div style={{ flex: 1 }} />
-                        <span style={{ fontSize: 11, color: '#6d6f78' }}>Loading…</span>
+                        <div className="flex-1" />
+                        <span className="text-[11px] text-hint">Loading…</span>
                       </>
                     )}
                   </>
@@ -160,7 +160,7 @@ export const PlayerAnalysisPage: FC = () => {
 
               {/* Step content */}
               {active && (
-                <div style={{ padding: '4px 16px 18px', paddingLeft: 56 }}>
+                <div className="pb-[18px] pl-14 pr-4 pt-1">
 
                   {/* ── Step 0: Player Search ── */}
                   {idx === 0 && (
@@ -185,34 +185,22 @@ export const PlayerAnalysisPage: FC = () => {
                   {/* ── Step 1: Fight Selection ── */}
                   {idx === 1 && (
                     <div>
-                      {s.previewMutation.isPending && (
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                          {[44, 44, 44].map((sq, i) => (
-                            <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 14px', backgroundColor: 'rgba(30,31,35,0.5)', borderRadius: 10, border: '1px solid rgba(255,255,255,0.03)' }}>
-                              <div style={{ width: sq, height: sq, borderRadius: 10, flexShrink: 0, background: 'linear-gradient(90deg,#2b2d31 25%,#383a40 50%,#2b2d31 75%)', backgroundSize: '200% 100%', animation: 'shimmer 1.5s ease infinite' }} />
-                              <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 6 }}>
-                                <div style={{ width: '60%', height: 14, borderRadius: 6, background: 'linear-gradient(90deg,#2b2d31 25%,#383a40 50%,#2b2d31 75%)', backgroundSize: '200% 100%', animation: 'shimmer 1.5s ease infinite' }} />
-                                <div style={{ width: '40%', height: 10, borderRadius: 6, background: 'linear-gradient(90deg,#2b2d31 25%,#383a40 50%,#2b2d31 75%)', backgroundSize: '200% 100%', animation: 'shimmer 1.5s ease infinite' }} />
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      )}
+                      {s.previewMutation.isPending && <ShimmerRows sq={44} />}
                       {s.previewMutation.error && !s.previewMutation.isPending && (
-                        <div style={{ padding: '10px 12px', borderRadius: 8, background: 'rgba(218,55,60,0.08)', border: '1px solid rgba(218,55,60,0.20)', fontSize: 12, color: '#f38ba8' }}>
+                        <div className="alert-error">
                           {(s.previewMutation.error as Error).message}
                         </div>
                       )}
                       {s.preview && !s.previewMutation.isPending && (
                         <>
                           {s.preview.recentRaidBossKills.groups.length === 0 && (
-                            <p style={{ fontSize: 13, color: '#949ba4' }}>
+                            <p className="text-[13px] text-muted">
                               No verified raid boss kills found for {s.preview.requestedPlayerName} in this scope.
                             </p>
                           )}
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                          <div className="flex flex-col gap-1.5">
                             {s.preview.recentRaidBossKills.groups.length > 0 && (
-                              <div style={{ fontSize: 12, color: '#6d6f78', marginBottom: 2 }}>
+                              <div className="mb-0.5 text-xs text-hint">
                                 {s.preview.recentRaidBossKills.groups.length} boss kills from latest raid
                               </div>
                             )}
@@ -234,12 +222,12 @@ export const PlayerAnalysisPage: FC = () => {
                             ))}
                           </div>
                           {s.selectedFightCount === 0 && (
-                            <p style={{ fontSize: 13, color: '#949ba4', marginTop: 6 }}>
+                            <p className="mt-1.5 text-[13px] text-muted">
                               Select a boss kill to find same-spec benchmarks.
                             </p>
                           )}
                           {s.preview.recentRaidBossKills.warnings.length > 0 && (
-                            <div style={{ marginTop: 8, padding: '8px 12px', borderRadius: 8, background: 'rgba(240,178,50,0.06)', border: '1px solid rgba(240,178,50,0.20)', fontSize: 12, color: '#f0b232' }}>
+                            <div className="alert-warning mt-2">
                               {s.preview.recentRaidBossKills.warnings.map((w) => <p key={w}>⚠ {w}</p>)}
                             </div>
                           )}
@@ -306,24 +294,12 @@ export const PlayerAnalysisPage: FC = () => {
 
                   {/* ── Step 3: Export ── */}
                   {idx === 3 && (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                    <div className="flex flex-col gap-3">
                       {!s.showProgress && !s.showResults && s.benchmarkMode === 'auto' && (
                         <>
-                          {s.benchmarkCandidatesMutation.isPending && (
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                              {[34, 34, 34].map((sq, i) => (
-                                <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 14px', backgroundColor: 'rgba(30,31,35,0.5)', borderRadius: 10, border: '1px solid rgba(255,255,255,0.03)' }}>
-                                  <div style={{ width: sq, height: sq, borderRadius: 8, flexShrink: 0, background: 'linear-gradient(90deg,#2b2d31 25%,#383a40 50%,#2b2d31 75%)', backgroundSize: '200% 100%', animation: 'shimmer 1.5s ease infinite' }} />
-                                  <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 6 }}>
-                                    <div style={{ width: '60%', height: 14, borderRadius: 6, background: 'linear-gradient(90deg,#2b2d31 25%,#383a40 50%,#2b2d31 75%)', backgroundSize: '200% 100%', animation: 'shimmer 1.5s ease infinite' }} />
-                                    <div style={{ width: '40%', height: 10, borderRadius: 6, background: 'linear-gradient(90deg,#2b2d31 25%,#383a40 50%,#2b2d31 75%)', backgroundSize: '200% 100%', animation: 'shimmer 1.5s ease infinite' }} />
-                                  </div>
-                                </div>
-                              ))}
-                            </div>
-                          )}
+                          {s.benchmarkCandidatesMutation.isPending && <ShimmerRows sq={34} />}
                           {s.benchmarkCandidatesMutation.isError && (
-                            <div style={{ padding: '10px 12px', borderRadius: 8, background: 'rgba(218,55,60,0.08)', border: '1px solid rgba(218,55,60,0.20)', fontSize: 12, color: '#f38ba8' }}>
+                            <div className="alert-error">
                               Benchmark discovery failed. Retry from the Benchmark step or use manual benchmark fallback.
                             </div>
                           )}
@@ -333,22 +309,22 @@ export const PlayerAnalysisPage: FC = () => {
                       {!s.showProgress && !s.showResults && (
                         <>
                           {s.firstBaseline && (
-                            <div style={{ padding: '14px 16px', borderRadius: 10, background: 'rgba(43,45,49,0.72)', border: '1px solid rgba(255,255,255,0.06)', backdropFilter: 'blur(16px)' }}>
-                              <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
+                            <div className="rounded-[10px] border border-white/[0.06] bg-[rgba(43,45,49,0.72)] px-4 py-[14px] backdrop-blur-[16px]">
+                              <div className="mb-2.5 flex items-center gap-2.5">
                                 <SpecIcon className={s.effectiveClassName ?? undefined} specName={s.effectiveSpecName ?? undefined} size={30} />
                                 <div>
-                                  <span style={{ fontWeight: 600, color: classColor(s.effectiveClassName) }}>{s.playerName}</span>
+                                  <span className="font-semibold" style={{ color: classColor(s.effectiveClassName) }}>{s.playerName}</span>
                                   {s.selectedAutoCandidates.length > 0 && (
                                     <>
-                                      <span style={{ color: '#6d6f78', margin: '0 8px' }}>vs</span>
-                                      <span style={{ fontWeight: 600, color: classColor(s.selectedAutoCandidates[0].benchmarkClassName) }}>
+                                      <span className="mx-2 text-hint">vs</span>
+                                      <span className="font-semibold" style={{ color: classColor(s.selectedAutoCandidates[0].benchmarkClassName) }}>
                                         {s.selectedAutoCandidates[0].benchmarkPlayerName}
                                       </span>
                                     </>
                                   )}
                                 </div>
                               </div>
-                              <div style={{ display: 'flex', gap: 14, fontSize: 12, color: '#949ba4', flexWrap: 'wrap' }}>
+                              <div className="flex flex-wrap gap-3.5 text-xs text-muted">
                                 <span>{s.firstBaseline.encounterName}</span>
                                 <span>{getDifficultyLabel(s.firstBaseline.difficulty)}</span>
                                 <span>{formatDuration(s.firstBaseline.durationMs)}</span>
@@ -366,25 +342,25 @@ export const PlayerAnalysisPage: FC = () => {
                           />
 
                           {s.benchmarkMode === 'auto' && !s.benchmarkCandidatesMutation.isPending && !s.benchmarkCandidatesMutation.isError && s.benchmarkCandidatesMutation.isSuccess && s.selectedGroupCount === 0 && !s.allowSubjectOnlyWithoutBenchmark && (
-                            <p style={{ fontSize: 12, color: '#f0b232' }}>
+                            <p className="text-xs text-warning">
                               No exportable benchmark candidate found. Try manual fallback or allow subject-only export from Advanced options.
                             </p>
                           )}
                           {s.benchmarkMode === 'auto' && !s.benchmarkCandidatesMutation.isPending && s.benchmarkCandidatesMutation.isSuccess && s.selectedGroupCount > 0 && s.selectedExportableCount === 0 && !s.allowSubjectOnlyWithoutBenchmark && (
-                            <p style={{ fontSize: 12, color: '#f0b232' }}>
+                            <p className="text-xs text-warning">
                               Select a benchmark candidate to continue.
                             </p>
                           )}
                           {(s.benchmarkMode !== 'auto' || (!s.benchmarkCandidatesMutation.isSuccess || s.selectedGroupCount > 0 && s.selectedExportableCount > 0)) && s.exportBlockedReason && !s.allowSubjectOnlyWithoutBenchmark && (
-                            <p style={{ fontSize: 12, color: '#f0b232' }}>{s.exportBlockedReason}</p>
+                            <p className="text-xs text-warning">{s.exportBlockedReason}</p>
                           )}
                           {s.selectedViews.length === 0 && (
-                            <p style={{ fontSize: 12, color: '#da373c' }}>
+                            <p className="text-xs text-error-strong">
                               No views selected — enable export views in Advanced options.
                             </p>
                           )}
                           {s.exportJob.startError && (
-                            <div style={{ padding: '10px 12px', borderRadius: 8, background: 'rgba(218,55,60,0.08)', border: '1px solid rgba(218,55,60,0.20)', fontSize: 12, color: '#f38ba8' }}>
+                            <div className="alert-error">
                               {s.exportJob.startError}
                             </div>
                           )}
@@ -393,7 +369,7 @@ export const PlayerAnalysisPage: FC = () => {
 
                       {s.showProgress && !s.showResults && s.job && <PlayerAnalysisExportProgress job={s.job} />}
                       {s.exportJob.isStarting && !s.job && (
-                        <div style={{ fontSize: 12, color: '#949ba4' }}>Starting export…</div>
+                        <div className="text-xs text-muted">Starting export…</div>
                       )}
                       {s.showResults && s.job && s.exportJob.exportId && (
                         <PlayerAnalysisExportResults job={s.job} exportId={s.exportJob.exportId} onReset={s.exportJob.reset} />
@@ -402,13 +378,13 @@ export const PlayerAnalysisPage: FC = () => {
                         <button
                           type="button"
                           onClick={s.exportJob.reset}
-                          style={{ width: '100%', padding: '8px 14px', borderRadius: 8, background: 'none', border: '1px solid rgba(255,255,255,0.08)', color: '#949ba4', fontSize: 12, cursor: 'pointer', fontFamily: 'inherit' }}
+                          className="w-full cursor-pointer rounded-lg border border-white/[0.08] bg-transparent px-[14px] py-2 font-sans text-xs text-muted"
                         >
                           Try again
                         </button>
                       )}
                       {s.exportJob.pollError && (
-                        <div style={{ padding: '10px 12px', borderRadius: 8, background: 'rgba(240,178,50,0.06)', border: '1px solid rgba(240,178,50,0.20)', fontSize: 12, color: '#f0b232' }}>
+                        <div className="alert-warning">
                           {s.exportJob.pollError}
                         </div>
                       )}
@@ -473,30 +449,19 @@ const ParseBanner: FC<{ baseline: AvailableBaseline | null }> = ({ baseline }) =
   if (!baseline) return null
   const diffLabel = DIFFICULTY_LABELS[baseline.difficulty] ?? `Diff ${baseline.difficulty}`
   return (
-    <div style={{
-      display: 'flex',
-      alignItems: 'center',
-      gap: 10,
-      padding: '10px 14px',
-      borderRadius: 10,
-      background: 'rgba(30,31,35,0.7)',
-      border: '1px solid rgba(255,255,255,0.06)',
-      fontSize: 13,
-      color: '#949ba4',
-      flexWrap: 'wrap',
-    }}>
+    <div className="parse-banner">
       {baseline.playerParse != null && (
         <>
           <span>Your parse:</span>
-          <span style={{ fontWeight: 700, color: getParseColor(Math.round(baseline.playerParse)) }}>
+          <span className="font-bold" style={{ color: getParseColor(Math.round(baseline.playerParse)) }}>
             {Math.round(baseline.playerParse)}%
           </span>
-          <span style={{ color: '#3c3e44' }}>·</span>
+          <span className="text-sep">·</span>
         </>
       )}
-      <span style={{ color: '#f2f3f5', fontWeight: 600 }}>{baseline.encounterName}</span>
-      <span style={{ fontSize: 11, color: '#6d6f78' }}>{diffLabel}</span>
-      <span style={{ color: '#3c3e44' }}>·</span>
+      <span className="font-semibold">{baseline.encounterName}</span>
+      <span className="text-[11px] text-hint">{diffLabel}</span>
+      <span className="text-sep">·</span>
       <span>{formatDuration(baseline.durationMs)}</span>
     </div>
   )
@@ -513,48 +478,20 @@ const TIERS: Array<{ value: 75 | 90 | 95 | 99 | 100; label: string }> = [
 const TierSelector: FC<{
   currentTier: number
   onTierChange: (tier: 75 | 90 | 95 | 99 | 100) => void
-}> = ({ currentTier, onTierChange }) => {
-  const [hovered, setHovered] = useState<number | null>(null)
-  return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '0 2px' }}>
-      <span style={{ fontSize: 12, color: '#6d6f78', flexShrink: 0 }}>Compare against:</span>
-      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', rowGap: 6 }}>
-        {TIERS.map(({ value, label }) => {
-          const isActive = currentTier === value
-          const isHovered = hovered === value
-          return (
-            <button
-              key={value}
-              type="button"
-              onMouseEnter={() => setHovered(value)}
-              onMouseLeave={() => setHovered(null)}
-              onClick={() => onTierChange(value)}
-              style={{
-                padding: '4px 12px',
-                borderRadius: 8,
-                fontSize: 12,
-                fontWeight: isActive ? 700 : 500,
-                fontFamily: 'inherit',
-                cursor: 'pointer',
-                border: isActive
-                  ? '1px solid rgba(88,101,242,0.5)'
-                  : isHovered
-                    ? '1px solid rgba(255,255,255,0.12)'
-                    : '1px solid rgba(255,255,255,0.07)',
-                background: isActive
-                  ? 'rgba(88,101,242,0.15)'
-                  : isHovered
-                    ? 'rgba(255,255,255,0.05)'
-                    : 'rgba(255,255,255,0.03)',
-                color: isActive ? '#a5b4fc' : '#949ba4',
-                transition: 'all 0.12s',
-              }}
-            >
-              {label}
-            </button>
-          )
-        })}
-      </div>
+}> = ({ currentTier, onTierChange }) => (
+  <div className="flex items-center gap-2 px-0.5">
+    <span className="shrink-0 text-xs text-hint">Compare against:</span>
+    <div className="flex flex-wrap gap-1.5">
+      {TIERS.map(({ value, label }) => (
+        <button
+          key={value}
+          type="button"
+          onClick={() => onTierChange(value)}
+          className={cn('tier-btn', currentTier === value && 'tier-btn-active')}
+        >
+          {label}
+        </button>
+      ))}
     </div>
-  )
-}
+  </div>
+)

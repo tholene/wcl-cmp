@@ -4,6 +4,15 @@
 @theme {
   --font-sans: 'DM Sans', 'Noto Sans SC', 'Noto Sans', 'Microsoft YaHei', 'PingFang SC',
     'Hiragino Sans GB', 'Source Han Sans SC', Arial, sans-serif;
+
+  /* Semantic text tokens — use as text-muted, text-hint, text-sep, text-error, etc. */
+  --color-muted: #949ba4;
+  --color-hint: #6d6f78;
+  --color-sep: #3c3e44;
+  --color-error: #f38ba8;
+  --color-error-strong: #da373c;
+  --color-warning: #f0b232;
+  --color-accent: #a5b4fc;
 }
 
 :root {
@@ -43,10 +52,87 @@ a {
 
 .glass-active {
   background: rgba(55, 57, 63, 0.90);
-  border-color: rgba(255, 255, 255, 0.10);
+  border-color: rgba(255, 255, 255, 0.08);
+  border-radius: 14px;
 }
 
 @keyframes sideSlide {
   from { transform: translateX(100%); }
   to   { transform: translateX(0); }
+}
+
+/* Shimmer skeleton */
+.shimmer-gradient {
+  background: linear-gradient(90deg, #2b2d31 25%, #383a40 50%, #2b2d31 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.5s ease infinite;
+}
+
+.shimmer-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  background-color: rgba(30, 31, 35, 0.5);
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.03);
+}
+
+/* Alert variants */
+.alert-error {
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: rgba(218, 55, 60, 0.08);
+  border: 1px solid rgba(218, 55, 60, 0.20);
+  font-size: 12px;
+  color: #f38ba8;
+}
+
+.alert-warning {
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: rgba(240, 178, 50, 0.06);
+  border: 1px solid rgba(240, 178, 50, 0.20);
+  font-size: 12px;
+  color: #f0b232;
+}
+
+/* ParseBanner */
+.parse-banner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  border-radius: 10px;
+  background: rgba(30, 31, 35, 0.7);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  font-size: 13px;
+  color: #949ba4;
+  flex-wrap: wrap;
+}
+
+/* TierSelector buttons — hover handled via CSS, no JS hover state needed */
+.tier-btn {
+  padding: 4px 12px;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 500;
+  font-family: inherit;
+  cursor: pointer;
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  background: rgba(255, 255, 255, 0.03);
+  color: #949ba4;
+  transition: all 0.12s;
+}
+
+.tier-btn:hover:not(.tier-btn-active) {
+  border-color: rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.tier-btn-active {
+  border-color: rgba(88, 101, 242, 0.5);
+  background: rgba(88, 101, 242, 0.15);
+  color: #a5b4fc;
+  font-weight: 700;
 }
