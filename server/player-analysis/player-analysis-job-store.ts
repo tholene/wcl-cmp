@@ -11,6 +11,14 @@ import type {
 
 const exportJobs = new Map<string, PlayerAnalysisExportJob>()
 
+const JOB_TTL_MS = 4 * 60 * 60 * 1000 // 4 hours
+
+const scheduleCleanup = (exportId: string): void => {
+  const timer = setTimeout(() => exportJobs.delete(exportId), JOB_TTL_MS)
+  // Don't keep the process alive just for cleanup
+  if (typeof timer === 'object' && 'unref' in timer) timer.unref()
+}
+
 const now = (): string => new Date().toISOString()
 
 const recalcPercent = (job: PlayerAnalysisExportJob): number => {
@@ -104,6 +112,7 @@ export const JobStore = {
     job.percentComplete = 100
     job.currentStep = details?.currentStep ?? 'Export complete.'
     job.updatedAt = now()
+    scheduleCleanup(exportId)
   },
 
   partial(
@@ -133,6 +142,7 @@ export const JobStore = {
     job.percentComplete = 100
     job.currentStep = details?.currentStep ?? 'Export complete with partial data.'
     job.updatedAt = now()
+    scheduleCleanup(exportId)
   },
 
   fail(
@@ -162,6 +172,7 @@ export const JobStore = {
     if (details?.resultSummary) job.resultSummary = details.resultSummary
     if (details?.currentStep) job.currentStep = details.currentStep
     job.updatedAt = now()
+    scheduleCleanup(exportId)
   },
 
   setStatus(exportId: string, status: PlayerAnalysisJobStatus): void {

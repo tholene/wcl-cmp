@@ -8,6 +8,15 @@ type AccessTokenCache = {
 
 const WCL_TOKEN_URL = 'https://www.warcraftlogs.com/oauth/token'
 const WCL_GRAPHQL_URL = 'https://www.warcraftlogs.com/api/v2/client'
+const WCL_TIMEOUT_MS = 30_000
+
+const fetchWcl = (url: string, init: RequestInit): Promise<Response> =>
+  fetch(url, { ...init, signal: AbortSignal.timeout(WCL_TIMEOUT_MS) }).catch((err: unknown) => {
+    if (err instanceof Error && err.name === 'TimeoutError') {
+      throw new Error(`WCL request timed out after ${WCL_TIMEOUT_MS / 1000}s`)
+    }
+    throw err
+  })
 
 let accessTokenCache: AccessTokenCache = null
 
@@ -21,7 +30,7 @@ const getAccessToken = async (config: WclConfig): Promise<string> => {
     return accessTokenCache.token
   }
 
-  const tokenResponse = await fetch(WCL_TOKEN_URL, {
+  const tokenResponse = await fetchWcl(WCL_TOKEN_URL, {
     method: 'POST',
     headers: {
       Authorization: getBasicAuthHeader(config.WCL_CLIENT_ID, config.WCL_CLIENT_SECRET),
@@ -55,7 +64,7 @@ export const queryWclGraphQl = async <TData>(params: {
 }): Promise<TData> => {
   const accessToken = await getAccessToken(params.config)
 
-  const graphQlResponse = await fetch(WCL_GRAPHQL_URL, {
+  const graphQlResponse = await fetchWcl(WCL_GRAPHQL_URL, {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${accessToken}`,

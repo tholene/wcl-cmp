@@ -20,7 +20,14 @@ process.on('unhandledRejection', (reason) => {
 })
 
 const app = express()
-app.use(cors())
+
+const buildAllowedOrigins = (): string[] => {
+  const origins = ['http://localhost:5780', 'http://localhost:5781']
+  if (process.env.FRONTEND_URL) origins.push(process.env.FRONTEND_URL)
+  return origins
+}
+
+app.use(cors({ origin: buildAllowedOrigins() }))
 app.use(express.json())
 
 const resolveReportCodeParam = (value: string | string[] | undefined): string => {
