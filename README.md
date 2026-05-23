@@ -1,31 +1,36 @@
-# Player Analysis Export
+# WCL Compare
 
-A local-first Warcraft Logs export workbench for officer workflows.
+A local-first Warcraft Logs export workbench for guild officers. Pull fight data for any raider, auto-discover a same-spec benchmark player, and generate a structured export bundle for AI-assisted performance review.
 
-Primary workflow:
-- select player and scope
-- preview exportable Warcraft Logs data
-- generate ZIP/CSV/JSON export bundles for manual analysis
+## What it does
+
+1. **Select a player** — search recent guild logs to find a raider and their boss kills
+2. **Pick a fight** — choose a boss kill (or multiple) to analyze, grouped by encounter and difficulty
+3. **Find a benchmark** — automatically discover a comparable player of the same spec, or select one manually
+4. **Export** — download a ZIP containing CSVs and JSON with event data for the subject and benchmark
+
+The exported bundle is designed to be uploaded to an AI analysis tool (ChatGPT, Claude, etc.) for structured performance coaching.
 
 ## Stack
 
-- React + Vite + TypeScript
-- Tailwind CSS
-- TanStack Query
-- Express backend proxy for Warcraft Logs v2 GraphQL
+- React 19 + Vite + TypeScript
+- Tailwind CSS v4
+- TanStack Query v5
+- React Router v7
+- Express 5 backend proxy for Warcraft Logs v2 GraphQL
 
 ## Local Ports
 
 - Frontend: `http://localhost:5780`
 - Backend: `http://localhost:5781` (or your custom `API_PORT`)
-- OAuth callback placeholder: `http://localhost:5781/auth/callback` (adjust if using another API port)
+- OAuth callback: `http://localhost:5781/auth/callback`
 
 ## Setup
 
 1. Install dependencies:
 
 ```bash
-npm install
+pnpm install
 ```
 
 2. Create local env file:
@@ -34,7 +39,7 @@ npm install
 cp .env.example .env
 ```
 
-3. Fill in your real credentials in `.env`:
+3. Fill in your credentials in `.env`:
 
 ```bash
 WCL_CLIENT_ID=...
@@ -46,63 +51,68 @@ VITE_DEV_SERVER_PORT=5780
 WCL_REDIRECT_URI=http://localhost:5781/auth/callback
 ```
 
+`WCL_CLIENT_ID` and `WCL_CLIENT_SECRET` come from your [Warcraft Logs API client](https://www.warcraftlogs.com/api/clients/).
+
 4. Start frontend + backend together:
 
 ```bash
-npm run dev
+pnpm dev
 ```
 
-## Available Endpoints
+## Features
 
-- `GET /api/health`
-- `GET /api/config/status`
-- `GET /api/players/recent`
-- `POST /api/player-analysis/export-preview`
-- `POST /api/player-analysis/export`
-- `GET /api/player-analysis/exports/:exportId/status`
-- `GET /api/player-analysis/exports/:exportId/:filename`
-- `POST /api/player-analysis/benchmark-candidates`
+- Player lookup from recent guild raid reports
+- Boss kill list grouped by encounter and difficulty
+- Benchmark auto-discovery by class/spec, or manual selection
+- Export scope preview before committing to a job
+- Async export with job status polling and progress indicators
+- ZIP/CSV/JSON output with local download endpoints
+- Advanced sidebar: timeframe presets, report filtering, benchmark mode override, kills/wipes toggle
+- Structured warnings for partial or incomplete export data
 
-Legacy endpoints remain callable for compatibility but are sunset and not part of the primary workflow.
-See [`docs/legacy-sunset.md`](docs/legacy-sunset.md).
+## API Endpoints
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/api/health` | Server status |
+| `GET` | `/api/config/status` | WCL credential check |
+| `GET` | `/api/reports/recent` | Recent guild raid reports |
+| `GET` | `/api/players/recent` | Recent guild players |
+| `POST` | `/api/player-analysis/export-preview` | Preview export scope |
+| `POST` | `/api/player-analysis/export` | Start async export job |
+| `GET` | `/api/player-analysis/exports/:id/status` | Poll job status |
+| `GET` | `/api/player-analysis/exports/:id/:filename` | Download export file |
+| `POST` | `/api/player-analysis/benchmark-candidates` | Find benchmark players |
+
+## Scripts
+
+| Command | Description |
+|---------|-------------|
+| `pnpm dev` | Run frontend + backend in parallel |
+| `pnpm dev:web` | Frontend only (Vite) |
+| `pnpm dev:api` | Backend only (Express) |
+| `pnpm build` | Production build |
+| `pnpm typecheck` | TypeScript validation |
+| `pnpm lint` | ESLint |
+| `pnpm test` | Run tests (Vitest) |
+| `pnpm test:coverage` | Test coverage report |
 
 ## Troubleshooting
 
-If API calls return an env config error:
+**API calls return an env config error:**
 
 1. Ensure `.env` is in the project root (same folder as `package.json`).
-2. Ensure values are `KEY=value` format (no `:` separators).
+2. Ensure values are `KEY=value` format — no quotes, no `:` separators.
 3. Ensure `WCL_CLIENT_ID` and `WCL_CLIENT_SECRET` are present and non-empty.
-4. If you changed API port (for example `API_PORT=5782`), update:
-   - request URL to `http://localhost:5782/...`
-   - `WCL_REDIRECT_URI=http://localhost:5782/auth/callback`
-5. Fully restart dev processes:
+4. If you changed `API_PORT`, update `WCL_REDIRECT_URI` to match.
+5. Restart dev processes:
 
 ```bash
-npm run dev
+pnpm dev
 ```
 
-Check current non-secret config flags:
+**Check live config (non-secret fields only):**
 
 ```bash
 curl http://localhost:5781/api/config/status
 ```
-
-(or replace `5781` with your configured `API_PORT`).
-
-## Current Features
-
-- Player Analysis Export page at `/` and `/player-analysis`
-- Player lookup from recent guild logs
-- Export scope preview before export
-- ZIP/CSV/JSON export output with local file download endpoints
-- Structured warnings for partial/incomplete data
-
-## Scripts
-
-- `npm run dev` - run web + API in parallel
-- `npm run dev:web` - run Vite app only
-- `npm run dev:api` - run API only
-- `npm run typecheck` - TypeScript validation
-- `npm run lint` - ESLint
-- `npm run build` - production build

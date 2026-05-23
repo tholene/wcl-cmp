@@ -1,18 +1,18 @@
-# Player Analysis Export User Guide
+# WCL Compare — User Guide
 
 ## Purpose
 
-Player Analysis Export builds an evidence bundle from Warcraft Logs for one raider, with optional benchmark comparison, so officers can review performance consistently in ChatGPT.
+WCL Compare builds a structured evidence bundle from Warcraft Logs for one raider, with optional benchmark comparison, so officers can review performance consistently using an AI analysis tool of their choice (ChatGPT, Claude, etc.).
 
 ## Step-by-step flow
 
 1. Open `/player-analysis`.
-2. Enter player name — the app searches raid boss kills from the last 30 days automatically.
+2. Enter a player name — the app searches raid boss kills from the last 30 days automatically.
 3. Select a boss kill from the list (grouped by encounter and difficulty).
 4. Optional: configure benchmark mode and candidate selection.
 5. Click generate export.
 6. Download `bundle.zip`.
-7. Upload ZIP to ChatGPT and follow `README.md`.
+7. Upload the ZIP to your AI analysis tool of choice and follow the included `README.md`.
 
 The default scope is last 30 days, raid-only, kills only. Dungeons and wipes are excluded by default. Use the Advanced sidebar to change the scope or switch to manual report selection.
 
@@ -22,7 +22,6 @@ Expected core files:
 
 - `README.md`
 - `manifest.json`
-- `bundle.zip` (download artifact)
 - `player-fights.csv`
 - `player-combatant-info.csv` (when selected)
 - selected `player-*.csv` event views
@@ -33,35 +32,34 @@ When benchmark is included:
 - `comparison-summary.csv`
 - `benchmark-candidates.json` or `benchmark-candidate.json`
 
-## ChatGPT usage
+## Export status meanings
 
-Use this exact next step after export:
-
-`Upload this ZIP to ChatGPT. The README contains the analysis instructions.`
-
-The README defines required output sections and caveats for fair, evidence-based coaching.
-
-## Status meanings
-
-- `complete`: export passed quality gate checks and is ready for ChatGPT.
-- `partial`: ZIP is usable, but one or more non-critical checks/warnings failed (for example benchmark omission or skipped views).
-- `failed`: critical export artifacts/usability failed (for example missing ZIP, missing README/manifest, or unusable subject data).
+- `complete` — export passed all quality gate checks and is ready for analysis.
+- `partial` — ZIP is usable, but one or more non-critical checks failed (e.g. benchmark omission or skipped views).
+- `failed` — a critical artifact is missing or unusable (e.g. missing ZIP, missing README/manifest, or unusable subject data).
 
 ## Troubleshooting
 
-- Player not found or no fights included:
-  Verify player name, include player-present fights, and re-run preview.
-- No recent boss kills found (last 30 days):
-  The boss list scans raid reports from the last 30 days. If no raid reports are found, the preview warning will say so. Use `Advanced → Timeframe → Manual report selection` to enter specific report codes.
-- Latest raid session heuristic:
-  The `Latest raid session` option (Advanced sidebar) uses the most recent raid session in the last N guild reports. This can miss older raids if the guild has been doing M+ dungeons recently. Prefer `Last 30 days` (default).
-- Item level looks wrong:
-  Item level is taken from the CombatantInfo snapshot in the specific fight log — it reflects gear at the time of that kill, not current armory data. If the fight is from an older kill, item level will be lower.
-- Benchmark requested but missing:
+- **Player not found or no fights included:**
+  Verify the player name, ensure player-present fights are included in scope, and re-run the preview.
+
+- **No recent boss kills found:**
+  The boss list scans raid reports from the last 30 days. If no reports are found, the preview warning will say so. Use `Advanced → Timeframe → Manual report selection` to enter specific report codes.
+
+- **Latest raid session picks the wrong raid:**
+  The `Latest raid session` option uses the most recent raid session in the last N guild reports. It can miss older raids if the guild has been doing M+ recently. Prefer `Last 30 days` (default).
+
+- **Item level looks wrong:**
+  Item level is taken from the CombatantInfo snapshot in the specific fight log — it reflects gear at the time of that kill, not current armory data.
+
+- **Benchmark requested but missing:**
   Select an exportable candidate or enable the subject-only override.
-- Partial export with skipped/truncated data:
-  Reduce fights/views and retry for a narrower bundle.
-- Failed export:
-  Check the failed step + recovery suggestion in UI, then retry with smaller scope.
-- Missing or stale WCL data:
-  Re-run later and confirm credentials in `.env`.
+
+- **Partial export with skipped/truncated data:**
+  Reduce the number of fights or views selected and retry for a narrower bundle.
+
+- **Failed export:**
+  Check the failed step and recovery suggestion in the UI, then retry with a smaller scope.
+
+- **Missing or stale WCL data:**
+  Re-run later and confirm credentials are set correctly in `.env`.
