@@ -10,7 +10,16 @@ import { CLASS_NAMES, getSpecsForClass, getRoleForSpec } from '@/features/player
 import { getCandidateKey, getExportabilityReasons } from '@/features/player-analysis/utils/benchmark-candidate-utils'
 import { classColor } from '@/features/player-analysis/lib/class-colors'
 import { SpecIcon } from '@/features/player-analysis/components/spec-icon'
-import { PercentileBar } from '@/features/player-analysis/components/percentile-bar'
+
+const WCL_PARSE_COLORS: Array<{ min: number; color: string }> = [
+  { min: 100, color: '#e6cc80' },
+  { min: 95,  color: '#ff8000' },
+  { min: 75,  color: '#a335ee' },
+  { min: 50,  color: '#0070dd' },
+  { min: 25,  color: '#1eff00' },
+  { min: 0,   color: '#9d9d9d' },
+]
+const getParseColor = (p: number) => WCL_PARSE_COLORS.find((c) => p >= c.min)?.color ?? '#9d9d9d'
 
 type ManualConfig = {
   reportCode: string
@@ -167,7 +176,11 @@ const CandidateCard: FC<{
           )}
         </div>
         <div style={{ display: 'flex', gap: 10, fontSize: 12, color: '#949ba4', flexWrap: 'wrap', alignItems: 'center' }}>
-          {candidate.percentile !== undefined && <PercentileBar value={candidate.percentile} compact />}
+          {candidate.percentile != null && (
+            <span style={{ fontWeight: 700, color: getParseColor(Math.round(candidate.percentile)), fontSize: 13 }}>
+              {Math.round(candidate.percentile)}%
+            </span>
+          )}
           {rankingItemLevel !== null && (
             <span>{rankingItemLevel} ilvl</span>
           )}

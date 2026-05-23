@@ -470,8 +470,7 @@ const getParseColor = (p: number) => WCL_PARSE_COLORS.find((c) => p >= c.min)?.c
 const DIFFICULTY_LABELS: Record<number, string> = { 5: 'Mythic', 4: 'Heroic', 3: 'Normal' }
 
 const ParseBanner: FC<{ baseline: AvailableBaseline | null }> = ({ baseline }) => {
-  if (!baseline || baseline.playerParse == null) return null
-  const parse = Math.round(baseline.playerParse)
+  if (!baseline) return null
   const diffLabel = DIFFICULTY_LABELS[baseline.difficulty] ?? `Diff ${baseline.difficulty}`
   return (
     <div style={{
@@ -484,10 +483,17 @@ const ParseBanner: FC<{ baseline: AvailableBaseline | null }> = ({ baseline }) =
       border: '1px solid rgba(255,255,255,0.06)',
       fontSize: 13,
       color: '#949ba4',
+      flexWrap: 'wrap',
     }}>
-      <span>Your parse:</span>
-      <span style={{ fontWeight: 700, color: getParseColor(parse) }}>{parse}%</span>
-      <span style={{ color: '#3c3e44' }}>·</span>
+      {baseline.playerParse != null && (
+        <>
+          <span>Your parse:</span>
+          <span style={{ fontWeight: 700, color: getParseColor(Math.round(baseline.playerParse)) }}>
+            {Math.round(baseline.playerParse)}%
+          </span>
+          <span style={{ color: '#3c3e44' }}>·</span>
+        </>
+      )}
       <span style={{ color: '#f2f3f5', fontWeight: 600 }}>{baseline.encounterName}</span>
       <span style={{ fontSize: 11, color: '#6d6f78' }}>{diffLabel}</span>
       <span style={{ color: '#3c3e44' }}>·</span>
@@ -512,7 +518,7 @@ const TierSelector: FC<{
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '0 2px' }}>
       <span style={{ fontSize: 12, color: '#6d6f78', flexShrink: 0 }}>Compare against:</span>
-      <div style={{ display: 'flex', gap: 6 }}>
+      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', rowGap: 6 }}>
         {TIERS.map(({ value, label }) => {
           const isActive = currentTier === value
           const isHovered = hovered === value

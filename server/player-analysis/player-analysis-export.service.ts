@@ -137,7 +137,7 @@ const FIGHT_RANKINGS_QUERY = `
   query FightRankings($code: String!, $fightId: Int!) {
     reportData {
       report(code: $code) {
-        rankings(fightIDs: [$fightId], timeframe: Historical)
+        rankings(fightIDs: [$fightId])
       }
     }
   }
