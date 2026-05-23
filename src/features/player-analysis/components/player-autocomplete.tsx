@@ -44,9 +44,10 @@ export const PlayerAutocomplete: FC<PlayerAutocompleteProps> = ({
   const containerRef = useRef<HTMLDivElement>(null)
 
   const query = value.trim().toLowerCase()
+  const knownClass = (p: RecentPlayer) => !!p.className && p.className.toLowerCase() !== 'unknown'
   const filtered = query
-    ? players.filter((p) => !!p.className && p.name.toLowerCase().includes(query))
-    : players.filter((p) => !!p.className)
+    ? players.filter((p) => knownClass(p) && p.name.toLowerCase().includes(query))
+    : players.filter(knownClass)
 
   useEffect(() => {
     const handler = (e: MouseEvent) => {

@@ -27,10 +27,17 @@ type ManualBenchmarkFormConfig = {
 }
 
 type AutoBenchmarkFormConfig = {
-  targetPercentile: 50 | 75 | 90
+  targetPercentile: 50 | 75 | 90 | 95 | 99 | 100
   metric: string
   itemLevelWindow: number
   durationWindowPercent: number
+}
+
+const suggestTargetPercentile = (parse: number | null): 75 | 90 | 95 | 99 | 100 => {
+  if (parse === null || parse < 75) return 90
+  if (parse < 90) return 95
+  if (parse < 95) return 99
+  return 100
 }
 
 export type PlayerAnalysisState = ReturnType<typeof usePlayerAnalysisState>
@@ -119,6 +126,7 @@ export const usePlayerAnalysisState = () => {
               className: effectiveClassName ?? 'unknown',
               specName: f.playerSpecName ?? effectiveSpecName ?? 'unknown',
               itemLevel: f.playerItemLevel ?? null,
+              playerParse: f.playerParse ?? null,
             }))
         )
     : []
@@ -295,29 +303,22 @@ export const usePlayerAnalysisState = () => {
       : {}),
   })
 
-  const handleFindCandidatesWithKeys = (keysOverride: Set<string>, baselinesOverride?: AvailableBaseline[]) => {
+  const handleFindCandidatesWithKeys = (keysOverride: Set<string>, baselinesOverride?: AvailableBaseline[], targetPercentileOverride?: AutoBenchmarkFormConfig['targetPercentile']) => {
     if (!preview || keysOverride.size === 0 || !preview.detectedPlayer) return
     const baselinesSource = baselinesOverride ?? availableBaselines
     const baselines = baselinesSource
       .filter((b) => keysOverride.has(b.key))
       .map((b) => ({ reportCode: b.reportCode, fightId: b.fightId, encounterId: b.encounterId, encounterName: b.encounterName, difficulty: b.difficulty, durationMs: b.durationMs, playerName: b.playerName, className: b.className, specName: b.specName, itemLevel: b.itemLevel, contextSource }))
     if (baselines.length === 0) return
+    const targetPercentile = targetPercentileOverride ?? autoBenchmarkConfig.targetPercentile
     benchmarkCandidatesMutation.mutate(
-      { baselines, targetPercentile: autoBenchmarkConfig.targetPercentile, metric: autoBenchmarkConfig.metric, itemLevelWindow: autoBenchmarkConfig.itemLevelWindow, durationWindowPercent: autoBenchmarkConfig.durationWindowPercent, maxCandidatesPerFight: 10, benchmarkContextSource, playerContext: playerUserContext ? { ...playerUserContext, role: playerUserContext.role, source: 'userProvided' as const } : undefined },
-      {
-        onSuccess: (data) => {
-          const nextSelections: Record<string, string> = {}
-          for (const group of data.groups ?? []) {
-            const baselineKey = `${group.baseline.reportCode}:${group.baseline.fightId}`
-            const recommended = group.selectedCandidate
-            if (recommended?.validation.hasUsableExportTarget && recommended.reportCode && typeof recommended.fightId === 'number') {
-              nextSelections[baselineKey] = `${recommended.reportCode}:${recommended.fightId}:${recommended.characterName}`
-            }
-          }
-          setSelectedCandidateKeysByBaseline(nextSelections)
-        },
-      }
+      { baselines, targetPercentile, metric: autoBenchmarkConfig.metric, itemLevelWindow: autoBenchmarkConfig.itemLevelWindow, durationWindowPercent: autoBenchmarkConfig.durationWindowPercent, maxCandidatesPerFight: 10, benchmarkContextSource, playerContext: playerUserContext ? { ...playerUserContext, role: playerUserContext.role, source: 'userProvided' as const } : undefined },
     )
+  }
+
+  const handleTargetTierChange = (tier: AutoBenchmarkFormConfig['targetPercentile']) => {
+    setAutoBenchmarkConfig((prev) => ({ ...prev, targetPercentile: tier }))
+    handleFindCandidatesWithKeys(selectedBaselineKeys, undefined, tier)
   }
 
   const handlePreview = (playerNameOverride?: string) => {
@@ -412,8 +413,14 @@ export const usePlayerAnalysisState = () => {
             className: effectiveClassName,
             specName: effectiveSpecName,
             itemLevel: f.playerItemLevel ?? null,
+            playerParse: f.playerParse ?? null,
           }))
       )
+
+    const selectedFight = baselinesForAutoTrigger[0]
+    const smartTarget = suggestTargetPercentile(selectedFight?.playerParse ?? null)
+    setAutoBenchmarkConfig((prev) => ({ ...prev, targetPercentile: smartTarget }))
+
     handleFindCandidatesWithKeys(nextBaselineKeys, baselinesForAutoTrigger)
   }
 
@@ -513,6 +520,7 @@ export const usePlayerAnalysisState = () => {
     handlePreview,
     handleGenerateExport,
     handleFindCandidates,
+    handleTargetTierChange,
     handleScopeFieldChange,
     handleFightSelectionChange,
     handleBaselineSelectionChange,

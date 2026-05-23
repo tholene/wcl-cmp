@@ -93,10 +93,6 @@ const CandidateCard: FC<{
   const cc = classColor(candidate.className)
 
   const rankingItemLevel = typeof candidate.itemLevel === 'number' ? candidate.itemLevel : null
-  const ilvlDelta =
-    rankingItemLevel !== null && typeof baseline.itemLevel === 'number'
-      ? rankingItemLevel - baseline.itemLevel
-      : null
   const durationDeltaPct =
     typeof candidate.durationMs === 'number' &&
     typeof baseline.durationMs === 'number' &&
@@ -173,14 +169,7 @@ const CandidateCard: FC<{
         <div style={{ display: 'flex', gap: 10, fontSize: 12, color: '#949ba4', flexWrap: 'wrap', alignItems: 'center' }}>
           {candidate.percentile !== undefined && <PercentileBar value={candidate.percentile} compact />}
           {rankingItemLevel !== null && (
-            <span>
-              {rankingItemLevel} ilvl
-              {ilvlDelta !== null && (
-                <span style={{ color: ilvlDelta > 0 ? '#f0b232' : ilvlDelta < 0 ? '#60a5fa' : '#6d6f78', marginLeft: 3 }}>
-                  ({ilvlDelta > 0 ? '+' : ''}{ilvlDelta})
-                </span>
-              )}
-            </span>
+            <span>{rankingItemLevel} ilvl</span>
           )}
           {typeof candidate.durationMs === 'number' && (
             <span>

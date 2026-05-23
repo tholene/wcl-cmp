@@ -1,4 +1,4 @@
-import { type FC } from 'react'
+import { useState, type FC } from 'react'
 import { VennLogo } from '@/components/venn-logo'
 import { getDifficultyLabel } from '@/lib/difficulty'
 import { getWowClassColor } from '@/lib/wow-class'
@@ -21,6 +21,7 @@ import { StepDot } from '@/features/player-analysis/components/step-dot'
 import { usePlayerAnalysisState } from '@/features/player-analysis/hooks/use-player-analysis-state'
 import { classColor } from '@/features/player-analysis/lib/class-colors'
 import { flattenAndDeduplicateBossKills, formatDuration } from '@/features/player-analysis/lib/player-analysis-utils'
+import type { AvailableBaseline } from '@/features/player-analysis/types/available-baseline'
 
 const STEP_LABELS = ['Select Player', 'Pick a Fight', 'Find Benchmark', 'Export']
 
@@ -223,7 +224,7 @@ export const PlayerAnalysisPage: FC = () => {
                                 difficulty={fight.difficulty}
                                 durationMs={fight.durationMs}
                                 startTime={fight.startTime}
-                                playerItemLevel={fight.playerItemLevel}
+                                playerParse={fight.playerParse}
                                 reportCode={fight.reportCode}
                                 fightId={fight.fightId}
                                 isSelected={s.isSelected(fight.reportCode, fight.fightId)}
@@ -265,6 +266,11 @@ export const PlayerAnalysisPage: FC = () => {
                   {/* ── Step 2: Benchmark ── */}
                   {idx === 2 && (
                     <BenchmarkErrorBoundary>
+                      <ParseBanner baseline={s.availableBaselines[0] ?? null} />
+                      <TierSelector
+                        currentTier={s.autoBenchmarkConfig.targetPercentile}
+                        onTierChange={s.handleTargetTierChange}
+                      />
                       <PlayerAnalysisBenchmarkForm
                         benchmarkMode={s.benchmarkMode}
                         benchmarkConfig={s.manualBenchmarkConfig}
@@ -447,6 +453,102 @@ export const PlayerAnalysisPage: FC = () => {
         selectedViews={s.selectedViews}
         onSelectedViewsChange={s.setSelectedViews}
       />
+    </div>
+  )
+}
+
+const WCL_PARSE_COLORS: Array<{ min: number; color: string }> = [
+  { min: 100, color: '#e6cc80' },
+  { min: 95, color: '#ff8000' },
+  { min: 75, color: '#a335ee' },
+  { min: 50, color: '#0070dd' },
+  { min: 25, color: '#1eff00' },
+  { min: 0, color: '#9d9d9d' },
+]
+const getParseColor = (p: number) => WCL_PARSE_COLORS.find((c) => p >= c.min)?.color ?? '#9d9d9d'
+
+const DIFFICULTY_LABELS: Record<number, string> = { 5: 'Mythic', 4: 'Heroic', 3: 'Normal' }
+
+const ParseBanner: FC<{ baseline: AvailableBaseline | null }> = ({ baseline }) => {
+  if (!baseline || baseline.playerParse == null) return null
+  const parse = Math.round(baseline.playerParse)
+  const diffLabel = DIFFICULTY_LABELS[baseline.difficulty] ?? `Diff ${baseline.difficulty}`
+  return (
+    <div style={{
+      display: 'flex',
+      alignItems: 'center',
+      gap: 10,
+      padding: '10px 14px',
+      borderRadius: 10,
+      background: 'rgba(30,31,35,0.7)',
+      border: '1px solid rgba(255,255,255,0.06)',
+      fontSize: 13,
+      color: '#949ba4',
+    }}>
+      <span>Your parse:</span>
+      <span style={{ fontWeight: 700, color: getParseColor(parse) }}>{parse}%</span>
+      <span style={{ color: '#3c3e44' }}>·</span>
+      <span style={{ color: '#f2f3f5', fontWeight: 600 }}>{baseline.encounterName}</span>
+      <span style={{ fontSize: 11, color: '#6d6f78' }}>{diffLabel}</span>
+      <span style={{ color: '#3c3e44' }}>·</span>
+      <span>{formatDuration(baseline.durationMs)}</span>
+    </div>
+  )
+}
+
+const TIERS: Array<{ value: 75 | 90 | 95 | 99 | 100; label: string }> = [
+  { value: 75, label: '75th' },
+  { value: 90, label: '90th' },
+  { value: 95, label: '95th' },
+  { value: 99, label: '99th' },
+  { value: 100, label: '100th' },
+]
+
+const TierSelector: FC<{
+  currentTier: number
+  onTierChange: (tier: 75 | 90 | 95 | 99 | 100) => void
+}> = ({ currentTier, onTierChange }) => {
+  const [hovered, setHovered] = useState<number | null>(null)
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '0 2px' }}>
+      <span style={{ fontSize: 12, color: '#6d6f78', flexShrink: 0 }}>Compare against:</span>
+      <div style={{ display: 'flex', gap: 6 }}>
+        {TIERS.map(({ value, label }) => {
+          const isActive = currentTier === value
+          const isHovered = hovered === value
+          return (
+            <button
+              key={value}
+              type="button"
+              onMouseEnter={() => setHovered(value)}
+              onMouseLeave={() => setHovered(null)}
+              onClick={() => onTierChange(value)}
+              style={{
+                padding: '4px 12px',
+                borderRadius: 8,
+                fontSize: 12,
+                fontWeight: isActive ? 700 : 500,
+                fontFamily: 'inherit',
+                cursor: 'pointer',
+                border: isActive
+                  ? '1px solid rgba(88,101,242,0.5)'
+                  : isHovered
+                    ? '1px solid rgba(255,255,255,0.12)'
+                    : '1px solid rgba(255,255,255,0.07)',
+                background: isActive
+                  ? 'rgba(88,101,242,0.15)'
+                  : isHovered
+                    ? 'rgba(255,255,255,0.05)'
+                    : 'rgba(255,255,255,0.03)',
+                color: isActive ? '#a5b4fc' : '#949ba4',
+                transition: 'all 0.12s',
+              }}
+            >
+              {label}
+            </button>
+          )
+        })}
+      </div>
     </div>
   )
 }

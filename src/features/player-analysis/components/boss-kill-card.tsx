@@ -10,6 +10,16 @@ const DIFFICULTY: Record<number, { label: string; color: string; bg: string; bor
 const getDiff = (d: number) =>
   DIFFICULTY[d] ?? { label: `Diff ${d}`, color: '#949ba4', bg: 'rgba(148,163,184,0.08)', border: 'rgba(148,163,184,0.15)' }
 
+const WCL_PARSE_COLORS: Array<{ min: number; color: string }> = [
+  { min: 100, color: '#e6cc80' },
+  { min: 95,  color: '#ff8000' },
+  { min: 75,  color: '#a335ee' },
+  { min: 50,  color: '#0070dd' },
+  { min: 25,  color: '#1eff00' },
+  { min: 0,   color: '#9d9d9d' },
+]
+const getParseColor = (p: number) => WCL_PARSE_COLORS.find((c) => p >= c.min)?.color ?? '#9d9d9d'
+
 const formatDuration = (ms: number): string => {
   const s = Math.max(Math.floor(ms / 1000), 0)
   return `${Math.floor(s / 60)}:${(s % 60).toString().padStart(2, '0')}`
@@ -21,7 +31,7 @@ type BossKillCardProps = {
   difficulty: number
   durationMs: number
   startTime: number
-  playerItemLevel?: number | null
+  playerParse?: number | null
   reportCode: string
   fightId: number
   isSelected: boolean
@@ -35,7 +45,7 @@ export const BossKillCard: FC<BossKillCardProps> = ({
   difficulty,
   durationMs,
   startTime,
-  playerItemLevel,
+  playerParse,
   isSelected,
   duplicateReportCount,
   onClick,
@@ -102,8 +112,12 @@ export const BossKillCard: FC<BossKillCardProps> = ({
         </div>
         <div style={{ display: 'flex', gap: 14, fontSize: 12, color: '#949ba4' }}>
           <span>{formatDuration(durationMs)}</span>
-          {playerItemLevel != null && <span>{playerItemLevel} ilvl</span>}
-          <span>{new Date(startTime).toLocaleDateString()}</span>
+          {playerParse != null && (
+            <span style={{ color: getParseColor(playerParse), fontWeight: 600 }}>
+              {Math.round(playerParse)}%
+            </span>
+          )}
+          <span>{new Date(startTime).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}</span>
         </div>
         {duplicateReportCount != null && duplicateReportCount > 0 && (
           <div style={{ fontSize: 11, color: '#6d6f78', marginTop: 2 }}>

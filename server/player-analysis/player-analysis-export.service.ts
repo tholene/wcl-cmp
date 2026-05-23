@@ -122,6 +122,86 @@ const REPORT_PLAYERS_QUERY = `
 `
 
 // ---------------------------------------------------------------------------
+// Fight rankings query (per-fight parse %)
+// ---------------------------------------------------------------------------
+
+type FightRankingsQueryResponse = {
+  reportData?: {
+    report?: {
+      rankings?: unknown
+    } | null
+  }
+}
+
+const FIGHT_RANKINGS_QUERY = `
+  query FightRankings($code: String!, $fightId: Int!) {
+    reportData {
+      report(code: $code) {
+        rankings(fightIDs: [$fightId], timeframe: Historical)
+      }
+    }
+  }
+`
+
+type PlayerRankingData = {
+  parse: number | null
+  itemLevel: number | null
+}
+
+function extractPlayerFromRankings(raw: unknown, playerName: string): PlayerRankingData | null {
+  let parsed: unknown = raw
+  if (typeof raw === 'string') {
+    try { parsed = JSON.parse(raw) } catch { return null }
+  }
+  if (!parsed || typeof parsed !== 'object') return null
+  const obj = parsed as Record<string, unknown>
+
+  // report.rankings: data is an array of fight entries; each has roles.{tanks,healers,dps}.characters
+  const fightEntries = Array.isArray(obj['data']) ? obj['data'] : null
+  if (!fightEntries) return null
+
+  const lowerName = playerName.toLowerCase()
+
+  for (const fightEntry of fightEntries) {
+    if (!fightEntry || typeof fightEntry !== 'object') continue
+    const roles = (fightEntry as Record<string, unknown>)['roles']
+    if (!roles || typeof roles !== 'object') continue
+
+    for (const roleKey of ['tanks', 'healers', 'dps']) {
+      const roleData = (roles as Record<string, unknown>)[roleKey]
+      if (!roleData || typeof roleData !== 'object') continue
+      const characters = (roleData as Record<string, unknown>)['characters']
+      if (!Array.isArray(characters)) continue
+
+      for (const char of characters) {
+        if (!char || typeof char !== 'object') continue
+        const c = char as Record<string, unknown>
+        const name = typeof c['name'] === 'string' ? c['name'] : ''
+        if (name.toLowerCase() !== lowerName) continue
+
+        // bracketData is WCL's authoritative equipped ilvl for this player/fight
+        const itemLevel = typeof c['bracketData'] === 'number' ? Math.round(c['bracketData']) : null
+
+        // Derive overall parse from rank string (may have "~" prefix) + totalParses
+        const rankStr = String(c['rank'] ?? '').replace(/\D/g, '')
+        const rank = rankStr ? parseInt(rankStr, 10) : null
+        const totalParses = typeof c['totalParses'] === 'number' ? c['totalParses'] : null
+        let parse: number | null = null
+        if (rank !== null && totalParses !== null && totalParses > 0) {
+          parse = Math.max(0, Math.min(100, Math.round((1 - (rank - 1) / totalParses) * 100)))
+        } else if (typeof c['bracketPercent'] === 'number') {
+          parse = Math.max(0, Math.min(100, c['bracketPercent']))
+        }
+
+        return { parse, itemLevel }
+      }
+    }
+  }
+
+  return null
+}
+
+// ---------------------------------------------------------------------------
 // Timeframe resolution
 // ---------------------------------------------------------------------------
 
@@ -1199,6 +1279,7 @@ type BossKillFightEntry = {
   durationMs: number
   playerItemLevel?: number | null
   playerSpecName?: string | null
+  playerParse?: number | null
   duplicateReportCount?: number
   duplicateReports?: Array<{ reportCode: string; reportTitle: string; fightId: number; startTime: number; durationMs: number }>
 }
@@ -1240,8 +1321,8 @@ function deduplicateBossKillFights(fights: BossKillFightEntry[]): BossKillFightE
 
     // Prefer the fight with the richest player data; fall back to first in sorted order
     const best = members.reduce((acc, cur) => {
-      const curScore = (cur.playerItemLevel != null ? 2 : 0) + (cur.playerSpecName != null ? 1 : 0)
-      const accScore = (acc.playerItemLevel != null ? 2 : 0) + (acc.playerSpecName != null ? 1 : 0)
+      const curScore = (cur.playerItemLevel != null ? 2 : 0) + (cur.playerSpecName != null ? 1 : 0) + (cur.playerParse != null ? 1 : 0)
+      const accScore = (acc.playerItemLevel != null ? 2 : 0) + (acc.playerSpecName != null ? 1 : 0) + (acc.playerParse != null ? 1 : 0)
       return curScore > accScore ? cur : acc
     })
     const others = members.filter((m) => m !== best)
@@ -1409,11 +1490,13 @@ export async function getExportPreview(
       let presenceVerified: boolean | undefined
       let playerItemLevel: number | null | undefined
       let playerSpecName: string | null | undefined
+      let playerParse: number | null | undefined
 
       if (fight.kill && fight.encounterId > 0) {
         presenceVerified = false
         playerItemLevel = null
         playerSpecName = null
+        playerParse = null
 
         if (playerPresent && actor) {
           try {
@@ -1433,6 +1516,22 @@ export async function getExportPreview(
               const details = extractCombatantDetails(combatantResult.events, actor.id)
               playerItemLevel = details.itemLevel
               playerSpecName = details.specName ?? null
+
+              try {
+                const rankingsResp = await queryWclGraphQl<FightRankingsQueryResponse>({
+                  config,
+                  query: FIGHT_RANKINGS_QUERY,
+                  variables: { code: report.code, fightId: fight.id },
+                })
+                const rankingData = extractPlayerFromRankings(rankingsResp.reportData?.report?.rankings, playerName)
+                if (rankingData) {
+                  playerParse = rankingData.parse
+                  // Prefer WCL's authoritative ilvl over CombatantInfo average
+                  if (rankingData.itemLevel !== null) playerItemLevel = rankingData.itemLevel
+                }
+              } catch {
+                // Non-fatal: parse/ilvl from rankings unavailable
+              }
             }
           } catch {
             warnings.push(`CombatantInfo presence verification failed for ${report.code}#${fight.id}.`)
@@ -1452,6 +1551,7 @@ export async function getExportPreview(
         presenceVerified,
         playerItemLevel,
         playerSpecName,
+        playerParse,
       })
       fightsIncluded += 1
 
@@ -1619,6 +1719,7 @@ export async function getExportPreview(
         durationMs: fight.durationMs,
         playerItemLevel: fight.playerItemLevel ?? null,
         playerSpecName: fight.playerSpecName ?? null,
+        playerParse: fight.playerParse ?? null,
       }))
   )
 
@@ -1640,6 +1741,7 @@ export async function getExportPreview(
         durationMs: fight.durationMs,
         playerItemLevel: fight.playerItemLevel,
         playerSpecName: fight.playerSpecName,
+        playerParse: fight.playerParse,
       })
       continue
     }
@@ -1657,6 +1759,7 @@ export async function getExportPreview(
           durationMs: fight.durationMs,
           playerItemLevel: fight.playerItemLevel,
           playerSpecName: fight.playerSpecName,
+          playerParse: fight.playerParse,
         },
       ],
     })

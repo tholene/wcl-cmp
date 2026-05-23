@@ -12,4 +12,5 @@ export type AvailableBaseline = {
   className: string
   specName: string
   itemLevel: number | null
+  playerParse?: number | null
 }

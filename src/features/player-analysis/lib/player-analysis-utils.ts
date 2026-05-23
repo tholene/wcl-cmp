@@ -20,6 +20,7 @@ export type BossKillDisplayRow = {
   durationMs: number
   playerItemLevel?: number | null
   playerSpecName?: string | null
+  playerParse?: number | null
   duplicateReportCount: number
   duplicateReports: BossKillDuplicateRef[]
 }
@@ -32,6 +33,7 @@ type RawGroupFight = {
   durationMs: number
   playerItemLevel?: number | null
   playerSpecName?: string | null
+  playerParse?: number | null
   duplicateReportCount?: number
   duplicateReports?: BossKillDuplicateRef[]
 }
@@ -61,6 +63,8 @@ function isBetterRepresentative(candidate: BossKillDisplayRow, current: BossKill
   // Prefer richer metadata
   if (candidate.playerItemLevel != null && current.playerItemLevel == null) return true
   if (candidate.playerItemLevel == null && current.playerItemLevel != null) return false
+  if (candidate.playerParse != null && current.playerParse == null) return true
+  if (candidate.playerParse == null && current.playerParse != null) return false
   if (candidate.playerSpecName != null && current.playerSpecName == null) return true
   return false
 }
@@ -88,6 +92,7 @@ export function flattenAndDeduplicateBossKills(groups: RawBossGroup[]): BossKill
         durationMs: fight.durationMs,
         playerItemLevel: fight.playerItemLevel,
         playerSpecName: fight.playerSpecName,
+        playerParse: fight.playerParse,
         duplicateReportCount: fight.duplicateReportCount ?? 0,
         duplicateReports: fight.duplicateReports ?? [],
       }

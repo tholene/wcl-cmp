@@ -228,6 +228,7 @@ export type PlayerAnalysisExportPreview = {
       presenceVerified?: boolean
       playerItemLevel?: number | null
       playerSpecName?: string | null
+      playerParse?: number | null
     }>
     skippedFights: Array<{
       fightId: number
