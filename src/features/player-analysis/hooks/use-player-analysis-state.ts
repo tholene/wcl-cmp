@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useReducer, useRef, useState } from 'react'
 import { useRecentReports } from '@/features/reports/hooks/use-recent-reports'
 import { useBenchmarkCandidates } from './use-benchmark-candidates'
 import { useBenchmarkFormState, suggestTargetPercentile, type AutoBenchmarkFormConfig } from './use-benchmark-form-state'
@@ -11,6 +11,7 @@ import {
   buildSelectedCandidates,
   countSelectedFights,
 } from '../lib/player-analysis-utils'
+import { scopeReducer, INITIAL_SCOPE_STATE } from './scope-reducer'
 import type { AvailableBaseline } from '../types/available-baseline'
 import type { PlayerAnalysisExportRequest, PlayerAnalysisExportView, PlayerAnalysisTimeframePreset } from '../types/player-analysis.types'
 import { STABLE_EXPORT_VIEWS } from '../types/player-analysis.types'
@@ -30,13 +31,15 @@ export const usePlayerAnalysisState = () => {
   const [forcedStep, setForcedStep] = useState<number | null>(null)
 
   // ── Scope state ─────────────────────────────────────────────────────────────
-  const [playerName, setPlayerName] = useState('')
-  const [timeframePreset, setTimeframePreset] = useState<PlayerAnalysisTimeframePreset>('last30Days')
-  const [selectedReports, setSelectedReports] = useState<string[]>([])
-  const [includeKills, setIncludeKills] = useState(true)
-  const [includeWipes, setIncludeWipes] = useState(false)
-  const [includeTrash, setIncludeTrash] = useState(false)
-  const [onlyPlayerPresent, setOnlyPlayerPresent] = useState(true)
+  const [scope, dispatchScope] = useReducer(scopeReducer, INITIAL_SCOPE_STATE)
+  const { playerName, timeframePreset, selectedReports, includeKills, includeWipes, includeTrash, onlyPlayerPresent } = scope
+  const setPlayerName        = (value: string)                        => dispatchScope({ type: 'setPlayerName', value })
+  const setTimeframePreset   = (value: PlayerAnalysisTimeframePreset) => dispatchScope({ type: 'setTimeframePreset', value })
+  const setSelectedReports   = (value: string[])                      => dispatchScope({ type: 'setSelectedReports', value })
+  const setIncludeKills      = (value: boolean)                       => dispatchScope({ type: 'setIncludeKills', value })
+  const setIncludeWipes      = (value: boolean)                       => dispatchScope({ type: 'setIncludeWipes', value })
+  const setIncludeTrash      = (value: boolean)                       => dispatchScope({ type: 'setIncludeTrash', value })
+  const setOnlyPlayerPresent = (value: boolean)                       => dispatchScope({ type: 'setOnlyPlayerPresent', value })
   const [selectedViews, setSelectedViews] = useState<PlayerAnalysisExportView[]>([...STABLE_EXPORT_VIEWS])
   const [pendingClassName, setPendingClassName] = useState<string | null>(null)
 
