@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
 import { PlayerAnalysisService } from '../services/player-analysis.service'
+import type { AppSettingsRequestContext } from '@/features/settings/types/app-settings-request-context'
 import type { PlayerAnalysisExportJob, PlayerAnalysisExportRequest } from '../types/player-analysis.types'
 
-export function usePlayerAnalysisExportJob() {
+export function usePlayerAnalysisExportJob(context: AppSettingsRequestContext) {
   const [exportId, setExportId] = useState<string | null>(null)
   const [jobStatus, setJobStatus] = useState<PlayerAnalysisExportJob | null>(null)
   const [isStarting, setIsStarting] = useState(false)
@@ -28,7 +29,7 @@ export function usePlayerAnalysisExportJob() {
     pollFailuresRef.current = 0
 
     try {
-      const start = await PlayerAnalysisService.startExport(request)
+      const start = await PlayerAnalysisService.startExport(request, context)
       setExportId(start.exportId)
 
       pollingRef.current = setInterval(async () => {

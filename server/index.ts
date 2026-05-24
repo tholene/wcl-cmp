@@ -3,6 +3,7 @@ import cors from 'cors'
 import dotenv from 'dotenv'
 import express, { type NextFunction, type Request, type Response } from 'express'
 import { getConfigStatus, getServerConfig, getWclConfig } from './warcraft-logs/wcl-config'
+import { resolveWclRequestContext, type WclRequestContext } from './warcraft-logs/wcl-request-context'
 import { WclService } from './warcraft-logs/wcl-service'
 import { getExportPreview, startExportJob, validateExportStartRequest } from './player-analysis/player-analysis-export.service'
 import { PlayerAnalysisBenchmarkService } from './player-analysis/player-analysis-benchmark.service'
@@ -61,6 +62,18 @@ const asErrorMessage = (error: unknown, fallback: string): string => {
   return fallback
 }
 
+const firstQueryValue = (value: string | string[] | undefined): string | undefined =>
+  Array.isArray(value) ? value[0] : value
+
+const toQueryContext = (req: Request): WclRequestContext => ({
+  wclSite: firstQueryValue(req.query.wclSite as string | string[] | undefined),
+  guildId: firstQueryValue(req.query.guildId as string | string[] | undefined),
+  region: firstQueryValue(req.query.region as string | string[] | undefined),
+})
+
+const toBodyContext = (req: Request): WclRequestContext | undefined =>
+  (req.body?.wclContext ?? undefined) as WclRequestContext | undefined
+
 app.get('/api/health', (_req: Request, res: Response) => {
   res.status(200).json({ ok: true })
 })
@@ -77,14 +90,15 @@ app.get('/api/config/status', (_req: Request, res: Response) => {
   })
 })
 
-app.get('/api/reports/recent', async (_req: Request, res: Response) => {
+app.get('/api/reports/recent', async (req: Request, res: Response) => {
   try {
-    const config = getWclConfig()
-    const reports = await WclService.listRecentReports(config)
+    const baseConfig = getWclConfig()
+    const resolvedContext = resolveWclRequestContext(baseConfig, toQueryContext(req))
+    const reports = await WclService.listRecentReports(resolvedContext.config)
 
     res.status(200).json({
-      guildId: config.WCL_GUILD_ID,
-      region: config.WCL_REGION,
+      guildId: resolvedContext.guildId,
+      region: resolvedContext.region,
       reports,
     })
   } catch (error) {
@@ -97,10 +111,11 @@ app.get('/api/reports/recent', async (_req: Request, res: Response) => {
   }
 })
 
-app.get('/api/players/recent', async (_req: Request, res: Response) => {
+app.get('/api/players/recent', async (req: Request, res: Response) => {
   try {
-    const config = getWclConfig()
-    const players = await WclService.getRecentPlayers(config)
+    const baseConfig = getWclConfig()
+    const resolvedContext = resolveWclRequestContext(baseConfig, toQueryContext(req))
+    const players = await WclService.getRecentPlayers(resolvedContext.config)
 
     res.status(200).json({
       players,
@@ -138,8 +153,9 @@ app.post('/api/player-analysis/export-preview', async (req: Request, res: Respon
     return
   }
   try {
-    const config = getWclConfig()
-    const preview = await getExportPreview(config, req.body)
+    const baseConfig = getWclConfig()
+    const resolvedContext = resolveWclRequestContext(baseConfig, toBodyContext(req))
+    const preview = await getExportPreview(resolvedContext.config, req.body)
     res.status(200).json(preview)
   } catch (error) {
     const message = asErrorMessage(error, 'Unknown error during export preview.')
@@ -169,9 +185,10 @@ app.post('/api/player-analysis/export', async (req: Request, res: Response) => {
     return
   }
   try {
-    const config = getWclConfig()
+    const baseConfig = getWclConfig()
+    const resolvedContext = resolveWclRequestContext(baseConfig, toBodyContext(req))
     validateExportStartRequest(req.body)
-    const jobStart = startExportJob(config, req.body)
+    const jobStart = startExportJob(resolvedContext.config, req.body)
     res.status(202).json(jobStart)
   } catch (error) {
     const message = asErrorMessage(error, 'Unknown error starting export job.')
@@ -199,7 +216,8 @@ app.get('/api/player-analysis/exports/:exportId/status', (req: Request, res: Res
 
 app.post('/api/player-analysis/benchmark-candidates', async (req: Request, res: Response) => {
   try {
-    const config = getWclConfig()
+    const baseConfig = getWclConfig()
+    const resolvedContext = resolveWclRequestContext(baseConfig, toBodyContext(req))
     const body = req.body as import('./player-analysis/player-analysis.types').BenchmarkCandidatesRequest
     console.log('[benchmark-candidates] baselines:', JSON.stringify(
       (body.baselines ?? []).map((b) => ({
@@ -209,7 +227,7 @@ app.post('/api/player-analysis/benchmark-candidates', async (req: Request, res: 
         specName: b.specName,
       }))
     ))
-    const result = await PlayerAnalysisBenchmarkService.findBenchmarkCandidates(config, body)
+    const result = await PlayerAnalysisBenchmarkService.findBenchmarkCandidates(resolvedContext.config, body)
     res.status(200).json(result)
   } catch (error) {
     const message = asErrorMessage(error, 'Unknown error finding benchmark candidates.')

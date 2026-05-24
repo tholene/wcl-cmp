@@ -79,6 +79,8 @@ type ReportPlayersQueryResponse = {
 }
 
 const RECENT_REPORT_LIMIT = 15
+const resolveConfigSite = (config: WclConfig): string | undefined =>
+  (config as { WCL_SITE?: string }).WCL_SITE
 
 const REPORTS_BY_GUILD_QUERY = `
   query ReportsByGuild($guildId: Int!, $limit: Int!, $startTime: Float) {
@@ -199,7 +201,7 @@ export const WclService = {
       ownerName: report.owner?.name ?? null,
       zoneId: report.zone?.id ?? null,
       zoneName: report.zone?.name ?? null,
-      url: buildWclReportUrl(undefined, report.code),
+      url: buildWclReportUrl(resolveConfigSite(config), report.code),
     }))
   },
 
@@ -228,7 +230,7 @@ export const WclService = {
       zoneId: report.zone?.id ?? null,
       zoneName: report.zone?.name ?? null,
       fights: mapFights(report.fights),
-      url: buildWclReportUrl(undefined, report.code),
+      url: buildWclReportUrl(resolveConfigSite(config), report.code),
     }
   },
 

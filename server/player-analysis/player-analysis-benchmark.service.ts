@@ -135,6 +135,9 @@ const ENCOUNTER_CHARACTER_RANKINGS_QUERY = `
   }
 `
 
+const resolveConfigSite = (config: WclConfig): string | undefined =>
+  (config as { WCL_SITE?: string }).WCL_SITE
+
 // ---------------------------------------------------------------------------
 // Opaque scalar helpers
 // ---------------------------------------------------------------------------
@@ -206,13 +209,13 @@ function normalizeRankingEntry(
   const characterId = toPositiveInteger(entry['id'])
   const reportUrl =
     reportCode && fightId !== undefined
-      ? `${buildWclReportUrl(undefined, reportCode)}#fight=${fightId}`
+      ? `${buildWclReportUrl(context.wclSite, reportCode)}#fight=${fightId}`
       : undefined
   const characterUrl =
     characterId !== undefined
-      ? buildWclCharacterIdUrl(undefined, characterId)
+      ? buildWclCharacterIdUrl(context.wclSite, characterId)
       : serverSlug && region && !isHiddenOrPrivateName(characterName)
-        ? buildWclCharacterUrl(undefined, region, serverSlug, characterName)
+        ? buildWclCharacterUrl(context.wclSite, region, serverSlug, characterName)
         : undefined
 
   const sameEncounter = true
@@ -318,6 +321,7 @@ export type ManualBenchmarkResult = {
 // ---------------------------------------------------------------------------
 
 type BaselineContext = {
+  wclSite?: string
   playerName: string
   className: string
   specName: string
@@ -336,6 +340,7 @@ async function findCandidatesForBaseline(
   options: { targetPercentile: 50 | 75 | 90 | 95 | 99 | 100; metric: string; maxCandidates: number }
 ): Promise<BenchmarkCandidateGroup> {
   const context: BaselineContext = {
+    wclSite: resolveConfigSite(config),
     playerName: baseline.playerName,
     className: baseline.className,
     specName: baseline.specName,
@@ -532,7 +537,7 @@ export const PlayerAnalysisBenchmarkService = {
       className: benchClassName ?? 'unknown',
       specName: benchSpecName ?? 'unknown',
       durationMs,
-      reportUrl: `${buildWclReportUrl(undefined, target.reportCode)}#fight=${target.fightId}`,
+      reportUrl: `${buildWclReportUrl(resolveConfigSite(config), target.reportCode)}#fight=${target.fightId}`,
       matchedBy: {
         sameEncounter: true,
         sameDifficulty: true,

@@ -16,6 +16,12 @@ export type PlayerAnalysisExportView =
   /** Experimental — may not be supported by all WCL log types. */
   | 'resources'
 
+export type WclRequestContext = {
+  wclSite?: 'retail' | 'classic' | 'fresh'
+  guildId?: string
+  region?: string
+}
+
 export const STABLE_EXPORT_VIEWS: PlayerAnalysisExportView[] = [
   'fightMetadata',
   'combatantInfo',
@@ -164,6 +170,7 @@ export type PlayerAnalysisExportRequest = {
   limits?: Partial<PlayerAnalysisExportLimits>
   playerContext?: PlayerUserContext
   benchmarkContextSource?: 'wclDetected' | 'userProvided'
+  wclContext?: WclRequestContext
 }
 
 export type PlayerAnalysisExportFile = {
@@ -306,6 +313,7 @@ export type BenchmarkCandidatesRequest = {
   maxCandidatesPerFight?: number
   playerContext?: PlayerUserContext
   benchmarkContextSource?: 'wclDetected' | 'userProvided'
+  wclContext?: WclRequestContext
 }
 
 export type NormalizedBenchmarkCandidate = {

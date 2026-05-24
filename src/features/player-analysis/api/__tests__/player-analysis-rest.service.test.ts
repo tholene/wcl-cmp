@@ -18,21 +18,29 @@ const jsonResponse = (body: unknown, status = 200) =>
   }) as unknown as Response
 
 describe('PlayerAnalysisRestService endpoints', () => {
+  const context = { wclSite: 'classic' as const, guildId: '61324', region: 'EU' }
+
   it('getExportPreview posts to /api/player-analysis/export-preview', async () => {
     mockFetch.mockResolvedValue(jsonResponse({ requestedPlayerName: 'Foo', warnings: [] }))
-    await PlayerAnalysisRestService.getExportPreview({ playerName: 'Foo' } as never)
+    await PlayerAnalysisRestService.getExportPreview({ playerName: 'Foo' } as never, context)
     expect(mockFetch).toHaveBeenCalledWith(
       '/api/player-analysis/export-preview',
-      expect.objectContaining({ method: 'POST' })
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({ playerName: 'Foo', wclContext: context }),
+      })
     )
   })
 
   it('startExport posts to /api/player-analysis/export', async () => {
     mockFetch.mockResolvedValue(jsonResponse({ exportId: 'e1', status: 'queued', statusUrl: '/s' }))
-    await PlayerAnalysisRestService.startExport({ playerName: 'Foo' } as never)
+    await PlayerAnalysisRestService.startExport({ playerName: 'Foo' } as never, context)
     expect(mockFetch).toHaveBeenCalledWith(
       '/api/player-analysis/export',
-      expect.objectContaining({ method: 'POST' })
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({ playerName: 'Foo', wclContext: context }),
+      })
     )
   })
 
@@ -44,16 +52,30 @@ describe('PlayerAnalysisRestService endpoints', () => {
 
   it('getBenchmarkCandidates posts to /api/player-analysis/benchmark-candidates', async () => {
     mockFetch.mockResolvedValue(jsonResponse({ groups: [], warnings: [] }))
-    await PlayerAnalysisRestService.getBenchmarkCandidates({ baselines: [], targetPercentile: 75, metric: 'dps' })
+    await PlayerAnalysisRestService.getBenchmarkCandidates(
+      { baselines: [], targetPercentile: 75, metric: 'dps' },
+      context
+    )
     expect(mockFetch).toHaveBeenCalledWith(
       '/api/player-analysis/benchmark-candidates',
-      expect.objectContaining({ method: 'POST' })
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({
+          baselines: [],
+          targetPercentile: 75,
+          metric: 'dps',
+          wclContext: context,
+        }),
+      })
     )
   })
 
   it('getRecentPlayers gets /api/players/recent', async () => {
     mockFetch.mockResolvedValue(jsonResponse({ players: [], generatedAt: 0 }))
-    await PlayerAnalysisRestService.getRecentPlayers()
-    expect(mockFetch).toHaveBeenCalledWith('/api/players/recent', undefined)
+    await PlayerAnalysisRestService.getRecentPlayers(context)
+    expect(mockFetch).toHaveBeenCalledWith(
+      '/api/players/recent?wclSite=classic&guildId=61324&region=EU',
+      undefined
+    )
   })
 })

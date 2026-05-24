@@ -1,6 +1,7 @@
 import type { WclConfig } from './wcl-config'
 import { getWclGraphQlUrl, getWclSiteConfig, getWclTokenUrl, type WclSite } from './wcl-site'
 import type { WclGraphQlResponse } from './wcl-types'
+import type { WclConfigWithSite } from './wcl-request-context'
 
 type AccessTokenCache = {
   token: string
@@ -24,8 +25,13 @@ const getBasicAuthHeader = (clientId: string, clientSecret: string): string => {
   return `Basic ${encodedCredentials}`
 }
 
+const getConfigSite = (config: WclConfig): WclSite | undefined => {
+  const site = (config as Partial<WclConfigWithSite>).WCL_SITE
+  return typeof site === 'string' ? site : undefined
+}
+
 const getAccessToken = async (config: WclConfig, site?: WclSite): Promise<string> => {
-  const resolvedSite = getWclSiteConfig(site).site
+  const resolvedSite = getWclSiteConfig(site ?? getConfigSite(config)).site
   const accessTokenCache = accessTokenCacheBySite.get(resolvedSite)
 
   if (accessTokenCache && accessTokenCache.expiresAt > Date.now() + 15_000) {
@@ -65,8 +71,9 @@ export const queryWclGraphQl = async <TData>(params: {
   variables?: Record<string, unknown>
   site?: WclSite
 }): Promise<TData> => {
-  const accessToken = await getAccessToken(params.config, params.site)
-  const graphQlUrl = getWclGraphQlUrl(params.site)
+  const resolvedSite = params.site ?? getConfigSite(params.config)
+  const accessToken = await getAccessToken(params.config, resolvedSite)
+  const graphQlUrl = getWclGraphQlUrl(resolvedSite)
 
   const graphQlResponse = await fetchWcl(graphQlUrl, {
     method: 'POST',

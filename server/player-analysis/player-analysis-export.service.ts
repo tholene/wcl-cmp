@@ -77,6 +77,9 @@ import type {
   PlayerAnalysisWarningGroups,
 } from './player-analysis.types'
 
+const resolveConfigSite = (config: WclConfig): string | undefined =>
+  (config as { WCL_SITE?: string }).WCL_SITE
+
 // ---------------------------------------------------------------------------
 // Report players query (minimal — re-used from wcl-service pattern)
 // ---------------------------------------------------------------------------
@@ -2163,7 +2166,7 @@ async function runExportJob(
         specName: combatantSpecName ?? preview.detectedPlayer?.specName ?? 'unknown',
         role: combatantRole ?? preview.detectedPlayer?.role ?? 'unknown',
         itemLevel: combatantItemLevel ?? '',
-        wclReportUrl: `${buildWclReportUrl(undefined, reportPreview.code)}#fight=${fight.id}`,
+        wclReportUrl: `${buildWclReportUrl(resolveConfigSite(config), reportPreview.code)}#fight=${fight.id}`,
       })
 
       if (!fightPreview.playerPresent || !sourceId) {
@@ -2468,7 +2471,7 @@ async function runExportJob(
         specName: candidate.benchmarkSpecName,
         role: 'unknown',
         itemLevel: benchmarkCandidateItemLevel ?? '',
-        wclReportUrl: `${buildWclReportUrl(undefined, candidate.benchmarkReportCode)}#fight=${candidate.benchmarkFightId}`,
+        wclReportUrl: `${buildWclReportUrl(resolveConfigSite(config), candidate.benchmarkReportCode)}#fight=${candidate.benchmarkFightId}`,
       })
     }
 

@@ -1,5 +1,6 @@
 import { useReducer, useRef, useState } from 'react'
 import { useRecentReports } from '@/features/reports/hooks/use-recent-reports'
+import type { AppSettingsRequestContext } from '@/features/settings/types/app-settings-request-context'
 import { useBenchmarkCandidates } from './use-benchmark-candidates'
 import { useBenchmarkFormState, suggestTargetPercentile, type AutoBenchmarkFormConfig } from './use-benchmark-form-state'
 import { useBossKillSelection } from './use-boss-kill-selection'
@@ -18,13 +19,13 @@ import { STABLE_EXPORT_VIEWS } from '../types/player-analysis.types'
 
 export type PlayerAnalysisState = ReturnType<typeof usePlayerAnalysisState>
 
-export const usePlayerAnalysisState = () => {
+export const usePlayerAnalysisState = (context: AppSettingsRequestContext) => {
   // ── Data hooks ──────────────────────────────────────────────────────────────
-  const recentPlayersQuery = useRecentPlayers()
-  const recentReportsQuery = useRecentReports()
-  const previewMutation = usePlayerAnalysisPreview()
-  const exportJob = usePlayerAnalysisExportJob()
-  const benchmarkCandidatesMutation = useBenchmarkCandidates()
+  const recentPlayersQuery = useRecentPlayers(context)
+  const recentReportsQuery = useRecentReports(context)
+  const previewMutation = usePlayerAnalysisPreview(context)
+  const exportJob = usePlayerAnalysisExportJob(context)
+  const benchmarkCandidatesMutation = useBenchmarkCandidates(context)
 
   // ── UI state ────────────────────────────────────────────────────────────────
   const [sidebarOpen, setSidebarOpen] = useState(false)

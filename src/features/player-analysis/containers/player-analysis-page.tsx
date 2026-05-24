@@ -1,4 +1,4 @@
-import { useState, type FC } from 'react'
+import { useMemo, useState, type FC } from 'react'
 import { VennLogo } from '@/components/venn-logo'
 import { getDifficultyLabel } from '@/lib/difficulty'
 import { cn } from '@/lib/utils'
@@ -27,6 +27,7 @@ import { SettingsButton } from '@/features/settings/components/settings-button'
 import { SettingsFirstRunDialog } from '@/features/settings/components/settings-first-run-dialog'
 import { SettingsSidebar } from '@/features/settings/components/settings-sidebar'
 import { useAppSettings } from '@/features/settings/hooks/use-app-settings'
+import { buildSettingsRequestContext } from '@/features/settings/lib/settings-request-context'
 
 const STEP_LABELS = ['Select Player', 'Pick a Fight', 'Find Benchmark', 'Export']
 
@@ -46,8 +47,12 @@ const ShimmerRows: FC<{ sq: number }> = ({ sq }) => (
 )
 
 export const PlayerAnalysisPage: FC = () => {
-  const s = usePlayerAnalysisState()
   const appSettings = useAppSettings()
+  const requestContext = useMemo(
+    () => buildSettingsRequestContext(appSettings.settings),
+    [appSettings.settings]
+  )
+  const s = usePlayerAnalysisState(requestContext)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [firstRunSiteDialogOpen, setFirstRunSiteDialogOpen] = useState(() => !appSettings.hasExplicitSite)
 

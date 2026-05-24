@@ -1,6 +1,8 @@
+import type { AppSettingsRequestContext } from '@/features/settings/types/app-settings-request-context'
+
 export const reportsQueryKeys = {
   all: ['reports'] as const,
-  recent: () => [...reportsQueryKeys.all, 'recent'] as const,
+  recent: (context: AppSettingsRequestContext) => [...reportsQueryKeys.all, 'recent', context] as const,
   detail: (code: string) => [...reportsQueryKeys.all, 'detail', code] as const,
 }
 
@@ -24,6 +26,6 @@ export const playersQueryKeys = {
 
 export const playerAnalysisQueryKeys = {
   all: ['playerAnalysis'] as const,
-  recentPlayers: () => [...playerAnalysisQueryKeys.all, 'recentPlayers'] as const,
+  recentPlayers: (context: AppSettingsRequestContext) => [...playerAnalysisQueryKeys.all, 'recentPlayers', context] as const,
   exportStatus: (exportId: string) => [...playerAnalysisQueryKeys.all, 'status', exportId] as const,
 }

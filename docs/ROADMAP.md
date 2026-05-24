@@ -80,7 +80,7 @@ Exit criteria:
 
 ### 3) Wire app settings into WCL requests
 
-Status: Planned
+Status: Completed
 
 Goal:
 - Apply selected app settings to request flow while maintaining backward-compatible defaults.
@@ -97,6 +97,12 @@ Non-goals:
 Exit criteria:
 - Request path can run with selected settings and still works with retail-default behavior.
 - Error handling remains clear when optional settings are omitted.
+
+Notes:
+- Frontend now sends `wclSite` and optional `guildId`/`region` in report/player and player-analysis requests.
+- Backend now resolves and validates request-level `wclSite`/`guildId`/`region` with safe defaults to env config.
+- Classic/Fresh schema behavior remains unverified beyond request routing and fallback/error handling.
+- Character search and resolver work remain future slices.
 
 ### 4) WCL character search spike
 
@@ -148,4 +154,3 @@ Exit criteria:
 - WCL secrets must not be stored in localStorage.
 - Settings drawer should be visually similar to Advanced.
 - Retail remains the safe default until Classic/Fresh behavior is verified.
-

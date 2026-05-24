@@ -1,3 +1,5 @@
+import type { AppSettingsRequestContext } from '@/features/settings/types/app-settings-request-context'
+
 export type PlayerAnalysisExportView =
   | 'fightMetadata'
   | 'combatantInfo'
@@ -166,6 +168,7 @@ export type PlayerAnalysisExportRequest = {
   }
   playerContext?: PlayerUserContext
   benchmarkContextSource?: 'wclDetected' | 'userProvided'
+  wclContext?: AppSettingsRequestContext
 }
 
 export type PlayerAnalysisExportFile = {
@@ -405,6 +408,7 @@ export type BenchmarkCandidatesRequest = {
   maxCandidatesPerFight?: number
   playerContext?: PlayerUserContext
   benchmarkContextSource?: 'wclDetected' | 'userProvided'
+  wclContext?: AppSettingsRequestContext
 }
 
 export type PlayerBenchmarkCandidate = {
