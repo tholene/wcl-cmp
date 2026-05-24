@@ -1,6 +1,7 @@
 import type { WclConfig } from './wcl-config'
 import { queryWclGraphQl } from './wcl-client'
 import { isRaidZone } from './raid-zone-classifier'
+import { buildWclReportUrl } from './wcl-site'
 import type {
   WclFightSummary,
   WclRecentPlayer,
@@ -198,7 +199,7 @@ export const WclService = {
       ownerName: report.owner?.name ?? null,
       zoneId: report.zone?.id ?? null,
       zoneName: report.zone?.name ?? null,
-      url: `https://www.warcraftlogs.com/reports/${report.code}`,
+      url: buildWclReportUrl(undefined, report.code),
     }))
   },
 
@@ -227,7 +228,7 @@ export const WclService = {
       zoneId: report.zone?.id ?? null,
       zoneName: report.zone?.name ?? null,
       fights: mapFights(report.fights),
-      url: `https://www.warcraftlogs.com/reports/${report.code}`,
+      url: buildWclReportUrl(undefined, report.code),
     }
   },
 

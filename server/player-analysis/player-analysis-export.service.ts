@@ -2,6 +2,7 @@ import crypto from 'node:crypto'
 import { queryWclGraphQl } from '../warcraft-logs/wcl-client'
 import type { WclConfig } from '../warcraft-logs/wcl-config'
 import { WclService } from '../warcraft-logs/wcl-service'
+import { buildWclReportUrl } from '../warcraft-logs/wcl-site'
 import {
   classifyRaidZone,
   normalizeZoneName,
@@ -2162,7 +2163,7 @@ async function runExportJob(
         specName: combatantSpecName ?? preview.detectedPlayer?.specName ?? 'unknown',
         role: combatantRole ?? preview.detectedPlayer?.role ?? 'unknown',
         itemLevel: combatantItemLevel ?? '',
-        wclReportUrl: `https://www.warcraftlogs.com/reports/${reportPreview.code}#fight=${fight.id}`,
+        wclReportUrl: `${buildWclReportUrl(undefined, reportPreview.code)}#fight=${fight.id}`,
       })
 
       if (!fightPreview.playerPresent || !sourceId) {
@@ -2467,7 +2468,7 @@ async function runExportJob(
         specName: candidate.benchmarkSpecName,
         role: 'unknown',
         itemLevel: benchmarkCandidateItemLevel ?? '',
-        wclReportUrl: `https://www.warcraftlogs.com/reports/${candidate.benchmarkReportCode}#fight=${candidate.benchmarkFightId}`,
+        wclReportUrl: `${buildWclReportUrl(undefined, candidate.benchmarkReportCode)}#fight=${candidate.benchmarkFightId}`,
       })
     }
 

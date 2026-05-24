@@ -1,5 +1,6 @@
 import { queryWclGraphQl } from '../warcraft-logs/wcl-client'
 import type { WclConfig } from '../warcraft-logs/wcl-config'
+import { buildWclCharacterIdUrl, buildWclCharacterUrl, buildWclReportUrl } from '../warcraft-logs/wcl-site'
 import { WclService } from '../warcraft-logs/wcl-service'
 import { fetchCombatantInfoEvents } from './player-analysis-event-fetchers'
 import type {
@@ -205,13 +206,13 @@ function normalizeRankingEntry(
   const characterId = toPositiveInteger(entry['id'])
   const reportUrl =
     reportCode && fightId !== undefined
-      ? `https://www.warcraftlogs.com/reports/${reportCode}#fight=${fightId}`
+      ? `${buildWclReportUrl(undefined, reportCode)}#fight=${fightId}`
       : undefined
   const characterUrl =
     characterId !== undefined
-      ? `https://www.warcraftlogs.com/character/id/${characterId}`
+      ? buildWclCharacterIdUrl(undefined, characterId)
       : serverSlug && region && !isHiddenOrPrivateName(characterName)
-        ? `https://www.warcraftlogs.com/character/${region.toLowerCase()}/${serverSlug.toLowerCase()}/${encodeURIComponent(characterName)}`
+        ? buildWclCharacterUrl(undefined, region, serverSlug, characterName)
         : undefined
 
   const sameEncounter = true
@@ -531,7 +532,7 @@ export const PlayerAnalysisBenchmarkService = {
       className: benchClassName ?? 'unknown',
       specName: benchSpecName ?? 'unknown',
       durationMs,
-      reportUrl: `https://www.warcraftlogs.com/reports/${target.reportCode}#fight=${target.fightId}`,
+      reportUrl: `${buildWclReportUrl(undefined, target.reportCode)}#fight=${target.fightId}`,
       matchedBy: {
         sameEncounter: true,
         sameDifficulty: true,

@@ -1,4 +1,5 @@
 import type { WclConfig } from './wcl-config'
+import { getWclGraphQlUrl, getWclSiteConfig, getWclTokenUrl, type WclSite } from './wcl-site'
 import type { WclGraphQlResponse } from './wcl-types'
 
 type AccessTokenCache = {
@@ -6,8 +7,6 @@ type AccessTokenCache = {
   expiresAt: number
 } | null
 
-const WCL_TOKEN_URL = 'https://www.warcraftlogs.com/oauth/token'
-const WCL_GRAPHQL_URL = 'https://www.warcraftlogs.com/api/v2/client'
 const WCL_TIMEOUT_MS = 30_000
 
 const fetchWcl = (url: string, init: RequestInit): Promise<Response> =>
@@ -18,19 +17,22 @@ const fetchWcl = (url: string, init: RequestInit): Promise<Response> =>
     throw err
   })
 
-let accessTokenCache: AccessTokenCache = null
+const accessTokenCacheBySite = new Map<WclSite, AccessTokenCache>()
 
 const getBasicAuthHeader = (clientId: string, clientSecret: string): string => {
   const encodedCredentials = Buffer.from(`${clientId}:${clientSecret}`).toString('base64')
   return `Basic ${encodedCredentials}`
 }
 
-const getAccessToken = async (config: WclConfig): Promise<string> => {
+const getAccessToken = async (config: WclConfig, site?: WclSite): Promise<string> => {
+  const resolvedSite = getWclSiteConfig(site).site
+  const accessTokenCache = accessTokenCacheBySite.get(resolvedSite)
+
   if (accessTokenCache && accessTokenCache.expiresAt > Date.now() + 15_000) {
     return accessTokenCache.token
   }
 
-  const tokenResponse = await fetchWcl(WCL_TOKEN_URL, {
+  const tokenResponse = await fetchWcl(getWclTokenUrl(resolvedSite), {
     method: 'POST',
     headers: {
       Authorization: getBasicAuthHeader(config.WCL_CLIENT_ID, config.WCL_CLIENT_SECRET),
@@ -49,10 +51,10 @@ const getAccessToken = async (config: WclConfig): Promise<string> => {
     expires_in: number
   }
 
-  accessTokenCache = {
+  accessTokenCacheBySite.set(resolvedSite, {
     token: tokenData.access_token,
     expiresAt: Date.now() + tokenData.expires_in * 1000,
-  }
+  })
 
   return tokenData.access_token
 }
@@ -61,10 +63,12 @@ export const queryWclGraphQl = async <TData>(params: {
   config: WclConfig
   query: string
   variables?: Record<string, unknown>
+  site?: WclSite
 }): Promise<TData> => {
-  const accessToken = await getAccessToken(params.config)
+  const accessToken = await getAccessToken(params.config, params.site)
+  const graphQlUrl = getWclGraphQlUrl(params.site)
 
-  const graphQlResponse = await fetchWcl(WCL_GRAPHQL_URL, {
+  const graphQlResponse = await fetchWcl(graphQlUrl, {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${accessToken}`,
