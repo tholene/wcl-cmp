@@ -17,6 +17,7 @@ describe('app-settings-storage', () => {
   it('returns defaults when localStorage is empty', () => {
     expect(loadAppSettings()).toEqual(DEFAULT_APP_SETTINGS)
     expect(DEFAULT_APP_SETTINGS).not.toHaveProperty('defaultCharacter')
+    expect(DEFAULT_APP_SETTINGS).not.toHaveProperty('defaultRealm')
   })
 
   it('returns defaults when localStorage JSON is corrupt', () => {
@@ -30,17 +31,15 @@ describe('app-settings-storage', () => {
         wclSite: 'invalid-site',
         guildId: '  61324  ',
         region: '',
-        defaultRealm: 42,
       })
     ).toEqual({
       wclSite: null,
       guildId: '61324',
       region: null,
-      defaultRealm: null,
     })
   })
 
-  it('drops legacy defaultCharacter from old stored payloads', () => {
+  it('drops legacy defaultCharacter/defaultRealm from old stored payloads', () => {
     window.localStorage.setItem(
       APP_SETTINGS_STORAGE_KEY,
       JSON.stringify({
@@ -58,9 +57,9 @@ describe('app-settings-storage', () => {
       wclSite: 'retail',
       guildId: '61324',
       region: 'EU',
-      defaultRealm: 'Ragnaros',
     })
     expect(JSON.parse(JSON.stringify(loaded))).not.toHaveProperty('defaultCharacter')
+    expect(JSON.parse(JSON.stringify(loaded))).not.toHaveProperty('defaultRealm')
   })
 
   it('loads and sanitizes persisted settings', () => {
@@ -70,7 +69,6 @@ describe('app-settings-storage', () => {
         wclSite: 'classic',
         guildId: '  61324 ',
         region: 'EU',
-        defaultRealm: 'Ragnaros',
       })
     )
 
@@ -78,7 +76,6 @@ describe('app-settings-storage', () => {
       wclSite: 'classic',
       guildId: '61324',
       region: 'EU',
-      defaultRealm: 'Ragnaros',
     })
   })
 
@@ -87,19 +84,18 @@ describe('app-settings-storage', () => {
       wclSite: 'fresh',
       guildId: '  ',
       region: ' us ',
-      defaultRealm: '  ragnaros ',
     })
 
     expect(saved).toEqual({
       wclSite: 'fresh',
       guildId: null,
       region: 'us',
-      defaultRealm: 'ragnaros',
     })
 
     const persisted = JSON.parse(window.localStorage.getItem(APP_SETTINGS_STORAGE_KEY) ?? '{}')
     expect(persisted).toEqual(saved)
     expect(persisted).not.toHaveProperty('defaultCharacter')
+    expect(persisted).not.toHaveProperty('defaultRealm')
   })
 
   it('clears persisted settings', () => {

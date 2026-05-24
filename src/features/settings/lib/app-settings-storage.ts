@@ -23,7 +23,6 @@ export const normalizeAppSettings = (input: unknown): AppSettings => {
     wclSite: sanitizeSite(obj['wclSite']),
     guildId: sanitizeText(obj['guildId']),
     region: sanitizeText(obj['region']),
-    defaultRealm: sanitizeText(obj['defaultRealm']),
   }
 }
 

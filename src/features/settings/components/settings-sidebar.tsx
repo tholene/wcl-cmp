@@ -158,16 +158,6 @@ export const SettingsSidebar: FC<SettingsSidebarProps> = ({
               style={inputStyle}
             />
 
-            <Label htmlFor="realm">Default realm/server (optional)</Label>
-            <input
-              id="realm"
-              type="text"
-              value={draft.defaultRealm ?? ''}
-              onChange={(e) => setDraft((prev) => ({ ...prev, defaultRealm: e.target.value }))}
-              placeholder="ragnaros"
-              style={inputStyle}
-            />
-
             <p style={{ margin: 0, fontSize: 11, color: S.textDim }}>
               Settings are stored locally in this browser. API credentials are never stored here.
             </p>
@@ -185,7 +175,7 @@ export const SettingsSidebar: FC<SettingsSidebarProps> = ({
         >
           <button
             type="button"
-            onClick={() => setDraft((prev) => ({ ...prev, guildId: null, region: null, defaultRealm: null }))}
+            onClick={() => setDraft((prev) => ({ ...prev, guildId: null, region: null }))}
             style={secondaryButtonStyle}
           >
             Clear optional fields
@@ -211,7 +201,6 @@ export const SettingsSidebar: FC<SettingsSidebarProps> = ({
                 wclSite: null,
                 guildId: null,
                 region: null,
-                defaultRealm: null,
               })
             }}
             style={ghostButtonStyle}

@@ -11,6 +11,7 @@ describe('buildSettingsRequestContext', () => {
 
     expect(context).toEqual({ wclSite: 'retail' })
     expect(context).not.toHaveProperty('defaultCharacter')
+    expect(context).not.toHaveProperty('defaultRealm')
   })
 
   it('trims and includes optional guild and region', () => {
@@ -26,6 +27,7 @@ describe('buildSettingsRequestContext', () => {
       region: 'EU',
     })
     expect(context).not.toHaveProperty('defaultCharacter')
+    expect(context).not.toHaveProperty('defaultRealm')
   })
 
   it('omits empty optional fields', () => {
