@@ -1,4 +1,4 @@
-import { type FC } from 'react'
+import { useState, type FC } from 'react'
 import { VennLogo } from '@/components/venn-logo'
 import { getDifficultyLabel } from '@/lib/difficulty'
 import { cn } from '@/lib/utils'
@@ -23,6 +23,10 @@ import { usePlayerAnalysisState } from '@/features/player-analysis/hooks/use-pla
 import { classColor } from '@/features/player-analysis/lib/class-colors'
 import { flattenAndDeduplicateBossKills, formatDuration } from '@/features/player-analysis/lib/player-analysis-utils'
 import type { AvailableBaseline } from '@/features/player-analysis/types/available-baseline'
+import { SettingsButton } from '@/features/settings/components/settings-button'
+import { SettingsFirstRunDialog } from '@/features/settings/components/settings-first-run-dialog'
+import { SettingsSidebar } from '@/features/settings/components/settings-sidebar'
+import { useAppSettings } from '@/features/settings/hooks/use-app-settings'
 
 const STEP_LABELS = ['Select Player', 'Pick a Fight', 'Find Benchmark', 'Export']
 
@@ -43,6 +47,9 @@ const ShimmerRows: FC<{ sq: number }> = ({ sq }) => (
 
 export const PlayerAnalysisPage: FC = () => {
   const s = usePlayerAnalysisState()
+  const appSettings = useAppSettings()
+  const [settingsOpen, setSettingsOpen] = useState(false)
+  const [firstRunSiteDialogOpen, setFirstRunSiteDialogOpen] = useState(() => !appSettings.hasExplicitSite)
 
   return (
     <div className="min-h-screen">
@@ -55,7 +62,10 @@ export const PlayerAnalysisPage: FC = () => {
             WCL Compare
           </span>
         </div>
-        <AdvancedButton onClick={() => s.setSidebarOpen(true)} />
+        <div className="flex items-center gap-2">
+          <SettingsButton onClick={() => setSettingsOpen(true)} />
+          <AdvancedButton onClick={() => s.setSidebarOpen(true)} />
+        </div>
       </header>
 
       {/* ── Accordion Steps ── */}
@@ -436,6 +446,23 @@ export const PlayerAnalysisPage: FC = () => {
         onClassSpecOverrideChange={s.setPlayerUserContext}
         selectedViews={s.selectedViews}
         onSelectedViewsChange={s.setSelectedViews}
+      />
+
+      {settingsOpen && (
+        <SettingsSidebar
+          onClose={() => setSettingsOpen(false)}
+          settings={appSettings.settings}
+          onSave={appSettings.updateSettings}
+          onClearAll={appSettings.clearSettings}
+        />
+      )}
+
+      <SettingsFirstRunDialog
+        open={firstRunSiteDialogOpen}
+        onChooseSite={(site) => {
+          appSettings.updateSettings((prev) => ({ ...prev, wclSite: site }))
+          setFirstRunSiteDialogOpen(false)
+        }}
       />
     </div>
   )
