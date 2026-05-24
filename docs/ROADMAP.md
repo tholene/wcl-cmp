@@ -55,7 +55,6 @@ Required settings:
 - WCL site: `retail` / `classic` / `fresh`
 - Optional guild ID
 - Optional region
-- Optional default realm/server
 - Future-safe structure for additional settings
 
 UX:
@@ -106,7 +105,7 @@ Notes:
 - Frontend now sends `wclSite` and optional `guildId`/`region` in report/player and player-analysis requests.
 - Backend precedence is `request/settings > ENV > omitted`.
 - Missing `guildId` now returns a clear error only for guild-scoped flows that require it.
-- `defaultCharacter` was intentionally removed from settings to keep player search as the single source of truth.
+- `defaultCharacter` and `defaultRealm` were intentionally removed from settings to keep player search as the single source of truth for character identity.
 - Classic/Fresh schema behavior remains unverified beyond request routing and fallback/error handling.
 - Character search and resolver work remain future slices.
 
@@ -145,7 +144,7 @@ Goal:
 Scope:
 - Build character lookup and resolution based on spike decisions.
 - Keep the current visual flow: player → boss → benchmark → export.
-- Integrate resolver behavior with settings-selected site/region/realm defaults.
+- Integrate resolver behavior with settings-selected site defaults and mode-specific character identity inputs.
 
 Non-goals:
 - No unrelated redesign of export internals.

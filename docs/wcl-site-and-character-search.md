@@ -94,7 +94,7 @@ Notes:
   - else server ENV
   - else omitted (or explicit error where required)
 - `defaultCharacter` was intentionally removed from settings to avoid conflicting with the player search input; player search remains the source of truth for the analyzed character.
-- `defaultRealm` remains for future exact character lookup work.
+- `defaultRealm` was removed from settings for the same reason; character identity remains owned by player search/selection flows.
 - Guild ID can come from settings or `WCL_GUILD_ID`; guild-scoped routes now return a clear error when neither is available.
 - WCL client credentials remain server-only environment variables (`WCL_CLIENT_ID`, `WCL_CLIENT_SECRET`).
 
