@@ -140,4 +140,36 @@ Notes:
 - Classic/Fresh schema differences can still break deeper player-analysis queries.
 - `raid-zone-classifier` remains retail-oriented and may misclassify non-retail zones.
 - Guild IDs may not map meaningfully across all selected sites.
-- Character search/exact lookup is still future work and not solved by this probe.
+- Character search UX and global fight discovery remain future work; backend exact lookup now has a resolver spike foundation.
+
+## Global character resolver spike status (2026-05-24)
+
+Implemented (backend-only):
+- Resolver contract for global character resolution requests/results.
+- WCL character URL parser with host whitelist enforcement:
+  - `www.warcraftlogs.com`
+  - `classic.warcraftlogs.com`
+  - `fresh.warcraftlogs.com`
+- Exact lookup service using:
+  - `characterData.character(name, serverSlug, serverRegion)`
+- Isolated endpoint:
+  - `POST /api/wcl/character/resolve`
+- Dev-only probe script:
+  - `npm run spike:wcl-character`
+
+Behavior:
+- URL-derived identity fields take precedence over explicit tuple fields.
+- If URL and explicit tuple disagree, resolver returns warnings (no hard failure).
+- Resolver does not require `guildId`.
+- Resolver does not accept arbitrary hosts.
+- `className/specName` remain `null` in this spike unless independently proven from exact lookup.
+
+Verification truth:
+- **URL parsing works** and is covered by unit tests (retail/classic/fresh, invalid host, malformed URL, CJK name, hyphenated realm).
+- **Exact lookup verified** for retail in live probe (known identity resolved).
+- Exact lookup query shape is accepted by classic/fresh in probe path; sample identity returned `not_found`.
+- **Fuzzy/search-as-you-type remains unknown/unimplemented** in production code.
+
+Still out of scope:
+- No frontend player-search wiring for global mode yet.
+- No global recent boss-kill discovery yet.

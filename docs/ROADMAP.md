@@ -111,28 +111,33 @@ Notes:
 
 ### 4) WCL character search spike
 
-Status: Planned
+Status: Completed (backend-only resolver foundation)
 
 Goal:
 - Determine viable player discovery paths independent of hardcoded guild report coupling.
 
-Scope:
-- Determine whether search-as-you-type/fuzzy character search is available.
-- Determine whether exact lookup by site/region/realm/name is available.
-- Determine whether recent boss kills can be fetched without guild-report coupling.
-- Produce implementation recommendation and fallback strategy.
+Scope delivered:
+- Added resolver contract for global character identity resolution.
+- Added strict WCL character URL parser (retail/classic/fresh host whitelist).
+- Added exact lookup service with `characterData.character(name, serverSlug, serverRegion)`.
+- Added isolated backend endpoint `POST /api/wcl/character/resolve`.
+- Added non-test probe command `npm run spike:wcl-character`.
+- Added unit tests with mocked lookup path (no live calls in tests).
 
 Fallback path if fuzzy search is unavailable:
 - Exact lookup
 - WCL character URL paste
 - Local/recent-player index
 
-Non-goals:
-- No production character resolver implementation in this slice.
+What is still not delivered in this slice:
+- No search-as-you-type/fuzzy global search implementation.
+- No global recent boss-kill discovery.
+- No frontend global-mode wiring.
 
 Exit criteria:
-- Search capability findings are documented.
-- One primary resolver path plus fallback behavior is selected.
+- Backend resolver and URL fallback contract are in place.
+- Exact lookup viability is validated in live probe path.
+- Remaining unknowns (fuzzy search and global fight discovery) are explicitly documented.
 
 ### 5) Character resolver and search UX
 

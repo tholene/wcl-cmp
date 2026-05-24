@@ -146,6 +146,15 @@ Proposed behavior:
 
 ## Probe status for this slice
 
-- No new global-character probe script was added in this slice.
-- Reason: available WCL global-character query surface is not yet confirmed in this codebase, and a speculative script would risk encoding incorrect assumptions.
-- Next slice should add a focused probe once candidate queries are narrowed.
+- Added backend-only global character resolver foundation:
+  - URL parser for whitelisted WCL hosts (`retail`/`classic`/`fresh`).
+  - Exact lookup resolver using `characterData.character(name, serverSlug, serverRegion)`.
+  - Isolated endpoint: `POST /api/wcl/character/resolve`.
+  - Dev probe script: `npm run spike:wcl-character`.
+- Live probe status (May 24, 2026):
+  - Exact query shape is accepted by schema.
+  - Retail probe resolved a known character (`Bagge` on `EU/the-maelstrom`).
+  - Classic/Fresh accepted the query shape in probe path; sample identity returned `not_found`.
+- Still intentionally unimplemented:
+  - No search-as-you-type/fuzzy global search.
+  - No global recent boss-kill discovery.

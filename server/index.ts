@@ -11,6 +11,11 @@ import {
 } from './warcraft-logs/wcl-request-context'
 import { classifyWclError, isLikelyWclError } from './warcraft-logs/wcl-error-hints'
 import { WclService } from './warcraft-logs/wcl-service'
+import {
+  resolveWclCharacter,
+  validateWclCharacterResolveRequest,
+} from './warcraft-logs/wcl-character-resolver'
+import type { WclCharacterResolveRequest } from './warcraft-logs/wcl-character-resolver.types'
 import { getExportPreview, startExportJob, validateExportStartRequest } from './player-analysis/player-analysis-export.service'
 import { PlayerAnalysisBenchmarkService } from './player-analysis/player-analysis-benchmark.service'
 import { JobStore } from './player-analysis/player-analysis-job-store'
@@ -26,7 +31,7 @@ process.on('unhandledRejection', (reason) => {
   console.error('[server] Unhandled rejection:', reason)
 })
 
-const app = express()
+export const app = express()
 
 const buildAllowedOrigins = (): string[] => {
   const origins = ['http://localhost:5780', 'http://localhost:5781']
@@ -82,6 +87,9 @@ const toBodyContext = (req: Request): WclRequestContext | undefined =>
 
 const requiresGuildScopedReportDiscovery = (reportCodes: unknown): boolean =>
   !Array.isArray(reportCodes) || reportCodes.length === 0
+
+const toWclCharacterResolveBody = (body: unknown): WclCharacterResolveRequest =>
+  (body ?? {}) as WclCharacterResolveRequest
 
 app.get('/api/health', (_req: Request, res: Response) => {
   res.status(200).json({ ok: true })
@@ -154,6 +162,55 @@ app.get('/api/players/recent', async (req: Request, res: Response) => {
     }
     const classified = classifyWclError(error, { site: selectedSite })
     console.error('[wcl] /api/players/recent failed:', error)
+    res.status(500).json({
+      error: classified.message,
+      hint: classified.hint,
+      code: classified.code,
+    })
+  }
+})
+
+app.post('/api/wcl/character/resolve', async (req: Request, res: Response) => {
+  const body = toWclCharacterResolveBody(req.body)
+  const validated = validateWclCharacterResolveRequest(body)
+
+  if (!validated.ok) {
+    res.status(400).json({
+      error: validated.error.message,
+      code: validated.error.code,
+      ...(validated.error.hint ? { hint: validated.error.hint } : {}),
+    })
+    return
+  }
+
+  try {
+    const config = getWclConfig()
+    const result = await resolveWclCharacter(config, body)
+
+    if (result.status === 'error' && result.error?.code === 'VALIDATION_ERROR') {
+      res.status(400).json({
+        status: result.status,
+        character: result.character,
+        warnings: result.warnings,
+        error: result.error,
+      })
+      return
+    }
+
+    if (result.status === 'unsupported') {
+      res.status(422).json(result)
+      return
+    }
+
+    if (result.status === 'error') {
+      res.status(502).json(result)
+      return
+    }
+
+    res.status(200).json(result)
+  } catch (error) {
+    const classified = classifyWclError(error, { site: body.wclSite })
+    console.error('[wcl] /api/wcl/character/resolve failed:', error)
     res.status(500).json({
       error: classified.message,
       hint: classified.hint,
@@ -411,4 +468,6 @@ const startServer = () => {
   })
 }
 
-startServer()
+if (process.env.WCL_SKIP_SERVER_START !== '1') {
+  startServer()
+}
