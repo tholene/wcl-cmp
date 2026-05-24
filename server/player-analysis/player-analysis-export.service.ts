@@ -3,6 +3,7 @@ import { queryWclGraphQl } from '../warcraft-logs/wcl-client'
 import type { WclConfig } from '../warcraft-logs/wcl-config'
 import { WclService } from '../warcraft-logs/wcl-service'
 import { buildWclReportUrl } from '../warcraft-logs/wcl-site'
+import { classifyWclError, isLikelyWclError } from '../warcraft-logs/wcl-error-hints'
 import {
   classifyRaidZone,
   normalizeZoneName,
@@ -1908,10 +1909,15 @@ export function startExportJob(config: WclConfig, request: PlayerAnalysisExportR
 
   setImmediate(() => {
     runExportJob(config, request, exportId).catch((error: unknown) => {
-      const message = error instanceof Error ? error.message : 'Unexpected export error'
+      const classified = isLikelyWclError(error)
+        ? classifyWclError(error, { site: resolveConfigSite(config) })
+        : null
+      const message = classified?.message ?? (error instanceof Error ? error.message : 'Unexpected export error')
+      const errorWithHint = classified?.hint ? `${message} ${classified.hint}` : message
+      console.error('[player-analysis] export job failed:', error)
       JobStore.fail(exportId, message, {
-        errors: [message],
-        warningGroups: { runtimeApi: [message] },
+        errors: [errorWithHint],
+        warningGroups: { runtimeApi: [errorWithHint] },
         currentStep: 'Export failed.',
       })
     })

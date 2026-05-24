@@ -17,7 +17,7 @@ The approach is incremental and evidence-led: each slice should ship safely with
 
 ### 1) WCL site config spike
 
-Status: Planned
+Status: Completed
 
 Goal:
 - Validate multi-site assumptions before product wiring.
@@ -39,9 +39,14 @@ Exit criteria:
 - Host mapping and endpoint assumptions are documented.
 - Known risks and unknowns are captured for implementation slices.
 
+Notes:
+- Site mapping is centralized in backend config helpers.
+- A live probe was run on May 24, 2026 against `retail`, `classic`, and `fresh`.
+- Probe verified token+minimal GraphQL+guild recent-reports query paths only; deeper player-analysis compatibility is still partial.
+
 ### 2) Persistent Settings Drawer
 
-Status: Planned
+Status: Completed
 
 Goal:
 - Add a first-class, persistent Settings surface that prepares the app for multi-site and future non-guild-coupled workflows without breaking today’s retail flow.
@@ -155,3 +160,10 @@ Exit criteria:
 - WCL secrets must not be stored in localStorage.
 - Settings drawer should be visually similar to Advanced.
 - Retail remains the safe default until Classic/Fresh behavior is verified.
+
+## Current compatibility truth
+
+- Retail flow remains the only fully trusted production path.
+- Classic/Fresh have passed baseline endpoint probing (minimal GraphQL + recent reports).
+- Classic/Fresh are **not yet declared fully compatible** for the full player-analysis export workflow.
+- Error messaging now explicitly calls out selected-site compatibility risk when query/schema failures occur.

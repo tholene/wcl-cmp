@@ -97,3 +97,47 @@ Notes:
 - `defaultRealm` remains for future exact character lookup work.
 - Guild ID can come from settings or `WCL_GUILD_ID`; guild-scoped routes now return a clear error when neither is available.
 - WCL client credentials remain server-only environment variables (`WCL_CLIENT_ID`, `WCL_CLIENT_SECRET`).
+
+## Compatibility probe status (2026-05-24)
+
+Live probe run: **yes** (via `npm run spike:wcl-sites`)
+
+Probe scope:
+- Token acquisition through the existing WCL client path (implicitly exercised by GraphQL call).
+- Minimal GraphQL query (`__typename`) per site.
+- Guild-scoped recent reports query per site when `WCL_GUILD_ID` is available.
+
+Probe outcomes:
+- Retail: minimal GraphQL ✅, recent reports ✅
+- Classic: minimal GraphQL ✅, recent reports ✅
+- Fresh: minimal GraphQL ✅, recent reports ✅
+
+What this **does not** prove:
+- Full player-analysis parity for Classic/Fresh.
+- Encounter rankings/benchmark query behavior across all Classic/Fresh content.
+- Event/table shape parity for combatant info, casts, buffs, damage, deaths, etc.
+- Export bundle quality parity across all views/fights.
+
+## Probe command
+
+Run:
+
+```bash
+npm run spike:wcl-sites
+```
+
+The script lives at:
+
+`scripts/spikes/check-wcl-site-compatibility.ts`
+
+Notes:
+- Uses server-side env credentials only.
+- Does not print secrets or access tokens.
+- Not part of normal tests/build.
+
+## Known risks (still open)
+
+- Classic/Fresh schema differences can still break deeper player-analysis queries.
+- `raid-zone-classifier` remains retail-oriented and may misclassify non-retail zones.
+- Guild IDs may not map meaningfully across all selected sites.
+- Character search/exact lookup is still future work and not solved by this probe.

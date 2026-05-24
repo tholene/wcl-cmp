@@ -9,6 +9,7 @@ import {
   resolveWclRequestContext,
   type WclRequestContext,
 } from './warcraft-logs/wcl-request-context'
+import { classifyWclError, isLikelyWclError } from './warcraft-logs/wcl-error-hints'
 import { WclService } from './warcraft-logs/wcl-service'
 import { getExportPreview, startExportJob, validateExportStartRequest } from './player-analysis/player-analysis-export.service'
 import { PlayerAnalysisBenchmarkService } from './player-analysis/player-analysis-benchmark.service'
@@ -101,9 +102,11 @@ app.get('/api/config/status', (_req: Request, res: Response) => {
 })
 
 app.get('/api/reports/recent', async (req: Request, res: Response) => {
+  let selectedSite: string | undefined
   try {
     const baseConfig = getWclConfig()
     const resolvedContext = resolveWclRequestContext(baseConfig, toQueryContext(req))
+    selectedSite = resolvedContext.site
     requireGuildIdForGuildScopedFlow(resolvedContext.guildId)
     const reports = await WclService.listRecentReports(resolvedContext.config)
 
@@ -119,19 +122,22 @@ app.get('/api/reports/recent', async (req: Request, res: Response) => {
       })
       return
     }
-    const message = error instanceof Error ? error.message : 'Unknown error while fetching reports.'
-
+    const classified = classifyWclError(error, { site: selectedSite })
+    console.error('[wcl] /api/reports/recent failed:', error)
     res.status(500).json({
-      error: message,
-      hint: 'Verify WCL_CLIENT_ID and WCL_CLIENT_SECRET in your .env file.',
+      error: classified.message,
+      hint: classified.hint,
+      code: classified.code,
     })
   }
 })
 
 app.get('/api/players/recent', async (req: Request, res: Response) => {
+  let selectedSite: string | undefined
   try {
     const baseConfig = getWclConfig()
     const resolvedContext = resolveWclRequestContext(baseConfig, toQueryContext(req))
+    selectedSite = resolvedContext.site
     requireGuildIdForGuildScopedFlow(resolvedContext.guildId)
     const players = await WclService.getRecentPlayers(resolvedContext.config)
 
@@ -146,11 +152,12 @@ app.get('/api/players/recent', async (req: Request, res: Response) => {
       })
       return
     }
-    const message = error instanceof Error ? error.message : 'Unknown error while fetching recent players.'
-
+    const classified = classifyWclError(error, { site: selectedSite })
+    console.error('[wcl] /api/players/recent failed:', error)
     res.status(500).json({
-      error: message,
-      hint: 'Verify WCL credentials and guild configuration.',
+      error: classified.message,
+      hint: classified.hint,
+      code: classified.code,
     })
   }
 })
@@ -176,9 +183,11 @@ app.post('/api/player-analysis/export-preview', async (req: Request, res: Respon
     })
     return
   }
+  let selectedSite: string | undefined
   try {
     const baseConfig = getWclConfig()
     const resolvedContext = resolveWclRequestContext(baseConfig, toBodyContext(req))
+    selectedSite = resolvedContext.site
     if (requiresGuildScopedReportDiscovery(req.body?.reportCodes)) {
       requireGuildIdForGuildScopedFlow(resolvedContext.guildId)
     }
@@ -189,6 +198,16 @@ app.post('/api/player-analysis/export-preview', async (req: Request, res: Respon
       sendPlayerAnalysisError(res, 400, {
         error: MISSING_GUILD_ID_ERROR_MESSAGE,
         code: 'MISSING_GUILD_ID',
+      })
+      return
+    }
+    if (isLikelyWclError(error)) {
+      const classified = classifyWclError(error, { site: selectedSite })
+      console.error('[wcl] /api/player-analysis/export-preview failed:', error)
+      sendPlayerAnalysisError(res, 400, {
+        error: classified.message,
+        code: classified.code,
+        hint: classified.hint,
       })
       return
     }
@@ -218,9 +237,11 @@ app.post('/api/player-analysis/export', async (req: Request, res: Response) => {
     })
     return
   }
+  let selectedSite: string | undefined
   try {
     const baseConfig = getWclConfig()
     const resolvedContext = resolveWclRequestContext(baseConfig, toBodyContext(req))
+    selectedSite = resolvedContext.site
     if (requiresGuildScopedReportDiscovery(req.body?.reportCodes)) {
       requireGuildIdForGuildScopedFlow(resolvedContext.guildId)
     }
@@ -232,6 +253,16 @@ app.post('/api/player-analysis/export', async (req: Request, res: Response) => {
       sendPlayerAnalysisError(res, 400, {
         error: MISSING_GUILD_ID_ERROR_MESSAGE,
         code: 'MISSING_GUILD_ID',
+      })
+      return
+    }
+    if (isLikelyWclError(error)) {
+      const classified = classifyWclError(error, { site: selectedSite })
+      console.error('[wcl] /api/player-analysis/export failed:', error)
+      sendPlayerAnalysisError(res, 400, {
+        error: classified.message,
+        code: classified.code,
+        hint: classified.hint,
       })
       return
     }
@@ -259,9 +290,11 @@ app.get('/api/player-analysis/exports/:exportId/status', (req: Request, res: Res
 })
 
 app.post('/api/player-analysis/benchmark-candidates', async (req: Request, res: Response) => {
+  let selectedSite: string | undefined
   try {
     const baseConfig = getWclConfig()
     const resolvedContext = resolveWclRequestContext(baseConfig, toBodyContext(req))
+    selectedSite = resolvedContext.site
     const body = req.body as import('./player-analysis/player-analysis.types').BenchmarkCandidatesRequest
     console.log('[benchmark-candidates] baselines:', JSON.stringify(
       (body.baselines ?? []).map((b) => ({
@@ -274,6 +307,16 @@ app.post('/api/player-analysis/benchmark-candidates', async (req: Request, res: 
     const result = await PlayerAnalysisBenchmarkService.findBenchmarkCandidates(resolvedContext.config, body)
     res.status(200).json(result)
   } catch (error) {
+    if (isLikelyWclError(error)) {
+      const classified = classifyWclError(error, { site: selectedSite })
+      console.error('[wcl] /api/player-analysis/benchmark-candidates failed:', error)
+      sendPlayerAnalysisError(res, 400, {
+        error: classified.message,
+        code: classified.code,
+        hint: classified.hint,
+      })
+      return
+    }
     const message = asErrorMessage(error, 'Unknown error finding benchmark candidates.')
     sendPlayerAnalysisError(res, 400, {
       error: message,
