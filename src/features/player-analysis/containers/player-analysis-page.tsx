@@ -260,34 +260,42 @@ export const PlayerAnalysisPage: FC = () => {
                         onTierChange={s.handleTargetTierChange}
                       />
                       <PlayerAnalysisBenchmarkForm
-                        benchmarkMode={s.benchmarkMode}
-                        benchmarkConfig={s.manualBenchmarkConfig}
-                        autoConfig={s.autoBenchmarkConfig}
-                        candidatesResult={s.benchmarkCandidatesMutation.data ?? null}
-                        isFindingCandidates={s.benchmarkCandidatesMutation.isPending}
-                        canFindCandidates={s.canFindCandidates}
-                        hasPreview={!!s.preview}
-                        availableBaselines={s.availableBaselines}
-                        selectedBaselineKeys={s.selectedBaselineKeys}
-                        selectedCandidateKeysByBaseline={s.selectedCandidateKeysByBaseline}
-                        specDetectionFailed={s.specDetectionFailed}
-                        detectedContext={s.preview?.detectedPlayer?.detectedContext}
-                        contextWarnings={[...(s.preview?.contextWarnings ?? []), ...(s.selectedPlayerFightContext?.warnings ?? [])]}
-                        benchmarkContextSource={s.benchmarkContextSource}
-                        playerUserContext={s.playerUserContext}
-                        onBaselineSelectionChange={s.handleBaselineSelectionChange}
-                        onBenchmarkCandidateSelectionChange={s.handleBenchmarkCandidateSelection}
-                        onClassSpecOverrideChange={s.setPlayerUserContext}
-                        onBenchmarkContextSourceChange={s.setBenchmarkContextSource}
-                        onBenchmarkModeChange={s.setBenchmarkMode}
-                        onBenchmarkConfigChange={s.setManualBenchmarkConfig}
-                        onAutoConfigChange={s.setAutoBenchmarkConfig}
-                        benchmarkBlockedReason={s.benchmarkBlockedReason}
-                        canUseSubjectOnlyOverride={s.canUseSubjectOnlyOverride}
-                        allowSubjectOnlyWithoutBenchmark={s.allowSubjectOnlyWithoutBenchmark}
-                        onAllowSubjectOnlyWithoutBenchmarkChange={s.setAllowSubjectOnlyWithoutBenchmark}
-                        onFindCandidates={s.handleFindCandidates}
-                        isAutoTriggered={true}
+                        contextState={{
+                          hasPreview: !!s.preview,
+                          specDetectionFailed: s.specDetectionFailed,
+                          detectedContext: s.preview?.detectedPlayer?.detectedContext,
+                          contextWarnings: [...(s.preview?.contextWarnings ?? []), ...(s.selectedPlayerFightContext?.warnings ?? [])],
+                          benchmarkContextSource: s.benchmarkContextSource,
+                          playerUserContext: s.playerUserContext,
+                          benchmarkBlockedReason: s.benchmarkBlockedReason,
+                          canUseSubjectOnlyOverride: s.canUseSubjectOnlyOverride,
+                          allowSubjectOnlyWithoutBenchmark: s.allowSubjectOnlyWithoutBenchmark,
+                          isAutoTriggered: true,
+                        }}
+                        candidateState={{
+                          candidatesResult: s.benchmarkCandidatesMutation.data ?? null,
+                          isFindingCandidates: s.benchmarkCandidatesMutation.isPending,
+                          canFindCandidates: s.canFindCandidates,
+                          availableBaselines: s.availableBaselines,
+                          selectedBaselineKeys: s.selectedBaselineKeys,
+                          selectedCandidateKeysByBaseline: s.selectedCandidateKeysByBaseline,
+                        }}
+                        benchmarkConfigState={{
+                          benchmarkMode: s.benchmarkMode,
+                          benchmarkConfig: s.manualBenchmarkConfig,
+                          autoConfig: s.autoBenchmarkConfig,
+                        }}
+                        benchmarkActions={{
+                          onBaselineSelectionChange: s.handleBaselineSelectionChange,
+                          onBenchmarkCandidateSelectionChange: s.handleBenchmarkCandidateSelection,
+                          onClassSpecOverrideChange: s.setPlayerUserContext,
+                          onBenchmarkContextSourceChange: s.setBenchmarkContextSource,
+                          onBenchmarkModeChange: s.setBenchmarkMode,
+                          onBenchmarkConfigChange: s.setManualBenchmarkConfig,
+                          onAutoConfigChange: s.setAutoBenchmarkConfig,
+                          onAllowSubjectOnlyWithoutBenchmarkChange: s.setAllowSubjectOnlyWithoutBenchmark,
+                          onFindCandidates: s.handleFindCandidates,
+                        }}
                       />
                     </BenchmarkErrorBoundary>
                   )}

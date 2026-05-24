@@ -34,22 +34,35 @@ type AutoConfig = {
   durationWindowPercent: number
 }
 
-type PlayerAnalysisBenchmarkFormProps = {
-  benchmarkMode: 'none' | 'manual' | 'auto'
-  benchmarkConfig: ManualConfig
-  autoConfig: AutoConfig
-  candidatesResult?: BenchmarkCandidatesResponse | null
-  isFindingCandidates?: boolean
-  canFindCandidates?: boolean
+type BenchmarkContextState = {
   hasPreview?: boolean
-  availableBaselines?: AvailableBaseline[]
-  selectedBaselineKeys?: Set<string>
-  selectedCandidateKeysByBaseline?: Record<string, string>
   specDetectionFailed?: boolean
   detectedContext?: PlayerDetectedContext
   contextWarnings?: string[]
   benchmarkContextSource?: 'wclDetected' | 'userProvided'
   playerUserContext?: ClassSpecOverride | null
+  benchmarkBlockedReason?: string | null
+  canUseSubjectOnlyOverride?: boolean
+  allowSubjectOnlyWithoutBenchmark?: boolean
+  isAutoTriggered?: boolean
+}
+
+type BenchmarkCandidateState = {
+  candidatesResult?: BenchmarkCandidatesResponse | null
+  isFindingCandidates?: boolean
+  canFindCandidates?: boolean
+  availableBaselines?: AvailableBaseline[]
+  selectedBaselineKeys?: Set<string>
+  selectedCandidateKeysByBaseline?: Record<string, string>
+}
+
+type BenchmarkConfigState = {
+  benchmarkMode: 'none' | 'manual' | 'auto'
+  benchmarkConfig: ManualConfig
+  autoConfig: AutoConfig
+}
+
+type BenchmarkActions = {
   onBaselineSelectionChange?: (keys: Set<string>) => void
   onBenchmarkCandidateSelectionChange?: (baselineKey: string, candidateKey: string) => void
   onClassSpecOverrideChange?: (ctx: ClassSpecOverride | null) => void
@@ -57,12 +70,15 @@ type PlayerAnalysisBenchmarkFormProps = {
   onBenchmarkModeChange: (mode: 'none' | 'manual' | 'auto') => void
   onBenchmarkConfigChange: (config: ManualConfig) => void
   onAutoConfigChange: (config: AutoConfig) => void
-  benchmarkBlockedReason?: string | null
-  canUseSubjectOnlyOverride?: boolean
-  allowSubjectOnlyWithoutBenchmark?: boolean
   onAllowSubjectOnlyWithoutBenchmarkChange?: (value: boolean) => void
   onFindCandidates: () => void
-  isAutoTriggered?: boolean
+}
+
+type PlayerAnalysisBenchmarkFormProps = {
+  contextState: BenchmarkContextState
+  candidateState: BenchmarkCandidateState
+  benchmarkConfigState: BenchmarkConfigState
+  benchmarkActions: BenchmarkActions
 }
 
 const isSameCandidate = (
@@ -215,34 +231,46 @@ const CandidateCard: FC<{
 }
 
 export const PlayerAnalysisBenchmarkForm: FC<PlayerAnalysisBenchmarkFormProps> = ({
-  benchmarkMode,
-  benchmarkConfig,
-  autoConfig,
-  candidatesResult,
-  isFindingCandidates,
-  canFindCandidates,
-  hasPreview = false,
-  availableBaselines = [],
-  selectedBaselineKeys,
-  selectedCandidateKeysByBaseline = {},
-  specDetectionFailed = false,
-  detectedContext,
-  contextWarnings = [],
-  benchmarkContextSource = 'wclDetected',
-  playerUserContext,
-  onBaselineSelectionChange,
-  onBenchmarkCandidateSelectionChange,
-  onClassSpecOverrideChange,
-  onBenchmarkModeChange,
-  onBenchmarkConfigChange,
-  onAutoConfigChange,
-  benchmarkBlockedReason,
-  canUseSubjectOnlyOverride = false,
-  allowSubjectOnlyWithoutBenchmark = false,
-  onAllowSubjectOnlyWithoutBenchmarkChange,
-  onFindCandidates,
-  isAutoTriggered = false,
+  contextState,
+  candidateState,
+  benchmarkConfigState,
+  benchmarkActions,
 }) => {
+  const {
+    hasPreview = false,
+    specDetectionFailed = false,
+    detectedContext,
+    contextWarnings = [],
+    benchmarkContextSource = 'wclDetected',
+    playerUserContext,
+    benchmarkBlockedReason,
+    canUseSubjectOnlyOverride = false,
+    allowSubjectOnlyWithoutBenchmark = false,
+    isAutoTriggered = false,
+  } = contextState
+
+  const {
+    candidatesResult,
+    isFindingCandidates,
+    canFindCandidates,
+    availableBaselines = [],
+    selectedBaselineKeys,
+    selectedCandidateKeysByBaseline = {},
+  } = candidateState
+
+  const { benchmarkMode, benchmarkConfig, autoConfig } = benchmarkConfigState
+
+  const {
+    onBaselineSelectionChange,
+    onBenchmarkCandidateSelectionChange,
+    onClassSpecOverrideChange,
+    onBenchmarkModeChange,
+    onBenchmarkConfigChange,
+    onAutoConfigChange,
+    onAllowSubjectOnlyWithoutBenchmarkChange,
+    onFindCandidates,
+  } = benchmarkActions
+
   const [showMore, setShowMore] = useState(false)
   const includeBenchmark = benchmarkMode !== 'none'
   const hasWclClassSpec = !!detectedContext?.className && !!detectedContext?.specName
