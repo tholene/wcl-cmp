@@ -49,6 +49,27 @@
 4. App lists recent boss kills for that character.
 5. Benchmark and export screens stay visually the same.
 
+## Global boss-kill discovery status (backend-only, implemented)
+
+- Added endpoint: `POST /api/wcl/character/boss-kills`.
+- Resolver remains the entry point:
+  - `characterUrl` OR exact tuple (`site + region + realmSlug + characterName`).
+- Discovery is guild-independent (no `guildId` requirement).
+- Current discovery method:
+  1. Resolve character identity.
+  2. Fetch `character.recentReports`.
+  3. Filter to raid-zone reports.
+  4. Flatten boss fights (`reportCode + fightId + encounter + difficulty + kill + timing`).
+  5. Enrich a capped subset with `report.rankings(fightIDs: [...])` for class/spec/item level/percentile where available.
+
+What this enables now:
+- Backend can return global recent raid boss-kill candidates compatible with future boss-card UI needs.
+
+What is still not implemented:
+- No frontend wiring to global mode.
+- No fuzzy/search-as-you-type.
+- No declaration that global mode is end-to-end complete.
+
 ## 3) Key technical questions to answer
 
 1. Does WCL expose a true fuzzy/search-as-you-type character search API?
@@ -155,6 +176,10 @@ Proposed behavior:
   - Exact query shape is accepted by schema.
   - Retail probe resolved a known character (`Bagge` on `EU/the-maelstrom`).
   - Classic/Fresh accepted the query shape in probe path; sample identity returned `not_found`.
+- Live boss-kill discovery probe status (May 24, 2026):
+  - Retail: `character.recentReports.data[].fights` returned raid-boss candidates with report code + fight id.
+  - Retail: per-fight `report.rankings(fightIDs:[...])` returned player class/spec/item-level/percentile enrichment for matched rows.
+  - Classic/Fresh: deeper boss-kill path not yet fully verified with known characters in this slice.
 - Still intentionally unimplemented:
   - No search-as-you-type/fuzzy global search.
-  - No global recent boss-kill discovery.
+  - No frontend global-mode wiring for recent boss-kill discovery.

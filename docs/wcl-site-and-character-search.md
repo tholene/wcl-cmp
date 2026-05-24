@@ -172,4 +172,38 @@ Verification truth:
 
 Still out of scope:
 - No frontend player-search wiring for global mode yet.
-- No global recent boss-kill discovery yet.
+- No global mode frontend list/selection UI yet.
+
+## Global character boss-kill discovery spike status (2026-05-24)
+
+Implemented (backend-only):
+- Types: global boss-kill request/result contract.
+- Service: resolver + recent report discovery + optional per-fight ranking enrichment.
+- Endpoint: `POST /api/wcl/character/boss-kills`.
+- Probe script: `npm run spike:wcl-character-boss-kills`.
+
+Verified data path:
+1. Resolve identity through the global resolver (`characterUrl` or exact tuple).
+2. Query `characterData.character(...).recentReports(limit, page).data`.
+3. Read report-level fights directly (`reportCode`, `fightId`, `encounterID`, `name`, `kill`, `difficulty`, `startTime`, `endTime`).
+4. Filter to raid-zone reports.
+5. Enrich capped fights with `reportData.report(code).rankings(fightIDs:[...])` for:
+   - `class`
+   - `spec`
+   - `bracketData` (item level context)
+   - `rankPercent`/`bracketPercent` (percentile context)
+
+What is available now (when present in WCL payloads):
+- `reportCode` and `fightId`: yes (from `recentReports.fights`)
+- encounter ID/name, kill, difficulty, duration, start time: yes
+- report title: yes
+- class/spec/item-level/percentile: available through ranking enrichment for many fights, but not guaranteed for every fight
+
+Compatibility notes:
+- Retail: live-probed and working with known sample (`Bagge`, `EU/the-maelstrom`).
+- Classic/Fresh: exact resolver query shape is accepted; deeper boss-kill discovery path is still only partially verified in this slice.
+
+Known limits:
+- This is backend-only foundation; no UI wiring yet.
+- Search-as-you-type/fuzzy lookup is still unknown/unimplemented.
+- Non-raid reports are intentionally skipped for boss-kill candidate generation.

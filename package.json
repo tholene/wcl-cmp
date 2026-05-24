@@ -15,7 +15,8 @@
     "test": "vitest",
     "test:coverage": "vitest run --coverage",
     "spike:wcl-sites": "tsx scripts/spikes/check-wcl-site-compatibility.ts",
-    "spike:wcl-character": "tsx scripts/spikes/check-wcl-character-resolver.ts"
+    "spike:wcl-character": "tsx scripts/spikes/check-wcl-character-resolver.ts",
+    "spike:wcl-character-boss-kills": "tsx scripts/spikes/check-wcl-character-boss-kills.ts"
   },
   "dependencies": {
     "@tanstack/react-query": "^5.100.9",

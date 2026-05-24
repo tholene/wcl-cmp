@@ -16,6 +16,10 @@ import {
   validateWclCharacterResolveRequest,
 } from './warcraft-logs/wcl-character-resolver'
 import type { WclCharacterResolveRequest } from './warcraft-logs/wcl-character-resolver.types'
+import {
+  discoverWclCharacterBossKills,
+} from './warcraft-logs/wcl-character-boss-kills'
+import type { WclCharacterBossKillsRequest } from './warcraft-logs/wcl-character-boss-kills.types'
 import { getExportPreview, startExportJob, validateExportStartRequest } from './player-analysis/player-analysis-export.service'
 import { PlayerAnalysisBenchmarkService } from './player-analysis/player-analysis-benchmark.service'
 import { JobStore } from './player-analysis/player-analysis-job-store'
@@ -90,6 +94,9 @@ const requiresGuildScopedReportDiscovery = (reportCodes: unknown): boolean =>
 
 const toWclCharacterResolveBody = (body: unknown): WclCharacterResolveRequest =>
   (body ?? {}) as WclCharacterResolveRequest
+
+const toWclCharacterBossKillsBody = (body: unknown): WclCharacterBossKillsRequest =>
+  (body ?? {}) as WclCharacterBossKillsRequest
 
 app.get('/api/health', (_req: Request, res: Response) => {
   res.status(200).json({ ok: true })
@@ -211,6 +218,40 @@ app.post('/api/wcl/character/resolve', async (req: Request, res: Response) => {
   } catch (error) {
     const classified = classifyWclError(error, { site: body.wclSite })
     console.error('[wcl] /api/wcl/character/resolve failed:', error)
+    res.status(500).json({
+      error: classified.message,
+      hint: classified.hint,
+      code: classified.code,
+    })
+  }
+})
+
+app.post('/api/wcl/character/boss-kills', async (req: Request, res: Response) => {
+  const body = toWclCharacterBossKillsBody(req.body)
+
+  try {
+    const config = getWclConfig()
+    const result = await discoverWclCharacterBossKills(config, body)
+
+    if (result.status === 'error' && result.error?.code === 'VALIDATION_ERROR') {
+      res.status(400).json(result)
+      return
+    }
+
+    if (result.status === 'unsupported') {
+      res.status(422).json(result)
+      return
+    }
+
+    if (result.status === 'error') {
+      res.status(502).json(result)
+      return
+    }
+
+    res.status(200).json(result)
+  } catch (error) {
+    const classified = classifyWclError(error, { site: body.wclSite })
+    console.error('[wcl] /api/wcl/character/boss-kills failed:', error)
     res.status(500).json({
       error: classified.message,
       hint: classified.hint,

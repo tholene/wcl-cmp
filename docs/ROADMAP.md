@@ -141,7 +141,7 @@ Exit criteria:
 
 ### 5) Character resolver and search UX
 
-Status: Planned
+Status: In progress (backend foundation complete, frontend wiring pending)
 
 Goal:
 - Implement chosen character lookup/resolver flow while preserving export UX continuity.
@@ -150,6 +150,12 @@ Scope:
 - Build character lookup and resolution based on spike decisions.
 - Keep the current visual flow: player → boss → benchmark → export.
 - Integrate resolver behavior with settings-selected site defaults and mode-specific character identity inputs.
+- Backend global recent boss-kill discovery foundation is now implemented:
+  - resolver-driven identity resolution
+  - character recent report fight discovery
+  - raid-only candidate filtering
+  - per-fight ranking enrichment (class/spec/item-level/percentile when available)
+  - isolated endpoint `POST /api/wcl/character/boss-kills`
 
 Non-goals:
 - No unrelated redesign of export internals.
@@ -157,6 +163,10 @@ Non-goals:
 Exit criteria:
 - Officers can find/select characters through the chosen resolver/search approach.
 - Existing export sequence and operator ergonomics remain intact.
+
+Notes:
+- Global resolver + boss-kill discovery are available backend-side but are not wired into production UI yet.
+- Fuzzy/search-as-you-type remains a separate unresolved capability question.
 
 ## Decisions
 
