@@ -4,11 +4,17 @@ const serverConfigSchema = z.object({
   API_PORT: z.coerce.number().default(5781),
 })
 
+const optionalEnvText = z.preprocess((value) => {
+  if (typeof value !== 'string') return undefined
+  const trimmed = value.trim()
+  return trimmed.length > 0 ? trimmed : undefined
+}, z.string().optional())
+
 const wclConfigSchema = z.object({
   WCL_CLIENT_ID: z.string().min(1, 'WCL_CLIENT_ID is required'),
   WCL_CLIENT_SECRET: z.string().min(1, 'WCL_CLIENT_SECRET is required'),
-  WCL_GUILD_ID: z.string().default('61324'),
-  WCL_REGION: z.string().default('EU'),
+  WCL_GUILD_ID: optionalEnvText,
+  WCL_REGION: optionalEnvText,
   WCL_REDIRECT_URI: z.string().url().default('http://localhost:5781/auth/callback'),
   API_PORT: z.coerce.number().default(5781),
 })
@@ -18,8 +24,10 @@ export type WclConfig = z.infer<typeof wclConfigSchema>
 
 type ConfigStatus = {
   apiPort: number
-  guildId: string
-  region: string
+  guildId: string | null
+  region: string | null
+  hasGuildId: boolean
+  hasRegion: boolean
   hasClientId: boolean
   hasClientSecret: boolean
   hasRedirectUri: boolean
@@ -75,11 +83,15 @@ export const getWclConfig = (): WclConfig => {
 
 export const getConfigStatus = (): ConfigStatus => {
   const apiPort = Number(process.env.API_PORT || 5781)
+  const guildId = process.env.WCL_GUILD_ID?.trim() || null
+  const region = process.env.WCL_REGION?.trim() || null
 
   return {
     apiPort,
-    guildId: process.env.WCL_GUILD_ID || '61324',
-    region: process.env.WCL_REGION || 'EU',
+    guildId,
+    region,
+    hasGuildId: guildId !== null,
+    hasRegion: region !== null,
     hasClientId: Boolean(process.env.WCL_CLIENT_ID?.trim()),
     hasClientSecret: Boolean(process.env.WCL_CLIENT_SECRET?.trim()),
     hasRedirectUri: Boolean(process.env.WCL_REDIRECT_URI?.trim()),

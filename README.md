@@ -44,14 +44,16 @@ cp .env.example .env
 ```bash
 WCL_CLIENT_ID=...
 WCL_CLIENT_SECRET=...
-WCL_GUILD_ID=61324
-WCL_REGION=EU
+# Optional defaults (can also be set in Settings):
+# WCL_GUILD_ID=61324
+# WCL_REGION=EU
 API_PORT=5781
 VITE_DEV_SERVER_PORT=5780
 WCL_REDIRECT_URI=http://localhost:5781/auth/callback
 ```
 
 `WCL_CLIENT_ID` and `WCL_CLIENT_SECRET` come from your [Warcraft Logs API client](https://www.warcraftlogs.com/api/clients/).
+`WCL_GUILD_ID` and `WCL_REGION` are optional environment fallbacks. Request/settings values take precedence.
 
 4. Start frontend + backend together:
 

@@ -9,14 +9,19 @@ export type WclRequestContext = {
 
 export type WclConfigWithSite = WclConfig & {
   WCL_SITE: WclSite
+  WCL_GUILD_ID?: string
+  WCL_REGION?: string
 }
 
 export type ResolvedWclRequestContext = {
   site: WclSite
-  guildId: string
-  region: string
+  guildId?: string
+  region?: string
   config: WclConfigWithSite
 }
+
+export const MISSING_GUILD_ID_ERROR_MESSAGE =
+  'Guild ID is required for this flow. Add a Guild ID in Settings or configure WCL_GUILD_ID on the server.'
 
 const pickFirstValue = (value: unknown): unknown =>
   Array.isArray(value) ? value[0] : value
@@ -47,4 +52,11 @@ export const resolveWclRequestContext = (
       WCL_SITE: site,
     },
   }
+}
+
+export const requireGuildIdForGuildScopedFlow = (guildId: string | undefined): string => {
+  if (guildId && guildId.trim().length > 0) {
+    return guildId.trim()
+  }
+  throw new Error(MISSING_GUILD_ID_ERROR_MESSAGE)
 }

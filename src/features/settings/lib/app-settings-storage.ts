@@ -24,7 +24,6 @@ export const normalizeAppSettings = (input: unknown): AppSettings => {
     guildId: sanitizeText(obj['guildId']),
     region: sanitizeText(obj['region']),
     defaultRealm: sanitizeText(obj['defaultRealm']),
-    defaultCharacter: sanitizeText(obj['defaultCharacter']),
   }
 }
 
@@ -56,4 +55,3 @@ export const clearAppSettings = (): void => {
 
 export const getEffectiveWclSite = (settings: Pick<AppSettings, 'wclSite'>): WclSite =>
   settings.wclSite ?? 'retail'
-

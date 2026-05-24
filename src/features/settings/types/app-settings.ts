@@ -5,7 +5,6 @@ export type AppSettings = {
   guildId: string | null
   region: string | null
   defaultRealm: string | null
-  defaultCharacter: string | null
 }
 
 export const DEFAULT_APP_SETTINGS: AppSettings = {
@@ -13,6 +12,4 @@ export const DEFAULT_APP_SETTINGS: AppSettings = {
   guildId: null,
   region: null,
   defaultRealm: null,
-  defaultCharacter: null,
 }
-

@@ -1,5 +1,5 @@
 import { useState, type CSSProperties, type FC } from 'react'
-import type { AppSettings } from '@/features/settings/types/app-settings'
+import type { AppSettings, WclSite } from '@/features/settings/types/app-settings'
 
 const S = {
   bg0: '#1a1b1e',
@@ -19,6 +19,12 @@ type SettingsSidebarProps = {
   onSave: (settings: AppSettings) => void
   onClearAll: () => void
 }
+
+const SITE_OPTIONS: Array<{ value: WclSite; label: string }> = [
+  { value: 'retail', label: 'Retail' },
+  { value: 'classic', label: 'Classic' },
+  { value: 'fresh', label: 'Fresh' },
+]
 
 export const SettingsSidebar: FC<SettingsSidebarProps> = ({
   onClose,
@@ -106,23 +112,31 @@ export const SettingsSidebar: FC<SettingsSidebarProps> = ({
             <h3 style={sectionTitleStyle}>Warcraft Logs</h3>
 
             <Label htmlFor="wcl-site">WCL site</Label>
-            <select
+            <div
               id="wcl-site"
-              value={draft.wclSite ?? ''}
-              onChange={(e) => {
-                const raw = e.target.value.trim().toLowerCase()
-                setDraft((prev) => ({
-                  ...prev,
-                  wclSite: raw === 'retail' || raw === 'classic' || raw === 'fresh' ? raw : null,
-                }))
-              }}
-              style={selectStyle}
+              role="radiogroup"
+              aria-label="WCL site"
+              style={segmentedGroupStyle}
             >
-              <option value="">Choose site</option>
-              <option value="retail">Retail</option>
-              <option value="classic">Classic</option>
-              <option value="fresh">Fresh</option>
-            </select>
+              {SITE_OPTIONS.map((option) => {
+                const selected = draft.wclSite === option.value
+                return (
+                  <button
+                    key={option.value}
+                    type="button"
+                    role="radio"
+                    aria-checked={selected}
+                    onClick={() => setDraft((prev) => ({ ...prev, wclSite: option.value }))}
+                    style={{
+                      ...segmentedButtonStyle,
+                      ...(selected ? segmentedButtonSelectedStyle : {}),
+                    }}
+                  >
+                    {option.label}
+                  </button>
+                )
+              })}
+            </div>
 
             <Label htmlFor="guild-id">Guild ID (optional)</Label>
             <input
@@ -154,16 +168,6 @@ export const SettingsSidebar: FC<SettingsSidebarProps> = ({
               style={inputStyle}
             />
 
-            <Label htmlFor="character">Default character (optional)</Label>
-            <input
-              id="character"
-              type="text"
-              value={draft.defaultCharacter ?? ''}
-              onChange={(e) => setDraft((prev) => ({ ...prev, defaultCharacter: e.target.value }))}
-              placeholder="Fink"
-              style={inputStyle}
-            />
-
             <p style={{ margin: 0, fontSize: 11, color: S.textDim }}>
               Settings are stored locally in this browser. API credentials are never stored here.
             </p>
@@ -181,7 +185,7 @@ export const SettingsSidebar: FC<SettingsSidebarProps> = ({
         >
           <button
             type="button"
-            onClick={() => setDraft((prev) => ({ ...prev, guildId: null, region: null, defaultRealm: null, defaultCharacter: null }))}
+            onClick={() => setDraft((prev) => ({ ...prev, guildId: null, region: null, defaultRealm: null }))}
             style={secondaryButtonStyle}
           >
             Clear optional fields
@@ -208,7 +212,6 @@ export const SettingsSidebar: FC<SettingsSidebarProps> = ({
                 guildId: null,
                 region: null,
                 defaultRealm: null,
-                defaultCharacter: null,
               })
             }}
             style={ghostButtonStyle}
@@ -257,12 +260,36 @@ const baseFieldStyle: CSSProperties = {
   fontFamily: 'inherit',
 }
 
-const selectStyle: CSSProperties = {
-  ...baseFieldStyle,
-  cursor: 'pointer',
+const inputStyle: CSSProperties = baseFieldStyle
+
+const segmentedGroupStyle: CSSProperties = {
+  display: 'flex',
+  gap: 6,
+  padding: 4,
+  borderRadius: 10,
+  border: `1px solid ${S.borderLight}`,
+  background: 'rgba(255,255,255,0.02)',
 }
 
-const inputStyle: CSSProperties = baseFieldStyle
+const segmentedButtonStyle: CSSProperties = {
+  flex: 1,
+  borderRadius: 8,
+  border: `1px solid transparent`,
+  background: 'transparent',
+  color: S.textFaint,
+  padding: '8px 10px',
+  fontSize: 12,
+  fontWeight: 700,
+  fontFamily: 'inherit',
+  cursor: 'pointer',
+  transition: 'all 0.12s',
+}
+
+const segmentedButtonSelectedStyle: CSSProperties = {
+  border: `1px solid rgba(88,101,242,0.45)`,
+  background: 'rgba(88,101,242,0.16)',
+  color: '#c7cffc',
+}
 
 const primaryButtonStyle: CSSProperties = {
   borderRadius: 8,

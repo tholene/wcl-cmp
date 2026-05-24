@@ -39,8 +39,8 @@ describe('getWclConfig', () => {
 
     const config = getWclConfig()
 
-    expect(config.WCL_GUILD_ID).toBe('61324')
-    expect(config.WCL_REGION).toBe('EU')
+    expect(config.WCL_GUILD_ID).toBeUndefined()
+    expect(config.WCL_REGION).toBeUndefined()
     expect(config.WCL_REDIRECT_URI).toBe('http://localhost:5781/auth/callback')
     expect(config.API_PORT).toBe(5781)
   })
@@ -68,4 +68,3 @@ describe('getWclConfig', () => {
     expect(() => getWclConfig()).toThrow('WCL_REDIRECT_URI is invalid (must be a URL)')
   })
 })
-

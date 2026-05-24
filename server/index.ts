@@ -3,7 +3,12 @@ import cors from 'cors'
 import dotenv from 'dotenv'
 import express, { type NextFunction, type Request, type Response } from 'express'
 import { getConfigStatus, getServerConfig, getWclConfig } from './warcraft-logs/wcl-config'
-import { resolveWclRequestContext, type WclRequestContext } from './warcraft-logs/wcl-request-context'
+import {
+  MISSING_GUILD_ID_ERROR_MESSAGE,
+  requireGuildIdForGuildScopedFlow,
+  resolveWclRequestContext,
+  type WclRequestContext,
+} from './warcraft-logs/wcl-request-context'
 import { WclService } from './warcraft-logs/wcl-service'
 import { getExportPreview, startExportJob, validateExportStartRequest } from './player-analysis/player-analysis-export.service'
 import { PlayerAnalysisBenchmarkService } from './player-analysis/player-analysis-benchmark.service'
@@ -74,6 +79,9 @@ const toQueryContext = (req: Request): WclRequestContext => ({
 const toBodyContext = (req: Request): WclRequestContext | undefined =>
   (req.body?.wclContext ?? undefined) as WclRequestContext | undefined
 
+const requiresGuildScopedReportDiscovery = (reportCodes: unknown): boolean =>
+  !Array.isArray(reportCodes) || reportCodes.length === 0
+
 app.get('/api/health', (_req: Request, res: Response) => {
   res.status(200).json({ ok: true })
 })
@@ -85,7 +93,9 @@ app.get('/api/config/status', (_req: Request, res: Response) => {
     ...status,
     hint:
       status.hasClientId && status.hasClientSecret
-        ? 'WCL credentials appear present. If API calls fail, verify values and guild settings.'
+        ? status.hasGuildId
+          ? 'WCL credentials appear present. If API calls fail, verify values and guild settings.'
+          : 'WCL credentials appear present. Configure a Guild ID in Settings or set WCL_GUILD_ID for guild-scoped flows.'
         : 'Missing WCL credentials. Add WCL_CLIENT_ID and WCL_CLIENT_SECRET to .env and restart npm run dev.',
   })
 })
@@ -94,6 +104,7 @@ app.get('/api/reports/recent', async (req: Request, res: Response) => {
   try {
     const baseConfig = getWclConfig()
     const resolvedContext = resolveWclRequestContext(baseConfig, toQueryContext(req))
+    requireGuildIdForGuildScopedFlow(resolvedContext.guildId)
     const reports = await WclService.listRecentReports(resolvedContext.config)
 
     res.status(200).json({
@@ -102,11 +113,17 @@ app.get('/api/reports/recent', async (req: Request, res: Response) => {
       reports,
     })
   } catch (error) {
+    if (error instanceof Error && error.message === MISSING_GUILD_ID_ERROR_MESSAGE) {
+      res.status(400).json({
+        error: MISSING_GUILD_ID_ERROR_MESSAGE,
+      })
+      return
+    }
     const message = error instanceof Error ? error.message : 'Unknown error while fetching reports.'
 
     res.status(500).json({
       error: message,
-      hint: 'Verify WCL_CLIENT_ID, WCL_CLIENT_SECRET, and WCL_GUILD_ID in your .env file.',
+      hint: 'Verify WCL_CLIENT_ID and WCL_CLIENT_SECRET in your .env file.',
     })
   }
 })
@@ -115,6 +132,7 @@ app.get('/api/players/recent', async (req: Request, res: Response) => {
   try {
     const baseConfig = getWclConfig()
     const resolvedContext = resolveWclRequestContext(baseConfig, toQueryContext(req))
+    requireGuildIdForGuildScopedFlow(resolvedContext.guildId)
     const players = await WclService.getRecentPlayers(resolvedContext.config)
 
     res.status(200).json({
@@ -122,6 +140,12 @@ app.get('/api/players/recent', async (req: Request, res: Response) => {
       generatedAt: Date.now(),
     })
   } catch (error) {
+    if (error instanceof Error && error.message === MISSING_GUILD_ID_ERROR_MESSAGE) {
+      res.status(400).json({
+        error: MISSING_GUILD_ID_ERROR_MESSAGE,
+      })
+      return
+    }
     const message = error instanceof Error ? error.message : 'Unknown error while fetching recent players.'
 
     res.status(500).json({
@@ -155,9 +179,19 @@ app.post('/api/player-analysis/export-preview', async (req: Request, res: Respon
   try {
     const baseConfig = getWclConfig()
     const resolvedContext = resolveWclRequestContext(baseConfig, toBodyContext(req))
+    if (requiresGuildScopedReportDiscovery(req.body?.reportCodes)) {
+      requireGuildIdForGuildScopedFlow(resolvedContext.guildId)
+    }
     const preview = await getExportPreview(resolvedContext.config, req.body)
     res.status(200).json(preview)
   } catch (error) {
+    if (error instanceof Error && error.message === MISSING_GUILD_ID_ERROR_MESSAGE) {
+      sendPlayerAnalysisError(res, 400, {
+        error: MISSING_GUILD_ID_ERROR_MESSAGE,
+        code: 'MISSING_GUILD_ID',
+      })
+      return
+    }
     const message = asErrorMessage(error, 'Unknown error during export preview.')
     sendPlayerAnalysisError(res, 400, {
       error: message,
@@ -187,10 +221,20 @@ app.post('/api/player-analysis/export', async (req: Request, res: Response) => {
   try {
     const baseConfig = getWclConfig()
     const resolvedContext = resolveWclRequestContext(baseConfig, toBodyContext(req))
+    if (requiresGuildScopedReportDiscovery(req.body?.reportCodes)) {
+      requireGuildIdForGuildScopedFlow(resolvedContext.guildId)
+    }
     validateExportStartRequest(req.body)
     const jobStart = startExportJob(resolvedContext.config, req.body)
     res.status(202).json(jobStart)
   } catch (error) {
+    if (error instanceof Error && error.message === MISSING_GUILD_ID_ERROR_MESSAGE) {
+      sendPlayerAnalysisError(res, 400, {
+        error: MISSING_GUILD_ID_ERROR_MESSAGE,
+        code: 'MISSING_GUILD_ID',
+      })
+      return
+    }
     const message = asErrorMessage(error, 'Unknown error starting export job.')
     sendPlayerAnalysisError(res, 400, {
       error: message,

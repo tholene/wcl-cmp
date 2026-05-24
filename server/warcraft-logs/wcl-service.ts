@@ -1,6 +1,7 @@
 import type { WclConfig } from './wcl-config'
 import { queryWclGraphQl } from './wcl-client'
 import { isRaidZone } from './raid-zone-classifier'
+import { requireGuildIdForGuildScopedFlow } from './wcl-request-context'
 import { buildWclReportUrl } from './wcl-site'
 import type {
   WclFightSummary,
@@ -180,11 +181,12 @@ const mapFights = (
 
 export const WclService = {
   listRecentReports: async (config: WclConfig, limit = RECENT_REPORT_LIMIT, startTime?: number): Promise<WclReportSummary[]> => {
+    const guildId = requireGuildIdForGuildScopedFlow(config.WCL_GUILD_ID)
     const queryResponse = await queryWclGraphQl<ReportsQueryResponse>({
       config,
       query: REPORTS_BY_GUILD_QUERY,
       variables: {
-        guildId: Number(config.WCL_GUILD_ID),
+        guildId: Number(guildId),
         limit,
         startTime,
       },

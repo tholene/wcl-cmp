@@ -16,6 +16,7 @@ describe('app-settings-storage', () => {
 
   it('returns defaults when localStorage is empty', () => {
     expect(loadAppSettings()).toEqual(DEFAULT_APP_SETTINGS)
+    expect(DEFAULT_APP_SETTINGS).not.toHaveProperty('defaultCharacter')
   })
 
   it('returns defaults when localStorage JSON is corrupt', () => {
@@ -30,15 +31,36 @@ describe('app-settings-storage', () => {
         guildId: '  61324  ',
         region: '',
         defaultRealm: 42,
-        defaultCharacter: '  Fink ',
       })
     ).toEqual({
       wclSite: null,
       guildId: '61324',
       region: null,
       defaultRealm: null,
-      defaultCharacter: 'Fink',
     })
+  })
+
+  it('drops legacy defaultCharacter from old stored payloads', () => {
+    window.localStorage.setItem(
+      APP_SETTINGS_STORAGE_KEY,
+      JSON.stringify({
+        wclSite: 'retail',
+        guildId: '61324',
+        region: 'EU',
+        defaultRealm: 'Ragnaros',
+        defaultCharacter: 'LegacyName',
+      })
+    )
+
+    const loaded = loadAppSettings()
+
+    expect(loaded).toEqual({
+      wclSite: 'retail',
+      guildId: '61324',
+      region: 'EU',
+      defaultRealm: 'Ragnaros',
+    })
+    expect(JSON.parse(JSON.stringify(loaded))).not.toHaveProperty('defaultCharacter')
   })
 
   it('loads and sanitizes persisted settings', () => {
@@ -49,7 +71,6 @@ describe('app-settings-storage', () => {
         guildId: '  61324 ',
         region: 'EU',
         defaultRealm: 'Ragnaros',
-        defaultCharacter: 'Mini',
       })
     )
 
@@ -58,7 +79,6 @@ describe('app-settings-storage', () => {
       guildId: '61324',
       region: 'EU',
       defaultRealm: 'Ragnaros',
-      defaultCharacter: 'Mini',
     })
   })
 
@@ -68,7 +88,6 @@ describe('app-settings-storage', () => {
       guildId: '  ',
       region: ' us ',
       defaultRealm: '  ragnaros ',
-      defaultCharacter: '  Katie ',
     })
 
     expect(saved).toEqual({
@@ -76,10 +95,11 @@ describe('app-settings-storage', () => {
       guildId: null,
       region: 'us',
       defaultRealm: 'ragnaros',
-      defaultCharacter: 'Katie',
     })
 
-    expect(JSON.parse(window.localStorage.getItem(APP_SETTINGS_STORAGE_KEY) ?? '{}')).toEqual(saved)
+    const persisted = JSON.parse(window.localStorage.getItem(APP_SETTINGS_STORAGE_KEY) ?? '{}')
+    expect(persisted).toEqual(saved)
+    expect(persisted).not.toHaveProperty('defaultCharacter')
   })
 
   it('clears persisted settings', () => {

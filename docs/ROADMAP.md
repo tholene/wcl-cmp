@@ -51,7 +51,6 @@ Required settings:
 - Optional guild ID
 - Optional region
 - Optional default realm/server
-- Optional default character
 - Future-safe structure for additional settings
 
 UX:
@@ -86,7 +85,7 @@ Goal:
 - Apply selected app settings to request flow while maintaining backward-compatible defaults.
 
 Scope:
-- Frontend sends selected site and relevant optional context (guild/region/realm/character) where needed.
+- Frontend sends selected site and relevant optional context (guild/region) where needed.
 - Backend accepts site/config inputs through a safe validated configuration path.
 - Current retail behavior remains default-compatible when explicit settings are absent.
 
@@ -100,7 +99,9 @@ Exit criteria:
 
 Notes:
 - Frontend now sends `wclSite` and optional `guildId`/`region` in report/player and player-analysis requests.
-- Backend now resolves and validates request-level `wclSite`/`guildId`/`region` with safe defaults to env config.
+- Backend precedence is `request/settings > ENV > omitted`.
+- Missing `guildId` now returns a clear error only for guild-scoped flows that require it.
+- `defaultCharacter` was intentionally removed from settings to keep player search as the single source of truth.
 - Classic/Fresh schema behavior remains unverified beyond request routing and fallback/error handling.
 - Character search and resolver work remain future slices.
 
