@@ -21,9 +21,13 @@ import { SpecIcon } from '@/features/player-analysis/components/spec-icon'
 import { StepDot } from '@/features/player-analysis/components/step-dot'
 import { usePlayerAnalysisState } from '@/features/player-analysis/hooks/use-player-analysis-state'
 import { classColor } from '@/features/player-analysis/lib/class-colors'
+import {
+  getGlobalLookupStatusMessage,
+  GLOBAL_LOOKUP_BEFORE_SEARCH_MESSAGE,
+  GLOBAL_LOOKUP_LOADING_MESSAGE,
+} from '@/features/player-analysis/lib/global-mode'
 import { flattenAndDeduplicateBossKills, formatDuration, mapGlobalBossKillsToBossGroups } from '@/features/player-analysis/lib/player-analysis-utils'
 import type { AvailableBaseline } from '@/features/player-analysis/types/available-baseline'
-import type { GlobalCharacterBossKillsResponse } from '@/features/player-analysis/types/player-analysis.types'
 import { SettingsButton } from '@/features/settings/components/settings-button'
 import { SettingsFirstRunDialog } from '@/features/settings/components/settings-first-run-dialog'
 import { SettingsSidebar } from '@/features/settings/components/settings-sidebar'
@@ -46,23 +50,6 @@ const ShimmerRows: FC<{ sq: number }> = ({ sq }) => (
     ))}
   </div>
 )
-
-const getGlobalLookupStatusMessage = (result: GlobalCharacterBossKillsResponse | null): string | null => {
-  if (!result) return null
-  if (result.status === 'ok' && result.bossKills.length === 0) {
-    return 'No recent boss kills found for this character.'
-  }
-  if (result.status === 'not_found') {
-    return 'Character not found. Check URL/site/region/realm/name and try again.'
-  }
-  if (result.status === 'unsupported') {
-    return result.error?.message ?? 'This Warcraft Logs site/path is currently unsupported for this lookup.'
-  }
-  if (result.status === 'error') {
-    return result.error?.message ?? 'Global lookup failed. Try another character or adjust inputs.'
-  }
-  return null
-}
 
 export const PlayerAnalysisPage: FC = () => {
   const appSettings = useAppSettings()
@@ -241,7 +228,12 @@ export const PlayerAnalysisPage: FC = () => {
                     <div>
                       {s.lookupMode === 'global' ? (
                         <>
-                          {s.globalBossKillsMutation.isPending && <ShimmerRows sq={44} />}
+                          {s.globalBossKillsMutation.isPending && (
+                            <>
+                              <p className="mb-2 text-[13px] text-muted">{GLOBAL_LOOKUP_LOADING_MESSAGE}</p>
+                              <ShimmerRows sq={44} />
+                            </>
+                          )}
                           {s.globalBossKillsMutation.error && !s.globalBossKillsMutation.isPending && (
                             <div className="alert-error">
                               {(s.globalBossKillsMutation.error as Error).message}
@@ -256,6 +248,9 @@ export const PlayerAnalysisPage: FC = () => {
                             <div className={s.globalResult?.status === 'ok' ? 'alert-warning' : 'alert-error'}>
                               {globalLookupStatusMessage}
                             </div>
+                          )}
+                          {!s.hasGlobalLookupAttempt && !s.globalBossKillsMutation.isPending && (
+                            <p className="text-[13px] text-muted">{GLOBAL_LOOKUP_BEFORE_SEARCH_MESSAGE}</p>
                           )}
                           {!s.globalBossKillsMutation.isPending && globalBossRows.length > 0 && (
                             <>
@@ -272,10 +267,17 @@ export const PlayerAnalysisPage: FC = () => {
                                     durationMs={fight.durationMs}
                                     startTime={fight.startTime}
                                     playerParse={fight.playerParse}
+                                    playerMetric={fight.playerMetric}
                                     reportCode={fight.reportCode}
                                     fightId={fight.fightId}
+                                    kill={fight.kill}
+                                    playerClassName={fight.playerClassName}
+                                    playerSpecName={fight.playerSpecName}
+                                    playerItemLevel={fight.playerItemLevel}
+                                    warnings={fight.warnings}
                                     isSelected={s.isSelected(fight.reportCode, fight.fightId)}
                                     duplicateReportCount={fight.duplicateReportCount}
+                                    showExtendedMetadata
                                     onClick={() => {
                                       const matched = s.globalBossKills.find(
                                         (entry) => entry.reportCode === fight.reportCode && entry.fightId === fight.fightId
@@ -295,6 +297,7 @@ export const PlayerAnalysisPage: FC = () => {
                           )}
                           {(s.globalResult?.warnings?.length || globalFightWarnings.length > 0) ? (
                             <div className="alert-warning mt-2">
+                              <p>Some global fights are partially enriched; selectable fights still work.</p>
                               {[...new Set([...(s.globalResult?.warnings ?? []), ...globalFightWarnings])].map((w) => <p key={w}>⚠ {w}</p>)}
                             </div>
                           ) : null}

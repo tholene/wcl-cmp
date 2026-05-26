@@ -170,6 +170,11 @@ Notes:
   - global URL/exact tuple inputs
   - global boss-fight card listing
   - selected global fight bridged into existing benchmark/export flow
+- Global mode parity hardening now added:
+  - explicit global state copy for before-load/loading/not-found/no-kills/unsupported
+  - richer global boss card metadata (report/fight, difficulty, duration/date, class/spec, ilvl, parse/metric, partial enrichment notice)
+  - benchmark block guard when selected global fight lacks class/spec enrichment
+  - explicit scope guard accepts `fightIdsByReport` as guild-independent scope (not only `reportCodes`)
 - Guild mode remains default when guild ID exists; global is default when guild ID is missing.
 - Fuzzy/search-as-you-type remains a separate unresolved capability question.
 - Classic/Fresh full parity remains unverified in end-to-end frontend flow.

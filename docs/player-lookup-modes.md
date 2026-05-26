@@ -73,6 +73,16 @@ What is now implemented frontend-side:
 - Global URL/exact lookup request wiring to `POST /api/wcl/character/boss-kills`.
 - Global boss-fight card rendering using existing boss card visual language.
 - Selection bridge into existing preview/benchmark/export pipeline via explicit `reportCode + fightId`.
+- Global-mode UX states are now explicit for:
+  - pre-lookup guidance
+  - loading
+  - not found
+  - unsupported data shape
+  - empty boss-kill results
+  - partial enrichment warnings
+- Global benchmark discovery now hard-blocks with a clear message when selected-fight class/spec enrichment is missing:
+  - `Benchmark discovery needs class/spec data for the selected fight. Try another logged kill or use Guild mode.`
+- Explicit report/fight scope (`reportCodes` and/or `fightIdsByReport`) is guild-independent in preview/export paths.
 
 What is still intentionally not implemented:
 - No fuzzy/search-as-you-type global lookup.

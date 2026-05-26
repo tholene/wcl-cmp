@@ -12,6 +12,7 @@ const makeGroup = (
   encounterName: `Boss ${encounterId}`,
   difficulty,
   fights: fights.map((f, i) => ({
+    kill: true,
     reportCode: f.reportCode ?? `R${i}`,
     reportTitle: `Report ${i}`,
     fightId: f.fightId ?? i + 1,
@@ -64,7 +65,7 @@ describe('flattenAndDeduplicateBossKills', () => {
 })
 
 describe('mapGlobalBossKillsToBossGroups', () => {
-  it('groups by encounter+difficulty and preserves ranking fields for cards', () => {
+  it('groups by encounter+difficulty and preserves enrichment + explicit scope fields', () => {
     const groups = mapGlobalBossKillsToBossGroups([
       {
         site: 'retail',
@@ -78,10 +79,12 @@ describe('mapGlobalBossKillsToBossGroups', () => {
         durationMs: 180000,
         startTime: BASE_TIME + 1000,
         playerItemLevel: 700,
+        className: 'Warrior',
         specName: 'Fury',
         percentile: 92,
+        metric: 'dps',
         source: 'reportVerification',
-        warnings: [],
+        warnings: ['Ranking entry missing totalParses'],
       },
       {
         site: 'retail',
@@ -95,8 +98,10 @@ describe('mapGlobalBossKillsToBossGroups', () => {
         durationMs: 181000,
         startTime: BASE_TIME + 2000,
         playerItemLevel: 701,
+        className: 'Warrior',
         specName: 'Fury',
         percentile: 93,
+        metric: 'dps',
         source: 'reportVerification',
         warnings: [],
       },
@@ -107,10 +112,18 @@ describe('mapGlobalBossKillsToBossGroups', () => {
     expect(groups[0].difficulty).toBe(4)
     expect(groups[0].fights).toHaveLength(2)
     expect(groups[0].fights[0]).toMatchObject({
+      kill: true,
       reportCode: 'DEF456',
       fightId: 6,
+      playerClassName: 'Warrior',
       playerSpecName: 'Fury',
       playerParse: 93,
+      playerMetric: 'dps',
+    })
+    expect(groups[0].fights[1]).toMatchObject({
+      reportCode: 'ABC123',
+      fightId: 5,
+      warnings: ['Ranking entry missing totalParses'],
     })
   })
 })

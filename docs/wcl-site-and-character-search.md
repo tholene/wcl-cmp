@@ -219,6 +219,11 @@ Delivered:
   - exact tuple fallback (`characterName`, `region`, `realmSlug`)
 - Global boss-kill results render with existing boss cards and warnings.
 - Selecting a global boss kill feeds explicit `reportCode + fightId` into existing preview/benchmark/export flow.
+- Global flow hardening:
+  - explicit user-facing states for before lookup, loading, not found, empty results, and unsupported response shapes
+  - richer boss-card metadata (class/spec, item level, parse metric, report/fight IDs, partial enrichment note)
+  - benchmark discovery hard-blocked with clear guidance when selected fight lacks class/spec enrichment
+  - explicit scope preview/export path no longer depends on guild discovery when only `fightIdsByReport` is provided
 
 Intentionally still out of scope:
 - No fuzzy/search-as-you-type character search.

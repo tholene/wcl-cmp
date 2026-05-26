@@ -21,6 +21,7 @@ import {
 } from './warcraft-logs/wcl-character-boss-kills'
 import type { WclCharacterBossKillsRequest } from './warcraft-logs/wcl-character-boss-kills.types'
 import { getExportPreview, startExportJob, validateExportStartRequest } from './player-analysis/player-analysis-export.service'
+import { requiresGuildScopedReportDiscovery } from './player-analysis/player-analysis-scope'
 import { PlayerAnalysisBenchmarkService } from './player-analysis/player-analysis-benchmark.service'
 import { JobStore } from './player-analysis/player-analysis-job-store'
 import { validateAndResolveExportFilePath } from './player-analysis/player-analysis-export-files'
@@ -88,9 +89,6 @@ const toQueryContext = (req: Request): WclRequestContext => ({
 
 const toBodyContext = (req: Request): WclRequestContext | undefined =>
   (req.body?.wclContext ?? undefined) as WclRequestContext | undefined
-
-const requiresGuildScopedReportDiscovery = (reportCodes: unknown): boolean =>
-  !Array.isArray(reportCodes) || reportCodes.length === 0
 
 const toWclCharacterResolveBody = (body: unknown): WclCharacterResolveRequest =>
   (body ?? {}) as WclCharacterResolveRequest
@@ -286,7 +284,7 @@ app.post('/api/player-analysis/export-preview', async (req: Request, res: Respon
     const baseConfig = getWclConfig()
     const resolvedContext = resolveWclRequestContext(baseConfig, toBodyContext(req))
     selectedSite = resolvedContext.site
-    if (requiresGuildScopedReportDiscovery(req.body?.reportCodes)) {
+    if (requiresGuildScopedReportDiscovery(req.body ?? {})) {
       requireGuildIdForGuildScopedFlow(resolvedContext.guildId)
     }
     const preview = await getExportPreview(resolvedContext.config, req.body)
@@ -340,7 +338,7 @@ app.post('/api/player-analysis/export', async (req: Request, res: Response) => {
     const baseConfig = getWclConfig()
     const resolvedContext = resolveWclRequestContext(baseConfig, toBodyContext(req))
     selectedSite = resolvedContext.site
-    if (requiresGuildScopedReportDiscovery(req.body?.reportCodes)) {
+    if (requiresGuildScopedReportDiscovery(req.body ?? {})) {
       requireGuildIdForGuildScopedFlow(resolvedContext.guildId)
     }
     validateExportStartRequest(req.body)

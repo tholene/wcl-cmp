@@ -29,13 +29,20 @@ type BossKillCardProps = {
   encounterName: string
   encounterId?: number | null
   difficulty: number
+  kill?: boolean
   durationMs: number
   startTime: number
   playerParse?: number | null
+  playerMetric?: string | null
+  playerClassName?: string | null
+  playerSpecName?: string | null
+  playerItemLevel?: number | null
+  warnings?: string[]
   reportCode: string
   fightId: number
   isSelected: boolean
   duplicateReportCount?: number
+  showExtendedMetadata?: boolean
   onClick: () => void
 }
 
@@ -43,17 +50,30 @@ export const BossKillCard: FC<BossKillCardProps> = ({
   encounterName,
   encounterId,
   difficulty,
+  kill = true,
   durationMs,
   startTime,
   playerParse,
+  playerMetric,
+  playerClassName,
+  playerSpecName,
+  playerItemLevel,
+  warnings = [],
   reportCode,
   fightId,
   isSelected,
   duplicateReportCount,
+  showExtendedMetadata = false,
   onClick,
 }) => {
   const [hovered, setHovered] = useState(false)
   const diff = getDiff(difficulty)
+  const metadataBits = [
+    playerClassName && playerSpecName ? `${playerSpecName} ${playerClassName}` : null,
+    typeof playerItemLevel === 'number' ? `${Math.round(playerItemLevel)} ilvl` : null,
+    playerParse != null && playerMetric ? `${Math.round(playerParse)}% ${playerMetric.toUpperCase()}` : null,
+  ].filter((value): value is string => !!value)
+  const hasPartialWarnings = warnings.length > 0
 
   const borderColor = isSelected
     ? 'rgba(88,101,242,0.40)'
@@ -119,8 +139,21 @@ export const BossKillCard: FC<BossKillCardProps> = ({
               {Math.round(playerParse)}%
             </span>
           )}
+          {!kill && (
+            <span style={{ color: '#f0b232', fontWeight: 600 }}>Wipe</span>
+          )}
           <span>{new Date(startTime).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}</span>
         </div>
+        {showExtendedMetadata && metadataBits.length > 0 && (
+          <div style={{ fontSize: 11, color: '#949ba4', marginTop: 2 }}>
+            {metadataBits.join(' · ')}
+          </div>
+        )}
+        {showExtendedMetadata && hasPartialWarnings && (
+          <div style={{ fontSize: 11, color: '#f0b232', marginTop: 2 }}>
+            Partial enrichment for this fight
+          </div>
+        )}
         {duplicateReportCount != null && duplicateReportCount > 0 && (
           <div style={{ fontSize: 11, color: '#6d6f78', marginTop: 2 }}>
             Also found in {duplicateReportCount} other {duplicateReportCount === 1 ? 'report' : 'reports'}

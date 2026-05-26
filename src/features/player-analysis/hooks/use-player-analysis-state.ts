@@ -10,6 +10,7 @@ import { usePlayerAnalysisPreview } from './use-player-analysis-preview'
 import { useRecentPlayers } from './use-recent-players'
 import { getRoleForSpec } from '../types/wow-class-spec'
 import { buildGlobalBossKillsRequest, getDefaultPlayerLookupMode, hasConfiguredGuildId } from '../lib/player-lookup-mode'
+import { getGlobalBenchmarkBlockedReason } from '../lib/global-mode'
 import {
   buildBaselineKeysFromFightSelection,
   buildSelectedCandidates,
@@ -65,6 +66,7 @@ export const usePlayerAnalysisState = (context: AppSettingsRequestContext) => {
     limit: 10,
   })
   const [globalLookupValidationError, setGlobalLookupValidationError] = useState<string | null>(null)
+  const [selectedGlobalBossKill, setSelectedGlobalBossKill] = useState<GlobalCharacterBossKill | null>(null)
 
   // ── Derived preview (must precede sub-hooks) ─────────────────────────────────
   const preview = previewMutation.data ?? null
@@ -83,6 +85,9 @@ export const usePlayerAnalysisState = (context: AppSettingsRequestContext) => {
   const job = exportJob.jobStatus
   const globalResult = globalBossKillsMutation.data ?? null
   const globalBossKills = globalResult?.status === 'ok' ? globalResult.bossKills : []
+  const globalBossKillByKey = new Map<string, GlobalCharacterBossKill>(
+    globalBossKills.map((fight) => [`${fight.reportCode}:${fight.fightId}`, fight])
+  )
   const hasGlobalLookupAttempt =
     globalBossKillsMutation.isPending ||
     globalBossKillsMutation.isSuccess ||
@@ -97,12 +102,29 @@ export const usePlayerAnalysisState = (context: AppSettingsRequestContext) => {
   const hasWclClassSpec = !!wclClassName && !!wclSpecName
   const hasUserClassSpec = !!benchmarkFormState.playerUserContext?.className && !!benchmarkFormState.playerUserContext?.specName
   const selectedUserSource = benchmarkFormState.benchmarkContextSource === 'userProvided'
+  const selectedGlobalClassName =
+    lookupMode === 'global' ? selectedGlobalBossKill?.className?.trim() || null : null
+  const selectedGlobalSpecName =
+    lookupMode === 'global' ? selectedGlobalBossKill?.specName?.trim() || null : null
+  const hasGlobalClassSpec = !!selectedGlobalClassName && !!selectedGlobalSpecName
   const effectiveClassName = selectedUserSource
     ? (hasUserClassSpec ? benchmarkFormState.playerUserContext?.className ?? null : null)
-    : hasWclClassSpec ? wclClassName : hasUserClassSpec ? benchmarkFormState.playerUserContext?.className ?? null : null
+    : hasGlobalClassSpec
+      ? selectedGlobalClassName
+      : hasWclClassSpec
+        ? wclClassName
+        : hasUserClassSpec
+          ? benchmarkFormState.playerUserContext?.className ?? null
+          : selectedGlobalClassName
   const effectiveSpecName = selectedUserSource
     ? (hasUserClassSpec ? benchmarkFormState.playerUserContext?.specName ?? null : null)
-    : hasWclClassSpec ? wclSpecName : hasUserClassSpec ? benchmarkFormState.playerUserContext?.specName ?? null : null
+    : hasGlobalClassSpec
+      ? selectedGlobalSpecName
+      : hasWclClassSpec
+        ? wclSpecName
+        : hasUserClassSpec
+          ? benchmarkFormState.playerUserContext?.specName ?? null
+          : selectedGlobalSpecName
   const specDetectionFailed = !!preview && (!wclClassName || !wclSpecName)
 
   const availableBaselines: AvailableBaseline[] = preview
@@ -114,8 +136,11 @@ export const usePlayerAnalysisState = (context: AppSettingsRequestContext) => {
               const selectedInScope = (bossKillSelection.selectedFightIdsByReport[r.code] ?? []).includes(f.fightId)
               return selectedInScope && (f.encounterId ?? 0) > 0 && f.playerPresent && f.durationMs >= 60000
             })
-            .map((f): AvailableBaseline => ({
-              key: `${r.code}:${f.fightId}`,
+            .map((f): AvailableBaseline => {
+              const key = `${r.code}:${f.fightId}`
+              const globalFight = globalBossKillByKey.get(key)
+              return {
+                key,
               reportCode: r.code,
               reportTitle: r.title,
               fightId: f.fightId,
@@ -125,11 +150,11 @@ export const usePlayerAnalysisState = (context: AppSettingsRequestContext) => {
               durationMs: f.durationMs,
               kill: f.kill,
               playerName: preview.detectedPlayer?.characterName ?? '',
-              className: effectiveClassName ?? 'unknown',
-              specName: f.playerSpecName ?? effectiveSpecName ?? 'unknown',
-              itemLevel: f.playerItemLevel ?? null,
-              playerParse: f.playerParse ?? null,
-            }))
+              className: globalFight?.className ?? effectiveClassName ?? 'unknown',
+              specName: f.playerSpecName ?? globalFight?.specName ?? effectiveSpecName ?? 'unknown',
+              itemLevel: f.playerItemLevel ?? globalFight?.playerItemLevel ?? null,
+              playerParse: f.playerParse ?? globalFight?.percentile ?? null,
+            }})
         )
     : []
 
@@ -147,15 +172,16 @@ export const usePlayerAnalysisState = (context: AppSettingsRequestContext) => {
     for (const r of preview.includedReports) {
       for (const f of r.includedFights) {
         if (`${r.code}:${f.fightId}` !== key) continue
-        const itemLevel = f.playerItemLevel ?? null
+        const globalFight = globalBossKillByKey.get(key)
+        const itemLevel = f.playerItemLevel ?? globalFight?.playerItemLevel ?? null
         return {
           playerName: preview.detectedPlayer?.characterName ?? playerName,
           reportCode: r.code,
           fightId: f.fightId,
           encounterId: f.encounterId ?? 0,
           difficulty: f.difficulty,
-          className: effectiveClassName ?? 'unknown',
-          specName: f.playerSpecName ?? effectiveSpecName ?? 'unknown',
+          className: globalFight?.className ?? effectiveClassName ?? 'unknown',
+          specName: f.playerSpecName ?? globalFight?.specName ?? effectiveSpecName ?? 'unknown',
           itemLevel,
           itemLevelSource: itemLevel != null
             ? ('selectedFightCombatantInfo' as const)
@@ -165,7 +191,10 @@ export const usePlayerAnalysisState = (context: AppSettingsRequestContext) => {
             : effectiveSpecName != null
               ? ('detectedContext' as const)
               : ('unknown' as const),
-          warnings: itemLevel == null ? ['Item level unavailable for selected fight — benchmark delta will not be shown'] : [],
+          warnings: [
+            ...(itemLevel == null ? ['Item level unavailable for selected fight — benchmark delta will not be shown'] : []),
+            ...(globalFight?.warnings ?? []),
+          ],
         }
       }
     }
@@ -212,10 +241,21 @@ export const usePlayerAnalysisState = (context: AppSettingsRequestContext) => {
       ? `Manual benchmark is enabled, but missing ${benchmarkFormState.manualMissingFields.join(', ')}.`
       : null
 
-  const benchmarkBlockedReason = benchmarkAutoGuardReason ?? benchmarkManualGuardReason
+  const globalBenchmarkBlockedReason = getGlobalBenchmarkBlockedReason({
+    lookupMode,
+    hasGlobalSelection,
+    selectedGlobalBossKill,
+  })
+  const benchmarkBlockedReason = globalBenchmarkBlockedReason ?? benchmarkAutoGuardReason ?? benchmarkManualGuardReason
   const canUseSubjectOnlyOverride = benchmarkFormState.benchmarkMode !== 'none' && !!benchmarkBlockedReason
   const exportBlockedReason = benchmarkBlockedReason && !benchmarkFormState.allowSubjectOnlyWithoutBenchmark ? benchmarkBlockedReason : null
-  const canFindCandidates = !!preview && bossKillSelection.selectedBaselineKeys.size > 0 && !!preview.detectedPlayer && !!effectiveClassName && !!effectiveSpecName
+  const canFindCandidates =
+    !!preview &&
+    bossKillSelection.selectedBaselineKeys.size > 0 &&
+    !!preview.detectedPlayer &&
+    !!effectiveClassName &&
+    !!effectiveSpecName &&
+    !globalBenchmarkBlockedReason
 
   const showProgress = exportJob.isStarting || job !== null
   const showResults = !!job && (job.status === 'complete' || job.status === 'partial' || (job.status === 'failed' && (job.files?.length ?? 0) > 0))
@@ -379,6 +419,7 @@ export const usePlayerAnalysisState = (context: AppSettingsRequestContext) => {
     if (nextMode === 'guild') {
       setGlobalLookupValidationError(null)
       globalBossKillsMutation.reset()
+      setSelectedGlobalBossKill(null)
     }
   }
 
@@ -391,6 +432,7 @@ export const usePlayerAnalysisState = (context: AppSettingsRequestContext) => {
     }
     invalidatePreviewState({ resetUserContext: true })
     setForcedStep(1)
+    setSelectedGlobalBossKill(null)
     globalBossKillsMutation.reset()
     globalBossKillsMutation.mutate(builtRequest.request, {
       onSuccess: (result) => {
@@ -406,6 +448,7 @@ export const usePlayerAnalysisState = (context: AppSettingsRequestContext) => {
   const handleSelectGlobalBossKill = (fight: GlobalCharacterBossKill) => {
     const selectedPlayerName = globalResult?.character?.name?.trim() || playerName.trim()
     if (!selectedPlayerName) return
+    setSelectedGlobalBossKill(fight)
     setPendingClassName(fight.className ?? globalResult?.character?.className ?? null)
     if (fight.className && fight.specName) {
       benchmarkFormState.setPlayerUserContext({
@@ -413,6 +456,9 @@ export const usePlayerAnalysisState = (context: AppSettingsRequestContext) => {
         specName: fight.specName,
         role: getRoleForSpec(fight.className, fight.specName) ?? undefined,
       })
+    } else {
+      benchmarkFormState.setPlayerUserContext(null)
+      benchmarkFormState.setBenchmarkContextSource('wclDetected')
     }
     handleScopeFieldChange(() => setPlayerName(selectedPlayerName), { resetUserContext: false })
     setForcedStep(1)
@@ -450,10 +496,10 @@ export const usePlayerAnalysisState = (context: AppSettingsRequestContext) => {
             durationMs: f.durationMs,
             kill: f.kill,
             playerName: preview.detectedPlayer?.characterName ?? '',
-            className: effectiveClassName,
-            specName: effectiveSpecName,
-            itemLevel: f.playerItemLevel ?? null,
-            playerParse: f.playerParse ?? null,
+            className: globalBossKillByKey.get(`${r.code}:${f.fightId}`)?.className ?? effectiveClassName,
+            specName: f.playerSpecName ?? globalBossKillByKey.get(`${r.code}:${f.fightId}`)?.specName ?? effectiveSpecName,
+            itemLevel: f.playerItemLevel ?? globalBossKillByKey.get(`${r.code}:${f.fightId}`)?.playerItemLevel ?? null,
+            playerParse: f.playerParse ?? globalBossKillByKey.get(`${r.code}:${f.fightId}`)?.percentile ?? null,
           }))
       )
 

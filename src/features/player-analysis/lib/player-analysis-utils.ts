@@ -17,27 +17,35 @@ export type BossKillDisplayRow = {
   encounterId: number
   encounterName: string
   difficulty: number
+  kill: boolean
   reportCode: string
   reportTitle: string
   fightId: number
   startTime: number
   durationMs: number
+  playerClassName?: string | null
   playerItemLevel?: number | null
   playerSpecName?: string | null
   playerParse?: number | null
+  playerMetric?: string | null
+  warnings?: string[]
   duplicateReportCount: number
   duplicateReports: BossKillDuplicateRef[]
 }
 
 type RawGroupFight = {
+  kill?: boolean
   reportCode: string
   reportTitle: string
   fightId: number
   startTime: number
   durationMs: number
+  playerClassName?: string | null
   playerItemLevel?: number | null
   playerSpecName?: string | null
   playerParse?: number | null
+  playerMetric?: string | null
+  warnings?: string[]
   duplicateReportCount?: number
   duplicateReports?: BossKillDuplicateRef[]
 }
@@ -59,14 +67,18 @@ export const mapGlobalBossKillsToBossGroups = (
     const key = `${kill.encounterId}:${difficulty}:${kill.encounterName}`
     const existing = grouped.get(key)
     const mappedFight: RawGroupFight = {
+      kill: kill.kill,
       reportCode: kill.reportCode,
       reportTitle: kill.reportTitle ?? kill.reportCode,
       fightId: kill.fightId,
       startTime: kill.startTime ?? 0,
       durationMs: kill.durationMs ?? 0,
+      playerClassName: kill.className ?? null,
       playerItemLevel: kill.playerItemLevel ?? null,
       playerSpecName: kill.specName ?? null,
       playerParse: kill.percentile ?? null,
+      playerMetric: kill.metric ?? null,
+      warnings: kill.warnings ?? [],
     }
 
     if (!existing) {
@@ -131,14 +143,18 @@ export function flattenAndDeduplicateBossKills(groups: RawBossGroup[]): BossKill
         encounterId: group.encounterId,
         encounterName: group.encounterName,
         difficulty: group.difficulty,
+        kill: fight.kill ?? true,
         reportCode: fight.reportCode,
         reportTitle: fight.reportTitle,
         fightId: fight.fightId,
         startTime: fight.startTime,
         durationMs: fight.durationMs,
+        playerClassName: fight.playerClassName,
         playerItemLevel: fight.playerItemLevel,
         playerSpecName: fight.playerSpecName,
         playerParse: fight.playerParse,
+        playerMetric: fight.playerMetric,
+        warnings: fight.warnings ?? [],
         duplicateReportCount: fight.duplicateReportCount ?? 0,
         duplicateReports: fight.duplicateReports ?? [],
       }
@@ -161,6 +177,7 @@ export function flattenAndDeduplicateBossKills(groups: RawBossGroup[]): BossKill
         { reportCode: hidden.reportCode, reportTitle: hidden.reportTitle, fightId: hidden.fightId, startTime: hidden.startTime, durationMs: hidden.durationMs },
         ...hidden.duplicateReports,
       ]
+      representative.warnings = [...new Set([...(representative.warnings ?? []), ...(hidden.warnings ?? [])])]
       seen.set(key, representative)
     }
   }

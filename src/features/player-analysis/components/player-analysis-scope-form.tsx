@@ -138,7 +138,7 @@ export const PlayerAnalysisScopeForm: FC<PlayerAnalysisScopeFormProps> = ({
       </>
     ) : (
       <>
-        <p className="text-xs text-hint">Paste a Warcraft Logs character URL or enter character details.</p>
+        <p className="text-xs text-hint">Paste a Warcraft Logs character URL or enter exact character details.</p>
         <div className="flex flex-col gap-2">
           <input
             style={inputStyle}

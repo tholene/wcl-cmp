@@ -80,4 +80,20 @@ describe('buildGlobalBossKillsRequest', () => {
       error: 'Paste a Warcraft Logs character URL or provide character name, region, and realm slug.',
     })
   })
+
+  it('returns validation error for partially provided exact tuple input', () => {
+    const built = buildGlobalBossKillsRequest(context, {
+      characterUrl: ' ',
+      region: 'eu',
+      realmSlug: '',
+      characterName: 'Bagge',
+      includeWipes: false,
+      limit: 10,
+    })
+
+    expect(built).toEqual({
+      ok: false,
+      error: 'Paste a Warcraft Logs character URL or provide character name, region, and realm slug.',
+    })
+  })
 })
