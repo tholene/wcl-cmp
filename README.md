@@ -33,6 +33,11 @@ The exported bundle is designed to be uploaded to an AI analysis tool (ChatGPT, 
 pnpm install
 ```
 
+Deployment note:
+- Render/Cloudflare deployments should use `pnpm`.
+- Use frozen lockfile installs only when `pnpm-lock.yaml` is committed and current.
+- Prefer `pnpm install --frozen-lockfile && pnpm run build` over semicolon chaining.
+
 2. Create local env file:
 
 ```bash
