@@ -37,6 +37,8 @@ export const RAID_ZONE_CLASSIFIER_CONFIG: RaidZoneClassifierConfig = {
     35, // Amirdrassil, the Dream's Hope
     38, // Nerub-ar Palace
     46, // Liberation of Undermine (often shown as VS / DR / MQD)
+    1048, // Gruul / Magtheridon (TBC grouped raid zone label on Fresh/Classic)
+    1056, // SSC / TK (TBC grouped raid zone label on Fresh/Classic)
   ],
   raidZoneNames: [
     'castle nathria',
@@ -47,12 +49,37 @@ export const RAID_ZONE_CLASSIFIER_CONFIG: RaidZoneClassifierConfig = {
     "amirdrassil, the dream's hope",
     'nerub-ar palace',
     'liberation of undermine',
+    'ssc / tk',
+    'gruul / magtheridon',
+    'serpentshrine cavern',
+    'tempest keep',
+    'karazhan',
+    'mount hyjal',
+    'hyjal',
+    'black temple',
+    'sunwell',
+    'sunwell plateau',
+    'naxxramas',
+    "ruins of ahn'qiraj",
+    "temple of ahn'qiraj",
+    'aq40',
+    'molten core',
+    'blackwing lair',
+    "onyxia's lair",
+    'onyxia',
   ],
   raidZoneAliases: [
     'vs / dr / mqd',
     'vs/dr/mqd',
     'vs-dr-mqd',
     'vs / dr / mqd reclear',
+    'ssc/tk',
+    'ssc-tk',
+    'ssc tk',
+    'gruul/magtheridon',
+    'gruul-magtheridon',
+    'gruul magtheridon',
+    'aq 40',
     'mythic reclear',
     'hc raid',
   ],
@@ -66,6 +93,18 @@ export const RAID_ZONE_CLASSIFIER_CONFIG: RaidZoneClassifierConfig = {
     'amirdrassil',
     'nathria',
     'undermine',
+    'serpentshrine',
+    'tempest keep',
+    'karazhan',
+    'hyjal',
+    'black temple',
+    'sunwell',
+    'naxxramas',
+    "ahn'qiraj",
+    'aq40',
+    'molten core',
+    'blackwing lair',
+    'onyxia',
     'reclear',
     'mythic reclear',
     'heroic reclear',
@@ -91,14 +130,13 @@ export const normalizeZoneName = (value: string | null | undefined): string =>
 const toSet = (values: string[]): Set<string> =>
   new Set(values.map((value) => normalizeZoneName(value)).filter(Boolean))
 
-const raidZoneIdSet = new Set<number>(RAID_ZONE_CLASSIFIER_CONFIG.raidZoneIds)
-const raidZoneNameSet = toSet(RAID_ZONE_CLASSIFIER_CONFIG.raidZoneNames)
-const raidZoneAliasSet = toSet(RAID_ZONE_CLASSIFIER_CONFIG.raidZoneAliases)
-
 export const classifyRaidZone = (
   report: RaidZoneReport,
   config: RaidZoneClassifierConfig = RAID_ZONE_CLASSIFIER_CONFIG
 ): RaidZoneClassification => {
+  const raidZoneIdSet = new Set<number>(config.raidZoneIds)
+  const raidZoneNameSet = toSet(config.raidZoneNames)
+  const raidZoneAliasSet = toSet(config.raidZoneAliases)
   const normalized = normalizeZoneName(report.zoneName)
 
   if (typeof report.zoneId === 'number' && raidZoneIdSet.has(report.zoneId)) {

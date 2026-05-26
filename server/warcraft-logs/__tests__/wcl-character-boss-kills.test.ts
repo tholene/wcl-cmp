@@ -291,6 +291,89 @@ describe('discoverWclCharacterBossKills', () => {
     })
   })
 
+  it('does not skip Fresh/Classic grouped TBC raid zones (SSC/TK and Gruul/Magtheridon)', async () => {
+    const resolver = vi.fn(async (): Promise<WclCharacterResolveResult> => ({
+      ...RESOLVED_CHARACTER,
+      character: {
+        ...RESOLVED_CHARACTER.character!,
+        site: 'fresh',
+      },
+    }))
+    const query = vi
+      .fn()
+      .mockResolvedValueOnce({
+        characterData: {
+          character: {
+            recentReports: {
+              data: [
+                {
+                  code: 'SSC01',
+                  title: 'SSC/TK split',
+                  startTime: 1000,
+                  zone: { id: 1056, name: 'SSC / TK' },
+                  fights: [
+                    {
+                      id: 10,
+                      encounterID: 625,
+                      name: 'Leotheras the Blind',
+                      kill: true,
+                      difficulty: 3,
+                      startTime: 100,
+                      endTime: 500,
+                    },
+                  ],
+                },
+                {
+                  code: 'GRU01',
+                  title: 'Gruul / Magtheridon',
+                  startTime: 2000,
+                  zone: { id: 1048, name: 'Gruul / Magtheridon' },
+                  fights: [
+                    {
+                      id: 11,
+                      encounterID: 651,
+                      name: 'Gruul the Dragonkiller',
+                      kill: true,
+                      difficulty: 3,
+                      startTime: 200,
+                      endTime: 650,
+                    },
+                  ],
+                },
+              ],
+            },
+          },
+        },
+      })
+      .mockResolvedValue({
+        reportData: {
+          report: {
+            rankings: JSON.stringify({ data: [] }),
+          },
+        },
+      })
+
+    const result = await discoverWclCharacterBossKills(
+      BASE_CONFIG,
+      {
+        wclSite: 'fresh',
+        region: 'eu',
+        realmSlug: 'gehennas',
+        characterName: 'Bagge',
+        limit: 10,
+      },
+      { resolver, query }
+    )
+
+    expect(result.status).toBe('ok')
+    expect(result.bossKills).toHaveLength(2)
+    expect(result.bossKills.map((fight) => fight.reportCode)).toEqual(expect.arrayContaining(['SSC01', 'GRU01']))
+    expect(result.warnings.some((warning) => warning.includes('Skipping non-raid report: SSC / TK (id 1056)'))).toBe(false)
+    expect(
+      result.warnings.some((warning) => warning.includes('Skipping non-raid report: Gruul / Magtheridon (id 1048)'))
+    ).toBe(false)
+  })
+
   it('returns not_found when resolver cannot resolve character', async () => {
     const resolver = vi.fn(async (): Promise<WclCharacterResolveResult> => ({
       status: 'not_found',

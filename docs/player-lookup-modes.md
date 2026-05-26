@@ -197,6 +197,10 @@ Proposed behavior:
   - Retail: `character.recentReports.data[].fights` returned raid-boss candidates with report code + fight id.
   - Retail: per-fight `report.rankings(fightIDs:[...])` returned player class/spec/item-level/percentile enrichment for matched rows.
   - Classic/Fresh: deeper boss-kill path not yet fully verified with known characters in this slice.
+- Fresh/Classic raid filtering now explicitly treats known TBC grouped raid zone labels as raids, including:
+  - `SSC / TK` (`zoneId 1056`)
+  - `Gruul / Magtheridon` (`zoneId 1048`)
+- Full Classic/Fresh parity still requires additional live validation across more zones/sites.
 - Still intentionally unimplemented:
   - No search-as-you-type/fuzzy global search.
   - No claim of full Classic/Fresh parity.

@@ -138,7 +138,7 @@ Notes:
 ## Known risks (still open)
 
 - Classic/Fresh schema differences can still break deeper player-analysis queries.
-- `raid-zone-classifier` remains retail-oriented and may misclassify non-retail zones.
+- Raid-zone classification now includes known Fresh/Classic TBC grouped raid labels (for example `SSC / TK` and `Gruul / Magtheridon`), but broader non-retail parity still needs more live validation.
 - Guild IDs may not map meaningfully across all selected sites.
 - Character search UX and global fight discovery remain future work; backend exact lookup now has a resolver spike foundation.
 
