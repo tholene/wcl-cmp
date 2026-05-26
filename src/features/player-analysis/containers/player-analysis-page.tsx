@@ -21,8 +21,9 @@ import { SpecIcon } from '@/features/player-analysis/components/spec-icon'
 import { StepDot } from '@/features/player-analysis/components/step-dot'
 import { usePlayerAnalysisState } from '@/features/player-analysis/hooks/use-player-analysis-state'
 import { classColor } from '@/features/player-analysis/lib/class-colors'
-import { flattenAndDeduplicateBossKills, formatDuration } from '@/features/player-analysis/lib/player-analysis-utils'
+import { flattenAndDeduplicateBossKills, formatDuration, mapGlobalBossKillsToBossGroups } from '@/features/player-analysis/lib/player-analysis-utils'
 import type { AvailableBaseline } from '@/features/player-analysis/types/available-baseline'
+import type { GlobalCharacterBossKillsResponse } from '@/features/player-analysis/types/player-analysis.types'
 import { SettingsButton } from '@/features/settings/components/settings-button'
 import { SettingsFirstRunDialog } from '@/features/settings/components/settings-first-run-dialog'
 import { SettingsSidebar } from '@/features/settings/components/settings-sidebar'
@@ -46,6 +47,23 @@ const ShimmerRows: FC<{ sq: number }> = ({ sq }) => (
   </div>
 )
 
+const getGlobalLookupStatusMessage = (result: GlobalCharacterBossKillsResponse | null): string | null => {
+  if (!result) return null
+  if (result.status === 'ok' && result.bossKills.length === 0) {
+    return 'No recent boss kills found for this character.'
+  }
+  if (result.status === 'not_found') {
+    return 'Character not found. Check URL/site/region/realm/name and try again.'
+  }
+  if (result.status === 'unsupported') {
+    return result.error?.message ?? 'This Warcraft Logs site/path is currently unsupported for this lookup.'
+  }
+  if (result.status === 'error') {
+    return result.error?.message ?? 'Global lookup failed. Try another character or adjust inputs.'
+  }
+  return null
+}
+
 export const PlayerAnalysisPage: FC = () => {
   const appSettings = useAppSettings()
   const requestContext = useMemo(
@@ -55,6 +73,15 @@ export const PlayerAnalysisPage: FC = () => {
   const s = usePlayerAnalysisState(requestContext)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [firstRunSiteDialogOpen, setFirstRunSiteDialogOpen] = useState(() => !appSettings.hasExplicitSite)
+  const globalBossRows = useMemo(
+    () => flattenAndDeduplicateBossKills(mapGlobalBossKillsToBossGroups(s.globalBossKills)),
+    [s.globalBossKills]
+  )
+  const globalFightWarnings = useMemo(
+    () => [...new Set(s.globalBossKills.flatMap((fight) => fight.warnings ?? []))],
+    [s.globalBossKills]
+  )
+  const globalLookupStatusMessage = getGlobalLookupStatusMessage(s.globalResult)
 
   return (
     <div className="min-h-screen">
@@ -92,7 +119,7 @@ export const PlayerAnalysisPage: FC = () => {
                   completed={completed}
                   active={active}
                   loading={
-                    (idx === 1 && s.previewMutation.isPending) ||
+                    (idx === 1 && (s.previewMutation.isPending || s.globalBossKillsMutation.isPending)) ||
                     (idx === 2 && s.benchmarkCandidatesMutation.isPending) ||
                     (idx === 3 && (
                       s.benchmarkCandidatesMutation.isPending ||
@@ -156,7 +183,7 @@ export const PlayerAnalysisPage: FC = () => {
                       {label}
                     </span>
                     {active && (
-                      (idx === 1 && s.previewMutation.isPending) ||
+                      (idx === 1 && (s.previewMutation.isPending || s.globalBossKillsMutation.isPending)) ||
                       (idx === 2 && s.benchmarkCandidatesMutation.isPending) ||
                       (idx === 3 && (
                         s.benchmarkCandidatesMutation.isPending ||
@@ -187,6 +214,7 @@ export const PlayerAnalysisPage: FC = () => {
                       onPlayerNameChange={(value) => s.handleScopeFieldChange(() => s.setPlayerName(value), { resetUserContext: true })}
                       onSelect={s.handlePlayerSelect}
                       onCommit={() => {
+                        if (s.lookupMode === 'guild' && !s.hasGuildId) return
                         const trimmed = s.playerName.trim()
                         if (!trimmed || s.previewMutation.isPending) return
                         s.resetLastPreviewedName()
@@ -194,73 +222,148 @@ export const PlayerAnalysisPage: FC = () => {
                         s.handlePreview(trimmed)
                       }}
                       isPreviewing={s.previewMutation.isPending}
+                      lookupMode={s.lookupMode}
+                      onLookupModeChange={s.setLookupMode}
+                      hasGuildId={s.hasGuildId}
+                      globalLookupInput={s.globalLookupInput}
+                      onGlobalLookupInputChange={s.setGlobalLookupInput}
+                      onLoadGlobalBossKills={() => {
+                        s.resetLastPreviewedName()
+                        s.handleLoadGlobalBossKills()
+                      }}
+                      isLoadingGlobalBossKills={s.globalBossKillsMutation.isPending}
+                      globalLookupValidationError={s.globalLookupValidationError}
                     />
                   )}
 
                   {/* ── Step 1: Fight Selection ── */}
                   {idx === 1 && (
                     <div>
-                      {s.previewMutation.isPending && <ShimmerRows sq={44} />}
-                      {s.previewMutation.error && !s.previewMutation.isPending && (
-                        <div className="alert-error">
-                          {(s.previewMutation.error as Error).message}
-                        </div>
-                      )}
-                      {s.preview && !s.previewMutation.isPending && (
+                      {s.lookupMode === 'global' ? (
                         <>
-                          {s.preview.recentRaidBossKills.groups.length === 0 && (
-                            <p className="text-[13px] text-muted">
-                              No verified raid boss kills found for {s.preview.requestedPlayerName} in this scope.
-                            </p>
+                          {s.globalBossKillsMutation.isPending && <ShimmerRows sq={44} />}
+                          {s.globalBossKillsMutation.error && !s.globalBossKillsMutation.isPending && (
+                            <div className="alert-error">
+                              {(s.globalBossKillsMutation.error as Error).message}
+                            </div>
                           )}
-                          <div className="flex flex-col gap-1.5">
-                            {s.preview.recentRaidBossKills.groups.length > 0 && (
-                              <div className="mb-0.5 text-xs text-hint">
-                                {s.preview.recentRaidBossKills.groups.length} boss kills from latest raid
+                          {s.previewMutation.error && !s.previewMutation.isPending && (
+                            <div className="alert-error mt-2">
+                              {(s.previewMutation.error as Error).message}
+                            </div>
+                          )}
+                          {globalLookupStatusMessage && (
+                            <div className={s.globalResult?.status === 'ok' ? 'alert-warning' : 'alert-error'}>
+                              {globalLookupStatusMessage}
+                            </div>
+                          )}
+                          {!s.globalBossKillsMutation.isPending && globalBossRows.length > 0 && (
+                            <>
+                              <div className="mb-1 text-xs text-hint">
+                                {globalBossRows.length} boss fights from global character discovery
                               </div>
-                            )}
-                            {flattenAndDeduplicateBossKills(s.preview.recentRaidBossKills.groups).map((fight) => (
-                              <BossKillCard
-                                key={`${fight.reportCode}:${fight.fightId}`}
-                                encounterName={fight.encounterName}
-                                encounterId={fight.encounterId}
-                                difficulty={fight.difficulty}
-                                durationMs={fight.durationMs}
-                                startTime={fight.startTime}
-                                playerParse={fight.playerParse}
-                                reportCode={fight.reportCode}
-                                fightId={fight.fightId}
-                                isSelected={s.isSelected(fight.reportCode, fight.fightId)}
-                                duplicateReportCount={fight.duplicateReportCount}
-                                onClick={() => s.handleSelectBossKill(fight.reportCode, fight.fightId)}
-                              />
-                            ))}
-                          </div>
-                          {s.selectedFightCount === 0 && (
-                            <p className="mt-1.5 text-[13px] text-muted">
-                              Select a boss kill to find same-spec benchmarks.
-                            </p>
+                              <div className="flex flex-col gap-1.5">
+                                {globalBossRows.map((fight) => (
+                                  <BossKillCard
+                                    key={`${fight.reportCode}:${fight.fightId}`}
+                                    encounterName={fight.encounterName}
+                                    encounterId={fight.encounterId}
+                                    difficulty={fight.difficulty}
+                                    durationMs={fight.durationMs}
+                                    startTime={fight.startTime}
+                                    playerParse={fight.playerParse}
+                                    reportCode={fight.reportCode}
+                                    fightId={fight.fightId}
+                                    isSelected={s.isSelected(fight.reportCode, fight.fightId)}
+                                    duplicateReportCount={fight.duplicateReportCount}
+                                    onClick={() => {
+                                      const matched = s.globalBossKills.find(
+                                        (entry) => entry.reportCode === fight.reportCode && entry.fightId === fight.fightId
+                                      )
+                                      if (!matched) return
+                                      s.handleSelectGlobalBossKill(matched)
+                                    }}
+                                  />
+                                ))}
+                              </div>
+                              {s.selectedFightCount === 0 && (
+                                <p className="mt-1.5 text-[13px] text-muted">
+                                  Select a boss fight to continue into benchmark discovery.
+                                </p>
+                              )}
+                            </>
                           )}
-                          {s.preview.recentRaidBossKills.warnings.length > 0 && (
+                          {(s.globalResult?.warnings?.length || globalFightWarnings.length > 0) ? (
                             <div className="alert-warning mt-2">
-                              {s.preview.recentRaidBossKills.warnings.map((w) => <p key={w}>⚠ {w}</p>)}
+                              {[...new Set([...(s.globalResult?.warnings ?? []), ...globalFightWarnings])].map((w) => <p key={w}>⚠ {w}</p>)}
+                            </div>
+                          ) : null}
+                        </>
+                      ) : (
+                        <>
+                          {s.previewMutation.isPending && <ShimmerRows sq={44} />}
+                          {s.previewMutation.error && !s.previewMutation.isPending && (
+                            <div className="alert-error">
+                              {(s.previewMutation.error as Error).message}
                             </div>
                           )}
-                          <details className="mt-3 rounded border border-white/[0.06] bg-[rgba(26,27,30,0.4)] p-2">
-                            <summary className="cursor-pointer text-xs text-slate-500 hover:text-slate-400">
-                              Advanced: scope details & manual fight selection
-                            </summary>
-                            <div className="mt-3">
-                              <PlayerAnalysisPreviewPanel
-                                preview={s.preview}
-                                selectedFightIdsByReport={s.selectedFightIdsByReport}
-                                onFightSelectionChange={s.handleFightSelectionChange}
-                                onSelectAllEligibleFights={s.handleSelectAllEligibleFights}
-                                onClearFightSelection={s.handleClearFightSelection}
-                                viewCount={s.selectedViews.length}
-                              />
-                            </div>
-                          </details>
+                          {s.preview && !s.previewMutation.isPending && (
+                            <>
+                              {s.preview.recentRaidBossKills.groups.length === 0 && (
+                                <p className="text-[13px] text-muted">
+                                  No verified raid boss kills found for {s.preview.requestedPlayerName} in this scope.
+                                </p>
+                              )}
+                              <div className="flex flex-col gap-1.5">
+                                {s.preview.recentRaidBossKills.groups.length > 0 && (
+                                  <div className="mb-0.5 text-xs text-hint">
+                                    {s.preview.recentRaidBossKills.groups.length} boss kills from latest raid
+                                  </div>
+                                )}
+                                {flattenAndDeduplicateBossKills(s.preview.recentRaidBossKills.groups).map((fight) => (
+                                  <BossKillCard
+                                    key={`${fight.reportCode}:${fight.fightId}`}
+                                    encounterName={fight.encounterName}
+                                    encounterId={fight.encounterId}
+                                    difficulty={fight.difficulty}
+                                    durationMs={fight.durationMs}
+                                    startTime={fight.startTime}
+                                    playerParse={fight.playerParse}
+                                    reportCode={fight.reportCode}
+                                    fightId={fight.fightId}
+                                    isSelected={s.isSelected(fight.reportCode, fight.fightId)}
+                                    duplicateReportCount={fight.duplicateReportCount}
+                                    onClick={() => s.handleSelectBossKill(fight.reportCode, fight.fightId)}
+                                  />
+                                ))}
+                              </div>
+                              {s.selectedFightCount === 0 && (
+                                <p className="mt-1.5 text-[13px] text-muted">
+                                  Select a boss kill to find same-spec benchmarks.
+                                </p>
+                              )}
+                              {s.preview.recentRaidBossKills.warnings.length > 0 && (
+                                <div className="alert-warning mt-2">
+                                  {s.preview.recentRaidBossKills.warnings.map((w) => <p key={w}>⚠ {w}</p>)}
+                                </div>
+                              )}
+                              <details className="mt-3 rounded border border-white/[0.06] bg-[rgba(26,27,30,0.4)] p-2">
+                                <summary className="cursor-pointer text-xs text-slate-500 hover:text-slate-400">
+                                  Advanced: scope details & manual fight selection
+                                </summary>
+                                <div className="mt-3">
+                                  <PlayerAnalysisPreviewPanel
+                                    preview={s.preview}
+                                    selectedFightIdsByReport={s.selectedFightIdsByReport}
+                                    onFightSelectionChange={s.handleFightSelectionChange}
+                                    onSelectAllEligibleFights={s.handleSelectAllEligibleFights}
+                                    onClearFightSelection={s.handleClearFightSelection}
+                                    viewCount={s.selectedViews.length}
+                                  />
+                                </div>
+                              </details>
+                            </>
+                          )}
                         </>
                       )}
                     </div>

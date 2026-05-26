@@ -499,3 +499,81 @@ export type RecentPlayersResponse = {
   players: RecentPlayer[]
   generatedAt: number
 }
+
+export type PlayerLookupMode = 'guild' | 'global'
+
+export type GlobalCharacterLookupInput = {
+  characterUrl: string
+  region: string
+  realmSlug: string
+  characterName: string
+  includeWipes: boolean
+  limit: number
+}
+
+export type GlobalCharacterBossKillsRequest = {
+  wclSite: AppSettingsRequestContext['wclSite']
+  characterUrl?: string
+  region?: string
+  realmSlug?: string
+  characterName?: string
+  includeWipes?: boolean
+  limit?: number
+}
+
+export type GlobalResolvedCharacter = {
+  source: 'url' | 'exactLookup'
+  site: string
+  id?: number | null
+  name: string
+  normalizedName: string
+  region?: string | null
+  realmSlug?: string | null
+  realmName?: string | null
+  canonicalUrl?: string | null
+  className?: string | null
+  specName?: string | null
+  faction?: string | null
+  level?: number | null
+  warnings: string[]
+}
+
+export type GlobalCharacterBossKill = {
+  site: string
+  reportCode: string
+  reportTitle?: string | null
+  fightId: number
+  encounterId: number
+  encounterName: string
+  difficulty?: number | null
+  kill: boolean
+  durationMs?: number | null
+  startTime?: number | null
+  playerItemLevel?: number | null
+  className?: string | null
+  specName?: string | null
+  percentile?: number | null
+  metric?: string | null
+  source: 'characterRankings' | 'characterReports' | 'reportVerification' | 'unknown'
+  warnings: string[]
+}
+
+export type GlobalCharacterBossKillsError = {
+  code:
+    | 'VALIDATION_ERROR'
+    | 'UNSUPPORTED_QUERY_SCHEMA'
+    | 'AUTH_OR_SITE_FAILURE'
+    | 'UNKNOWN_LOOKUP_FAILURE'
+    | 'WCL_CHARACTER_REPORTS_UNSUPPORTED'
+    | 'WCL_CHARACTER_REPORTS_EMPTY'
+  message: string
+  hint?: string
+}
+
+export type GlobalCharacterBossKillsResponse = {
+  status: 'ok' | 'unsupported' | 'not_found' | 'error'
+  character: GlobalResolvedCharacter | null
+  bossKills: GlobalCharacterBossKill[]
+  warnings: string[]
+  error?: GlobalCharacterBossKillsError
+}

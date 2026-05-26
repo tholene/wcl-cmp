@@ -78,4 +78,26 @@ describe('PlayerAnalysisRestService endpoints', () => {
       undefined
     )
   })
+
+  it('getGlobalCharacterBossKills posts to /api/wcl/character/boss-kills', async () => {
+    mockFetch.mockResolvedValue(jsonResponse({ status: 'ok', character: null, bossKills: [], warnings: [] }))
+    await PlayerAnalysisRestService.getGlobalCharacterBossKills({
+      wclSite: 'retail',
+      characterUrl: 'https://www.warcraftlogs.com/character/eu/the-maelstrom/bagge',
+      limit: 10,
+      includeWipes: false,
+    })
+    expect(mockFetch).toHaveBeenCalledWith(
+      '/api/wcl/character/boss-kills',
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({
+          wclSite: 'retail',
+          characterUrl: 'https://www.warcraftlogs.com/character/eu/the-maelstrom/bagge',
+          limit: 10,
+          includeWipes: false,
+        }),
+      })
+    )
+  })
 })

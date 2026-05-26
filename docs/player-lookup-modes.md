@@ -35,16 +35,16 @@
 - Realm/name collision handling is limited (same normalized name can merge).
 - Fresh/Classic/Retail parity is still best-effort beyond baseline probes.
 
-## 2) Proposed Global mode (planned, not implemented)
+## 2) Global mode foundation (implemented)
 
 ### Requirement
 
 - Must work without `guildId`.
 
-### Desired UX
+### Current UX
 
 1. User picks WCL site (`retail`/`classic`/`fresh`).
-2. User searches for a character (or pastes a character URL).
+2. User pastes a character URL (preferred) or enters exact tuple fields (`name`, `region`, `realmSlug`).
 3. App resolves/selects one concrete character identity.
 4. App lists recent boss kills for that character.
 5. Benchmark and export screens stay visually the same.
@@ -65,10 +65,19 @@
 What this enables now:
 - Backend can return global recent raid boss-kill candidates compatible with future boss-card UI needs.
 
-What is still not implemented:
-- No frontend wiring to global mode.
-- No fuzzy/search-as-you-type.
-- No declaration that global mode is end-to-end complete.
+What is now implemented frontend-side:
+- Lookup mode toggle (`Guild` / `Global`) in the player step.
+- Default mode behavior:
+  - guild configured => default `Guild`
+  - no guild configured => default `Global`
+- Global URL/exact lookup request wiring to `POST /api/wcl/character/boss-kills`.
+- Global boss-fight card rendering using existing boss card visual language.
+- Selection bridge into existing preview/benchmark/export pipeline via explicit `reportCode + fightId`.
+
+What is still intentionally not implemented:
+- No fuzzy/search-as-you-type global lookup.
+- No replacement of guild autocomplete.
+- No declaration that Classic/Fresh full parity is complete end-to-end.
 
 ## 3) Key technical questions to answer
 
@@ -158,12 +167,10 @@ Proposed behavior:
 
 ## 6) Recommended future slices (ordered)
 
-1. Introduce lookup mode model + UI copy only (`auto/guild/global`), no resolver changes yet.
-2. Run a backend API spike for global character lookup capabilities on all three sites.
-3. Implement a backend character resolver contract (exact resolver and URL resolver first).
-4. Implement global-mode recent boss kill discovery from resolved character identity.
-5. Add search UI mode toggle and wire mode-specific validation/errors.
-6. Keep guild flow as a first-class fallback path at every stage.
+1. Add fuzzy/search-as-you-type only after WCL API support is proven.
+2. Expand Classic/Fresh real-character verification through the full frontend flow.
+3. Improve global-mode per-fight enrichment visibility and diagnostics.
+4. Keep guild flow as a first-class fallback path at every stage.
 
 ## Probe status for this slice
 
@@ -182,4 +189,4 @@ Proposed behavior:
   - Classic/Fresh: deeper boss-kill path not yet fully verified with known characters in this slice.
 - Still intentionally unimplemented:
   - No search-as-you-type/fuzzy global search.
-  - No frontend global-mode wiring for recent boss-kill discovery.
+  - No claim of full Classic/Fresh parity.

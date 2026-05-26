@@ -46,6 +46,8 @@ export const BossKillCard: FC<BossKillCardProps> = ({
   durationMs,
   startTime,
   playerParse,
+  reportCode,
+  fightId,
   isSelected,
   duplicateReportCount,
   onClick,
@@ -124,6 +126,9 @@ export const BossKillCard: FC<BossKillCardProps> = ({
             Also found in {duplicateReportCount} other {duplicateReportCount === 1 ? 'report' : 'reports'}
           </div>
         )}
+        <div style={{ fontSize: 11, color: '#6d6f78', marginTop: 2 }}>
+          {reportCode} · Fight {fightId}
+        </div>
       </div>
 
       {isSelected && (

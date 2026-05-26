@@ -18,6 +18,7 @@ type PlayerAutocompleteProps = {
   onCommit: () => void
   isPreviewing?: boolean
   isLoading?: boolean
+  disabled?: boolean
 }
 
 const formatLastSeen = (ts: number | null | undefined): string => {
@@ -38,6 +39,7 @@ export const PlayerAutocomplete: FC<PlayerAutocompleteProps> = ({
   onSelect,
   onCommit,
   isLoading,
+  disabled = false,
 }) => {
   const [open, setOpen] = useState(false)
   const [focused, setFocused] = useState(false)
@@ -107,13 +109,16 @@ export const PlayerAutocomplete: FC<PlayerAutocompleteProps> = ({
           }}
           placeholder="Search for a player…"
           value={value}
+          disabled={disabled}
           autoComplete="off"
           aria-label="Character name"
           onChange={(e) => {
+            if (disabled) return
             onChange(e.target.value)
             setOpen(true)
           }}
           onFocus={() => {
+            if (disabled) return
             setFocused(true)
             setOpen(true)
           }}

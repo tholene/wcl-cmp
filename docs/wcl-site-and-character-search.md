@@ -204,6 +204,23 @@ Compatibility notes:
 - Classic/Fresh: exact resolver query shape is accepted; deeper boss-kill discovery path is still only partially verified in this slice.
 
 Known limits:
-- This is backend-only foundation; no UI wiring yet.
 - Search-as-you-type/fuzzy lookup is still unknown/unimplemented.
 - Non-raid reports are intentionally skipped for boss-kill candidate generation.
+
+## Frontend global lookup foundation (2026-05-26)
+
+Delivered:
+- Guarded lookup mode toggle in player step (`Guild` / `Global`).
+- Default behavior:
+  - guild ID configured => default Guild mode
+  - guild ID missing => default Global mode
+- Global mode supports:
+  - URL-first character lookup
+  - exact tuple fallback (`characterName`, `region`, `realmSlug`)
+- Global boss-kill results render with existing boss cards and warnings.
+- Selecting a global boss kill feeds explicit `reportCode + fightId` into existing preview/benchmark/export flow.
+
+Intentionally still out of scope:
+- No fuzzy/search-as-you-type character search.
+- No replacement of guild autocomplete flow.
+- No claim of full Classic/Fresh end-to-end parity.

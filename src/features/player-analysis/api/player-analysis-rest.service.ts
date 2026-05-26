@@ -8,6 +8,8 @@ import type {
   PlayerAnalysisExportStartResponse,
   BenchmarkCandidatesRequest,
   BenchmarkCandidatesResponse,
+  GlobalCharacterBossKillsRequest,
+  GlobalCharacterBossKillsResponse,
   RecentPlayersResponse,
 } from '../types/player-analysis.types'
 
@@ -64,4 +66,13 @@ export const PlayerAnalysisRestService = {
 
   getRecentPlayers: (context: AppSettingsRequestContext): Promise<RecentPlayersResponse> =>
     apiFetch(buildRecentPlayersUrl(context)),
+
+  getGlobalCharacterBossKills: (
+    request: GlobalCharacterBossKillsRequest
+  ): Promise<GlobalCharacterBossKillsResponse> =>
+    apiFetch(apiUrl('/api/wcl/character/boss-kills'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(request),
+    }),
 }

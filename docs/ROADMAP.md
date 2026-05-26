@@ -141,7 +141,7 @@ Exit criteria:
 
 ### 5) Character resolver and search UX
 
-Status: In progress (backend foundation complete, frontend wiring pending)
+Status: In progress (guarded frontend global foundation complete)
 
 Goal:
 - Implement chosen character lookup/resolver flow while preserving export UX continuity.
@@ -165,8 +165,14 @@ Exit criteria:
 - Existing export sequence and operator ergonomics remain intact.
 
 Notes:
-- Global resolver + boss-kill discovery are available backend-side but are not wired into production UI yet.
+- Global resolver + boss-kill discovery are now wired in a guarded frontend foundation:
+  - lookup mode toggle (guild/global)
+  - global URL/exact tuple inputs
+  - global boss-fight card listing
+  - selected global fight bridged into existing benchmark/export flow
+- Guild mode remains default when guild ID exists; global is default when guild ID is missing.
 - Fuzzy/search-as-you-type remains a separate unresolved capability question.
+- Classic/Fresh full parity remains unverified in end-to-end frontend flow.
 
 ## Decisions
 

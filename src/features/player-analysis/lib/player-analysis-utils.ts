@@ -1,5 +1,9 @@
 import type { AvailableBaseline } from '../types/available-baseline'
-import type { BenchmarkCandidatesResponse, SelectedBenchmarkCandidate } from '../types/player-analysis.types'
+import type {
+  BenchmarkCandidatesResponse,
+  GlobalCharacterBossKill,
+  SelectedBenchmarkCandidate,
+} from '../types/player-analysis.types'
 
 export type BossKillDuplicateRef = {
   reportCode: string
@@ -43,6 +47,48 @@ type RawBossGroup = {
   encounterName: string
   difficulty: number
   fights: RawGroupFight[]
+}
+
+export const mapGlobalBossKillsToBossGroups = (
+  bossKills: GlobalCharacterBossKill[]
+): RawBossGroup[] => {
+  const grouped = new Map<string, RawBossGroup>()
+
+  for (const kill of bossKills) {
+    const difficulty = typeof kill.difficulty === 'number' ? kill.difficulty : 0
+    const key = `${kill.encounterId}:${difficulty}:${kill.encounterName}`
+    const existing = grouped.get(key)
+    const mappedFight: RawGroupFight = {
+      reportCode: kill.reportCode,
+      reportTitle: kill.reportTitle ?? kill.reportCode,
+      fightId: kill.fightId,
+      startTime: kill.startTime ?? 0,
+      durationMs: kill.durationMs ?? 0,
+      playerItemLevel: kill.playerItemLevel ?? null,
+      playerSpecName: kill.specName ?? null,
+      playerParse: kill.percentile ?? null,
+    }
+
+    if (!existing) {
+      grouped.set(key, {
+        encounterId: kill.encounterId,
+        encounterName: kill.encounterName,
+        difficulty,
+        fights: [mappedFight],
+      })
+      continue
+    }
+
+    existing.fights.push(mappedFight)
+  }
+
+  return [...grouped.values()].map((group) => ({
+    ...group,
+    fights: group.fights.sort((left, right) => {
+      if (left.startTime !== right.startTime) return right.startTime - left.startTime
+      return right.durationMs - left.durationMs
+    }),
+  }))
 }
 
 const BUCKET_MS = 5_000

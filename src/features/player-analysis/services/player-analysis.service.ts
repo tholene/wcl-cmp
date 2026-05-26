@@ -7,6 +7,8 @@ import type {
   PlayerAnalysisExportStartResponse,
   BenchmarkCandidatesRequest,
   BenchmarkCandidatesResponse,
+  GlobalCharacterBossKillsRequest,
+  GlobalCharacterBossKillsResponse,
   RecentPlayersResponse,
 } from '../types/player-analysis.types'
 
@@ -31,4 +33,9 @@ export const PlayerAnalysisService = {
 
   getRecentPlayers: async (context: AppSettingsRequestContext): Promise<RecentPlayersResponse> =>
     PlayerAnalysisRestService.getRecentPlayers(context),
+
+  getGlobalCharacterBossKills: async (
+    request: GlobalCharacterBossKillsRequest
+  ): Promise<GlobalCharacterBossKillsResponse> =>
+    PlayerAnalysisRestService.getGlobalCharacterBossKills(request),
 }

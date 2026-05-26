@@ -4,9 +4,12 @@ import type { AppSettingsRequestContext } from '@/features/settings/types/app-se
 import { useBenchmarkCandidates } from './use-benchmark-candidates'
 import { useBenchmarkFormState, suggestTargetPercentile, type AutoBenchmarkFormConfig } from './use-benchmark-form-state'
 import { useBossKillSelection } from './use-boss-kill-selection'
+import { useGlobalCharacterBossKills } from './use-global-character-boss-kills'
 import { usePlayerAnalysisExportJob } from './use-player-analysis-export-job'
 import { usePlayerAnalysisPreview } from './use-player-analysis-preview'
 import { useRecentPlayers } from './use-recent-players'
+import { getRoleForSpec } from '../types/wow-class-spec'
+import { buildGlobalBossKillsRequest, getDefaultPlayerLookupMode, hasConfiguredGuildId } from '../lib/player-lookup-mode'
 import {
   buildBaselineKeysFromFightSelection,
   buildSelectedCandidates,
@@ -14,16 +17,26 @@ import {
 } from '../lib/player-analysis-utils'
 import { scopeReducer, INITIAL_SCOPE_STATE } from './scope-reducer'
 import type { AvailableBaseline } from '../types/available-baseline'
-import type { PlayerAnalysisExportRequest, PlayerAnalysisExportView, PlayerAnalysisTimeframePreset } from '../types/player-analysis.types'
+import type {
+  GlobalCharacterBossKill,
+  GlobalCharacterLookupInput,
+  PlayerAnalysisExportRequest,
+  PlayerAnalysisExportView,
+  PlayerAnalysisTimeframePreset,
+} from '../types/player-analysis.types'
 import { STABLE_EXPORT_VIEWS } from '../types/player-analysis.types'
 
 export type PlayerAnalysisState = ReturnType<typeof usePlayerAnalysisState>
 
 export const usePlayerAnalysisState = (context: AppSettingsRequestContext) => {
+  const hasGuildId = hasConfiguredGuildId({ guildId: context.guildId })
+  const [lookupMode, setLookupMode] = useState(() => getDefaultPlayerLookupMode({ guildId: context.guildId }))
+
   // ── Data hooks ──────────────────────────────────────────────────────────────
-  const recentPlayersQuery = useRecentPlayers(context)
-  const recentReportsQuery = useRecentReports(context)
+  const recentPlayersQuery = useRecentPlayers(context, lookupMode === 'guild' && hasGuildId)
+  const recentReportsQuery = useRecentReports(context, lookupMode === 'guild' && hasGuildId)
   const previewMutation = usePlayerAnalysisPreview(context)
+  const globalBossKillsMutation = useGlobalCharacterBossKills()
   const exportJob = usePlayerAnalysisExportJob(context)
   const benchmarkCandidatesMutation = useBenchmarkCandidates(context)
 
@@ -43,6 +56,15 @@ export const usePlayerAnalysisState = (context: AppSettingsRequestContext) => {
   const setOnlyPlayerPresent = (value: boolean)                       => dispatchScope({ type: 'setOnlyPlayerPresent', value })
   const [selectedViews, setSelectedViews] = useState<PlayerAnalysisExportView[]>([...STABLE_EXPORT_VIEWS])
   const [pendingClassName, setPendingClassName] = useState<string | null>(null)
+  const [globalLookupInput, setGlobalLookupInputState] = useState<GlobalCharacterLookupInput>({
+    characterUrl: '',
+    region: context.region ?? '',
+    realmSlug: '',
+    characterName: '',
+    includeWipes: false,
+    limit: 10,
+  })
+  const [globalLookupValidationError, setGlobalLookupValidationError] = useState<string | null>(null)
 
   // ── Derived preview (must precede sub-hooks) ─────────────────────────────────
   const preview = previewMutation.data ?? null
@@ -59,6 +81,16 @@ export const usePlayerAnalysisState = (context: AppSettingsRequestContext) => {
 
   // ── Derived state ────────────────────────────────────────────────────────────
   const job = exportJob.jobStatus
+  const globalResult = globalBossKillsMutation.data ?? null
+  const globalBossKills = globalResult?.status === 'ok' ? globalResult.bossKills : []
+  const hasGlobalLookupAttempt =
+    globalBossKillsMutation.isPending ||
+    globalBossKillsMutation.isSuccess ||
+    !!globalBossKillsMutation.error ||
+    !!globalLookupValidationError
+  const hasGlobalSelection =
+    lookupMode === 'global' &&
+    Object.values(bossKillSelection.selectedFightIdsByReport).some((fightIds) => fightIds.length > 0)
 
   const wclClassName = preview?.detectedPlayer?.className !== 'unknown' ? preview?.detectedPlayer?.className ?? null : null
   const wclSpecName = preview?.detectedPlayer?.specName !== 'unknown' ? preview?.detectedPlayer?.specName ?? null : null
@@ -202,9 +234,10 @@ export const usePlayerAnalysisState = (context: AppSettingsRequestContext) => {
   const firstBaseline = availableBaselines[0] ?? null
 
   const hasStartedPreview = previewMutation.isPending || previewMutation.isSuccess || !!previewMutation.error
+  const hasStartedSelection = lookupMode === 'global' ? hasGlobalLookupAttempt || hasStartedPreview : hasStartedPreview
   const derivedActiveStep =
-    !hasStartedPreview ? 0 :
-    !preview || bossKillSelection.selectedFightCount === 0 ? 1 :
+    !hasStartedSelection ? 0 :
+    !preview || bossKillSelection.selectedFightCount === 0 || (lookupMode === 'global' && !hasGlobalSelection) ? 1 :
     benchmarkFormState.benchmarkMode === 'auto' && selectedAutoCandidates.length === 0 && !benchmarkFormState.allowSubjectOnlyWithoutBenchmark ? 2 :
     3
   const activeStep = forcedStep ?? derivedActiveStep
@@ -223,36 +256,55 @@ export const usePlayerAnalysisState = (context: AppSettingsRequestContext) => {
     }
   }
 
-  const buildRequest = (params?: { forExport?: boolean; playerNameOverride?: string }): PlayerAnalysisExportRequest => ({
-    playerName: params?.playerNameOverride ?? playerName,
-    timeframePreset,
-    reportCodes: timeframePreset === 'manualReports' ? selectedReports : undefined,
-    fightIdsByReport: params?.forExport ? bossKillSelection.selectedFightIdsByReport : undefined,
-    includeKills,
-    includeWipes,
-    includeTrash,
-    onlyPlayerPresent,
-    views: selectedViews,
-    playerContext: benchmarkFormState.playerUserContext
-      ? { className: benchmarkFormState.playerUserContext.className || undefined, specName: benchmarkFormState.playerUserContext.specName || undefined, role: benchmarkFormState.playerUserContext.specName ? benchmarkFormState.playerUserContext.role : undefined, source: 'userProvided' as const }
-      : undefined,
-    benchmarkContextSource: benchmarkFormState.benchmarkContextSource,
-    ...(benchmarkFormState.benchmarkMode !== 'none'
-      ? {
-          benchmark: {
-            requested: true as const,
-            mode: benchmarkFormState.benchmarkMode,
-            targetPercentile: benchmarkFormState.benchmarkMode === 'auto' ? benchmarkFormState.autoBenchmarkConfig.targetPercentile : undefined,
-            metric: benchmarkFormState.benchmarkMode === 'auto' ? benchmarkFormState.autoBenchmarkConfig.metric : undefined,
-            allowSubjectOnlyWithoutBenchmark: benchmarkBlockedReason && benchmarkFormState.allowSubjectOnlyWithoutBenchmark ? true : undefined,
-            ...(benchmarkFormState.benchmarkMode === 'manual' && benchmarkFormState.manualBenchmarkConfig.reportCode.trim() && benchmarkFormState.manualBenchmarkConfig.fightId.trim() && benchmarkFormState.manualBenchmarkConfig.playerName.trim()
-              ? { manualTarget: { reportCode: benchmarkFormState.manualBenchmarkConfig.reportCode.trim(), fightId: Number(benchmarkFormState.manualBenchmarkConfig.fightId), playerName: benchmarkFormState.manualBenchmarkConfig.playerName.trim() } }
-              : {}),
-            ...(benchmarkFormState.benchmarkMode === 'auto' ? { selectedCandidates: buildSelectedCandidates(availableBaselines, benchmarkCandidatesMutation.data ?? null, bossKillSelection.selectedBaselineKeys, bossKillSelection.selectedCandidateKeysByBaseline) } : {}),
-          },
-        }
-      : {}),
-  })
+  const buildRequest = (params?: {
+    forExport?: boolean
+    playerNameOverride?: string
+    reportCodesOverride?: string[]
+    fightIdsByReportOverride?: Record<string, number[]>
+  }): PlayerAnalysisExportRequest => {
+    const fightSelectionForRequest = params?.fightIdsByReportOverride ?? bossKillSelection.selectedFightIdsByReport
+    const selectedReportCodesForExport = params?.forExport
+      ? Object.entries(fightSelectionForRequest)
+          .filter(([, fightIds]) => fightIds.length > 0)
+          .map(([reportCode]) => reportCode)
+      : []
+
+    const reportCodes =
+      params?.reportCodesOverride
+      ?? (timeframePreset === 'manualReports' ? selectedReports : undefined)
+      ?? (selectedReportCodesForExport.length > 0 ? selectedReportCodesForExport : undefined)
+
+    return {
+      playerName: params?.playerNameOverride ?? playerName,
+      timeframePreset,
+      reportCodes,
+      fightIdsByReport: params?.forExport ? fightSelectionForRequest : params?.fightIdsByReportOverride,
+      includeKills,
+      includeWipes,
+      includeTrash,
+      onlyPlayerPresent,
+      views: selectedViews,
+      playerContext: benchmarkFormState.playerUserContext
+        ? { className: benchmarkFormState.playerUserContext.className || undefined, specName: benchmarkFormState.playerUserContext.specName || undefined, role: benchmarkFormState.playerUserContext.specName ? benchmarkFormState.playerUserContext.role : undefined, source: 'userProvided' as const }
+        : undefined,
+      benchmarkContextSource: benchmarkFormState.benchmarkContextSource,
+      ...(benchmarkFormState.benchmarkMode !== 'none'
+        ? {
+            benchmark: {
+              requested: true as const,
+              mode: benchmarkFormState.benchmarkMode,
+              targetPercentile: benchmarkFormState.benchmarkMode === 'auto' ? benchmarkFormState.autoBenchmarkConfig.targetPercentile : undefined,
+              metric: benchmarkFormState.benchmarkMode === 'auto' ? benchmarkFormState.autoBenchmarkConfig.metric : undefined,
+              allowSubjectOnlyWithoutBenchmark: benchmarkBlockedReason && benchmarkFormState.allowSubjectOnlyWithoutBenchmark ? true : undefined,
+              ...(benchmarkFormState.benchmarkMode === 'manual' && benchmarkFormState.manualBenchmarkConfig.reportCode.trim() && benchmarkFormState.manualBenchmarkConfig.fightId.trim() && benchmarkFormState.manualBenchmarkConfig.playerName.trim()
+                ? { manualTarget: { reportCode: benchmarkFormState.manualBenchmarkConfig.reportCode.trim(), fightId: Number(benchmarkFormState.manualBenchmarkConfig.fightId), playerName: benchmarkFormState.manualBenchmarkConfig.playerName.trim() } }
+                : {}),
+              ...(benchmarkFormState.benchmarkMode === 'auto' ? { selectedCandidates: buildSelectedCandidates(availableBaselines, benchmarkCandidatesMutation.data ?? null, bossKillSelection.selectedBaselineKeys, bossKillSelection.selectedCandidateKeysByBaseline) } : {}),
+            },
+          }
+        : {}),
+    }
+  }
 
   const handleFindCandidatesWithKeys = (keysOverride: Set<string>, baselinesOverride?: AvailableBaseline[], targetPercentileOverride?: AutoBenchmarkFormConfig['targetPercentile']) => {
     if (!preview || keysOverride.size === 0 || !preview.detectedPlayer) return
@@ -272,17 +324,31 @@ export const usePlayerAnalysisState = (context: AppSettingsRequestContext) => {
     handleFindCandidatesWithKeys(bossKillSelection.selectedBaselineKeys, undefined, tier)
   }
 
-  const handlePreview = (playerNameOverride?: string) => {
+  const handlePreview = (
+    playerNameOverride?: string,
+    options?: { reportCodesOverride?: string[]; fightIdsByReportOverride?: Record<string, number[]>; preselectedFight?: { reportCode: string; fightId: number } }
+  ) => {
     bossKillSelection.syncSelectedBaselineKeys(new Set())
     const requestId = previewRequestSeq.current + 1
     previewRequestSeq.current = requestId
-    previewMutation.mutate(buildRequest({ playerNameOverride }), {
+    previewMutation.mutate(
+      buildRequest({
+        playerNameOverride,
+        reportCodesOverride: options?.reportCodesOverride,
+        fightIdsByReportOverride: options?.fightIdsByReportOverride,
+      }),
+      {
       onSuccess: (data) => {
         if (requestId !== previewRequestSeq.current) return
-        const emptySelection = Object.fromEntries(
+        const nextSelection: Record<string, number[]> = Object.fromEntries(
           (data.includedReports ?? []).map((r) => [r.code, [] as number[]])
         )
-        bossKillSelection.setSelectedFightIdsByReport(emptySelection)
+        if (options?.preselectedFight && nextSelection[options.preselectedFight.reportCode] !== undefined) {
+          nextSelection[options.preselectedFight.reportCode] = [options.preselectedFight.fightId]
+        }
+        bossKillSelection.setSelectedFightIdsByReport(nextSelection)
+        const baselineKeys = buildBaselineKeysFromFightSelection(data, nextSelection)
+        bossKillSelection.syncSelectedBaselineKeys(baselineKeys)
         if (benchmarkFormState.benchmarkContextSource === 'wclDetected' && data.effectiveContext?.source === 'userProvided') {
           benchmarkFormState.setBenchmarkContextSource('userProvided')
         }
@@ -304,6 +370,57 @@ export const usePlayerAnalysisState = (context: AppSettingsRequestContext) => {
   const handleScopeFieldChange = (applyChange: () => void, options?: { resetUserContext?: boolean }) => {
     applyChange()
     invalidatePreviewState(options)
+  }
+
+  const handleLookupModeChange = (nextMode: 'guild' | 'global') => {
+    setLookupMode(nextMode)
+    setForcedStep(null)
+    invalidatePreviewState({ resetUserContext: false })
+    if (nextMode === 'guild') {
+      setGlobalLookupValidationError(null)
+      globalBossKillsMutation.reset()
+    }
+  }
+
+  const handleLoadGlobalBossKills = () => {
+    setGlobalLookupValidationError(null)
+    const builtRequest = buildGlobalBossKillsRequest({ wclSite: context.wclSite }, globalLookupInput)
+    if (!builtRequest.ok) {
+      setGlobalLookupValidationError(builtRequest.error)
+      return
+    }
+    invalidatePreviewState({ resetUserContext: true })
+    setForcedStep(1)
+    globalBossKillsMutation.reset()
+    globalBossKillsMutation.mutate(builtRequest.request, {
+      onSuccess: (result) => {
+        const resolvedName = result.character?.name?.trim()
+        if (resolvedName) {
+          setPlayerName(resolvedName)
+          setPendingClassName(result.character?.className ?? null)
+        }
+      },
+    })
+  }
+
+  const handleSelectGlobalBossKill = (fight: GlobalCharacterBossKill) => {
+    const selectedPlayerName = globalResult?.character?.name?.trim() || playerName.trim()
+    if (!selectedPlayerName) return
+    setPendingClassName(fight.className ?? globalResult?.character?.className ?? null)
+    if (fight.className && fight.specName) {
+      benchmarkFormState.setPlayerUserContext({
+        className: fight.className,
+        specName: fight.specName,
+        role: getRoleForSpec(fight.className, fight.specName) ?? undefined,
+      })
+    }
+    handleScopeFieldChange(() => setPlayerName(selectedPlayerName), { resetUserContext: false })
+    setForcedStep(1)
+    handlePreview(selectedPlayerName, {
+      reportCodesOverride: [fight.reportCode],
+      fightIdsByReportOverride: { [fight.reportCode]: [fight.fightId] },
+      preselectedFight: { reportCode: fight.reportCode, fightId: fight.fightId },
+    })
   }
 
   const handleSelectBossKill = (reportCode: string, fightId: number) => {
@@ -362,6 +479,7 @@ export const usePlayerAnalysisState = (context: AppSettingsRequestContext) => {
     previewMutation,
     exportJob,
     benchmarkCandidatesMutation,
+    globalBossKillsMutation,
     recentPlayersQuery,
     recentReportsQuery,
     // Derived from queries
@@ -369,6 +487,8 @@ export const usePlayerAnalysisState = (context: AppSettingsRequestContext) => {
     job,
     players,
     reports,
+    globalResult,
+    globalBossKills,
     // Scope state
     playerName,
     setPlayerName,
@@ -386,6 +506,12 @@ export const usePlayerAnalysisState = (context: AppSettingsRequestContext) => {
     setOnlyPlayerPresent,
     selectedViews,
     setSelectedViews,
+    lookupMode,
+    setLookupMode: handleLookupModeChange,
+    hasGuildId,
+    globalLookupInput,
+    setGlobalLookupInput: (value: GlobalCharacterLookupInput) => setGlobalLookupInputState(value),
+    globalLookupValidationError,
     // Boss kill selection state (from sub-hook — internal wiring not exposed)
     selectedFightIdsByReport: bossKillSelection.selectedFightIdsByReport,
     selectedBaselineKeys: bossKillSelection.selectedBaselineKeys,
@@ -433,9 +559,13 @@ export const usePlayerAnalysisState = (context: AppSettingsRequestContext) => {
     showResults,
     firstBaseline,
     activeStep,
+    hasGlobalLookupAttempt,
+    hasGlobalSelection,
     // Helpers
     // Action handlers
     handlePreview,
+    handleLoadGlobalBossKills,
+    handleSelectGlobalBossKill,
     handleGenerateExport,
     handleFindCandidates,
     handleTargetTierChange,

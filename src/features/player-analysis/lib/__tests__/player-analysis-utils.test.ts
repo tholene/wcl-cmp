@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { flattenAndDeduplicateBossKills } from '../player-analysis-utils'
+import { flattenAndDeduplicateBossKills, mapGlobalBossKillsToBossGroups } from '../player-analysis-utils'
 
 const BASE_TIME = 1_700_000_000_000
 
@@ -60,5 +60,57 @@ describe('flattenAndDeduplicateBossKills', () => {
 
   it('returns an empty array for empty input', () => {
     expect(flattenAndDeduplicateBossKills([])).toEqual([])
+  })
+})
+
+describe('mapGlobalBossKillsToBossGroups', () => {
+  it('groups by encounter+difficulty and preserves ranking fields for cards', () => {
+    const groups = mapGlobalBossKillsToBossGroups([
+      {
+        site: 'retail',
+        reportCode: 'ABC123',
+        reportTitle: 'Raid night',
+        fightId: 5,
+        encounterId: 1001,
+        encounterName: 'Boss Alpha',
+        difficulty: 4,
+        kill: true,
+        durationMs: 180000,
+        startTime: BASE_TIME + 1000,
+        playerItemLevel: 700,
+        specName: 'Fury',
+        percentile: 92,
+        source: 'reportVerification',
+        warnings: [],
+      },
+      {
+        site: 'retail',
+        reportCode: 'DEF456',
+        reportTitle: 'Raid night alt upload',
+        fightId: 6,
+        encounterId: 1001,
+        encounterName: 'Boss Alpha',
+        difficulty: 4,
+        kill: true,
+        durationMs: 181000,
+        startTime: BASE_TIME + 2000,
+        playerItemLevel: 701,
+        specName: 'Fury',
+        percentile: 93,
+        source: 'reportVerification',
+        warnings: [],
+      },
+    ])
+
+    expect(groups).toHaveLength(1)
+    expect(groups[0].encounterId).toBe(1001)
+    expect(groups[0].difficulty).toBe(4)
+    expect(groups[0].fights).toHaveLength(2)
+    expect(groups[0].fights[0]).toMatchObject({
+      reportCode: 'DEF456',
+      fightId: 6,
+      playerSpecName: 'Fury',
+      playerParse: 93,
+    })
   })
 })
