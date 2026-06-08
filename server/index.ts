@@ -1,3 +1,4 @@
+import fs from 'node:fs'
 import path from 'node:path'
 import cors from 'cors'
 import dotenv from 'dotenv'
@@ -436,6 +437,15 @@ app.get('/api/player-analysis/exports/:exportId/:filename', (req: Request, res: 
     return
   }
 
+  if (!fs.existsSync(resolvedPath)) {
+    sendPlayerAnalysisError(res, 404, {
+      error: 'File not found.',
+      code: 'EXPORT_FILE_NOT_FOUND',
+      details: { exportId, filename },
+    })
+    return
+  }
+
   const ext = path.extname(filename).toLowerCase()
   const contentTypes: Record<string, string> = {
     '.csv': 'text/csv',
@@ -444,6 +454,7 @@ app.get('/api/player-analysis/exports/:exportId/:filename', (req: Request, res: 
     '.zip': 'application/zip',
   }
   const contentType = contentTypes[ext] ?? 'application/octet-stream'
+  res.attachment(filename)
   res.setHeader('Content-Type', contentType)
   res.sendFile(resolvedPath, (err) => {
     if (err && !res.headersSent) {

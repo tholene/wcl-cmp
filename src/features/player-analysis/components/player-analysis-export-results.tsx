@@ -1,5 +1,6 @@
 import type { FC } from 'react'
 import { getDifficultyLabel } from '@/lib/difficulty'
+import { buildExportDownloadUrl } from '../lib/player-analysis-export-download-url'
 import type { PlayerAnalysisExportFile, PlayerAnalysisExportJob } from '../types/player-analysis.types'
 
 const formatBytes = (bytes: number): string => {
@@ -36,7 +37,7 @@ export const PlayerAnalysisExportResults: FC<PlayerAnalysisExportResultsProps> =
   const failedChecks = (resultSummary?.qualityChecks ?? []).filter((check) => !check.passed)
   const topReasons = resultSummary?.topReasons?.slice(0, 5) ?? []
 
-  const downloadUrl = (filename: string) => `/api/player-analysis/exports/${exportId}/${filename}`
+  const downloadUrl = (filename: string) => buildExportDownloadUrl(exportId, filename)
 
   const hasWarnings =
     topReasons.length > 0 || failedChecks.length > 0 || skippedCandidates.length > 0 ||
