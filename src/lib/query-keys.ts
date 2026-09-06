@@ -29,3 +29,8 @@ export const playerAnalysisQueryKeys = {
   recentPlayers: (context: AppSettingsRequestContext) => [...playerAnalysisQueryKeys.all, 'recentPlayers', context] as const,
   exportStatus: (exportId: string) => [...playerAnalysisQueryKeys.all, 'status', exportId] as const,
 }
+
+export const mechanicAuditQueryKeys = {
+  all: ['mechanicAudit'] as const,
+  exportStatus: (auditId: string) => [...mechanicAuditQueryKeys.all, 'status', auditId] as const,
+}

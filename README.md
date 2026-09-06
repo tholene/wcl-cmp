@@ -76,6 +76,7 @@ pnpm dev
 - ZIP/CSV/JSON output with local download endpoints
 - Advanced sidebar: timeframe presets, report filtering, benchmark mode override, kills/wipes toggle
 - Structured warnings for partial or incomplete export data
+- Mechanic Audit: per-player mechanic-failure distribution export for a configured encounter/mechanic set (see [`docs/lura-p1-mechanic-audit.md`](docs/lura-p1-mechanic-audit.md))
 
 ## API Endpoints
 
@@ -90,6 +91,10 @@ pnpm dev
 | `GET` | `/api/player-analysis/exports/:id/status` | Poll job status |
 | `GET` | `/api/player-analysis/exports/:id/:filename` | Download export file |
 | `POST` | `/api/player-analysis/benchmark-candidates` | Find benchmark players |
+| `POST` | `/api/mechanic-audits/preview` | Preview mechanic audit scope |
+| `POST` | `/api/mechanic-audits/export` | Start async mechanic audit export job |
+| `GET` | `/api/mechanic-audits/:auditId/status` | Poll mechanic audit job status |
+| `GET` | `/api/mechanic-audits/:auditId/:filename` | Download mechanic audit export file |
 
 ## Scripts
 
