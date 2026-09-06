@@ -77,6 +77,10 @@ pnpm dev
 - Advanced sidebar: timeframe presets, report filtering, benchmark mode override, kills/wipes toggle
 - Structured warnings for partial or incomplete export data
 
+## Mythic Roster Review
+
+`/roster-review` is a guided officer workflow: pick recent raid logs, enter who is available, build per-player WCL evidence (overall and ilvl-bracket parses, item level, output, log presence, deaths), select Start/Flex/Bench with a structured reason per decision, compare two candidates, and export a Markdown + JSON evidence pack for LLM review. See [docs/roster-review.md](docs/roster-review.md).
+
 ## API Endpoints
 
 | Method | Path | Description |
@@ -90,6 +94,9 @@ pnpm dev
 | `GET` | `/api/player-analysis/exports/:id/status` | Poll job status |
 | `GET` | `/api/player-analysis/exports/:id/:filename` | Download export file |
 | `POST` | `/api/player-analysis/benchmark-candidates` | Find benchmark players |
+| `GET` | `/api/roster-review/reports` | Recent raid reports with fights and participants |
+| `POST` | `/api/roster-review/evidence` | Start async roster evidence job |
+| `GET` | `/api/roster-review/evidence/:jobId` | Poll roster evidence job |
 
 ## Scripts
 

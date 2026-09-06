@@ -26,6 +26,12 @@ import { requiresGuildScopedReportDiscovery } from './player-analysis/player-ana
 import { PlayerAnalysisBenchmarkService } from './player-analysis/player-analysis-benchmark.service'
 import { JobStore } from './player-analysis/player-analysis-job-store'
 import { validateAndResolveExportFilePath } from './player-analysis/player-analysis-export-files'
+import { RosterJobStore } from './roster-review/roster-review-job-store'
+import {
+  listRosterRaidReports,
+  startRosterEvidenceJob,
+  validateRosterEvidenceRequest,
+} from './roster-review/roster-review.service'
 
 dotenv.config()
 
@@ -467,6 +473,69 @@ app.get('/api/player-analysis/exports/:exportId/:filename', (req: Request, res: 
       })
     }
   })
+})
+
+// ---------------------------------------------------------------------------
+// Roster Review endpoints (officer workflow)
+// ---------------------------------------------------------------------------
+
+app.get('/api/roster-review/reports', async (req: Request, res: Response) => {
+  let selectedSite: string | undefined
+  try {
+    const baseConfig = getWclConfig()
+    const resolvedContext = resolveWclRequestContext(baseConfig, toQueryContext(req))
+    selectedSite = resolvedContext.site
+    requireGuildIdForGuildScopedFlow(resolvedContext.guildId)
+    const limitValue = Number(firstQueryValue(req.query.limit as string | string[] | undefined))
+    const response = await listRosterRaidReports(resolvedContext.config, {
+      limit: Number.isFinite(limitValue) && limitValue > 0 ? limitValue : undefined,
+    })
+    res.status(200).json(response)
+  } catch (error) {
+    if (error instanceof Error && error.message === MISSING_GUILD_ID_ERROR_MESSAGE) {
+      res.status(400).json({ error: MISSING_GUILD_ID_ERROR_MESSAGE, code: 'MISSING_GUILD_ID' })
+      return
+    }
+    const classified = classifyWclError(error, { site: selectedSite })
+    console.error('[wcl] /api/roster-review/reports failed:', error)
+    res.status(500).json({ error: classified.message, hint: classified.hint, code: classified.code })
+  }
+})
+
+app.post('/api/roster-review/evidence', (req: Request, res: Response) => {
+  const validated = validateRosterEvidenceRequest(req.body)
+  if (!validated.ok) {
+    res.status(400).json({
+      error: validated.error,
+      code: 'VALIDATION_ERROR',
+      ...(validated.hint ? { hint: validated.hint } : {}),
+    })
+    return
+  }
+  try {
+    const baseConfig = getWclConfig()
+    const resolvedContext = resolveWclRequestContext(baseConfig, toBodyContext(req))
+    const jobStart = startRosterEvidenceJob(resolvedContext.config, validated.normalized)
+    res.status(202).json(jobStart)
+  } catch (error) {
+    const classified = classifyWclError(error, { site: toBodyContext(req)?.wclSite })
+    console.error('[wcl] /api/roster-review/evidence failed:', error)
+    res.status(500).json({ error: classified.message, hint: classified.hint, code: classified.code })
+  }
+})
+
+app.get('/api/roster-review/evidence/:jobId', (req: Request, res: Response) => {
+  const jobId = resolveReportCodeParam(req.params.jobId)
+  const job = RosterJobStore.get(jobId)
+  if (!job) {
+    res.status(404).json({
+      error: 'Evidence job not found.',
+      code: 'ROSTER_JOB_NOT_FOUND',
+      hint: 'The job may have expired. Build the evidence again.',
+    })
+    return
+  }
+  res.status(200).json(job)
 })
 
 app.get('/auth/callback', (_req: Request, res: Response) => {

@@ -1,4 +1,6 @@
 import { useMemo, useState, type FC } from 'react'
+import { Link } from 'react-router-dom'
+import { PATHS } from '@/lib/routes'
 import { VennLogo } from '@/components/venn-logo'
 import { getDifficultyLabel } from '@/lib/difficulty'
 import { cn } from '@/lib/utils'
@@ -82,6 +84,13 @@ export const PlayerAnalysisPage: FC = () => {
           </span>
         </div>
         <div className="flex items-center gap-2">
+          <Link
+            to={PATHS.ROSTER_REVIEW}
+            className="rounded-lg border border-white/[0.06] px-3 py-1.5 text-xs text-hint hover:bg-[#313338] hover:text-slate-300"
+            title="Officer roster review workflow"
+          >
+            Roster review
+          </Link>
           <SettingsButton onClick={() => setSettingsOpen(true)} />
           <AdvancedButton onClick={() => s.setSidebarOpen(true)} />
         </div>

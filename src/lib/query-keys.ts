@@ -29,3 +29,9 @@ export const playerAnalysisQueryKeys = {
   recentPlayers: (context: AppSettingsRequestContext) => [...playerAnalysisQueryKeys.all, 'recentPlayers', context] as const,
   exportStatus: (exportId: string) => [...playerAnalysisQueryKeys.all, 'status', exportId] as const,
 }
+
+export const rosterReviewQueryKeys = {
+  all: ['rosterReview'] as const,
+  raidReports: (context: AppSettingsRequestContext) => [...rosterReviewQueryKeys.all, 'raidReports', context] as const,
+  evidenceJob: (jobId: string) => [...rosterReviewQueryKeys.all, 'evidenceJob', jobId] as const,
+}
