@@ -1,0 +1,98 @@
+import fs from 'node:fs'
+import path from 'node:path'
+import archiver from 'archiver'
+
+let _exportsBase: string | null = null
+
+// Resolved lazily so EXPORTS_DIR from .env is available after dotenv.config() runs.
+const exportsBase = (): string => {
+  if (_exportsBase !== null) return _exportsBase
+  _exportsBase = process.env.EXPORTS_DIR
+    ? path.join(path.resolve(process.env.EXPORTS_DIR), 'mechanic-audit')
+    : path.join(process.cwd(), 'exports', 'mechanic-audit')
+  return _exportsBase
+}
+
+export function ensureExportDir(auditId: string): string {
+  const dir = path.join(exportsBase(), auditId)
+  fs.mkdirSync(dir, { recursive: true })
+  return dir
+}
+
+export function writeExportFile(auditId: string, filename: string, content: string): { sizeBytes: number } {
+  const dir = path.join(exportsBase(), auditId)
+  const filePath = path.join(dir, filename)
+  fs.writeFileSync(filePath, content, 'utf8')
+  return { sizeBytes: Buffer.byteLength(content, 'utf8') }
+}
+
+export function writeExportJsonFile(auditId: string, filename: string, data: unknown): { sizeBytes: number } {
+  return writeExportFile(auditId, filename, JSON.stringify(data, null, 2))
+}
+
+export function getExportFilePath(auditId: string, filename: string): string {
+  return path.join(exportsBase(), auditId, filename)
+}
+
+export function exportFileExists(auditId: string, filename: string): boolean {
+  return fs.existsSync(path.join(exportsBase(), auditId, filename))
+}
+
+export async function createBundleZip(auditId: string, filenames: string[]): Promise<{ sizeBytes: number }> {
+  const dir = path.join(exportsBase(), auditId)
+  const zipPath = path.join(dir, 'bundle.zip')
+
+  return new Promise((resolve, reject) => {
+    const output = fs.createWriteStream(zipPath)
+    const archive = archiver('zip', { zlib: { level: 6 } })
+
+    output.on('close', () => resolve({ sizeBytes: archive.pointer() }))
+    output.on('error', reject)
+    archive.on('error', reject)
+
+    archive.pipe(output)
+
+    for (const filename of filenames) {
+      if (filename === 'bundle.zip') continue
+      const filePath = path.join(dir, filename)
+      if (fs.existsSync(filePath)) {
+        archive.file(filePath, { name: filename })
+      }
+    }
+
+    archive.finalize()
+  })
+}
+
+export function validateAndResolveExportFilePath(auditId: string, filename: string): string | null {
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(auditId)) {
+    return null
+  }
+  if (filename.includes('..') || filename.includes('/') || filename.includes('\\')) {
+    return null
+  }
+  const base = exportsBase()
+  const resolved = path.join(base, auditId, filename)
+  if (!resolved.startsWith(base + path.sep)) {
+    return null
+  }
+  return resolved
+}
+
+export function getExportFileSize(auditId: string, filename: string): number {
+  try {
+    return fs.statSync(path.join(exportsBase(), auditId, filename)).size
+  } catch {
+    return 0
+  }
+}
+
+export function countCsvRows(auditId: string, filename: string): number {
+  try {
+    const content = fs.readFileSync(path.join(exportsBase(), auditId, filename), 'utf8')
+    const lines = content.split('\n').filter((line) => line.trim().length > 0)
+    return Math.max(0, lines.length - 1)
+  } catch {
+    return 0
+  }
+}

@@ -26,12 +26,19 @@ import { requiresGuildScopedReportDiscovery } from './player-analysis/player-ana
 import { PlayerAnalysisBenchmarkService } from './player-analysis/player-analysis-benchmark.service'
 import { JobStore } from './player-analysis/player-analysis-job-store'
 import { validateAndResolveExportFilePath } from './player-analysis/player-analysis-export-files'
+<<<<<<< Updated upstream
 import { RosterJobStore } from './roster-review/roster-review-job-store'
 import {
   listRosterRaidReports,
   startRosterEvidenceJob,
   validateRosterEvidenceRequest,
 } from './roster-review/roster-review.service'
+=======
+import { previewMechanicAudit, startMechanicAuditExport } from './mechanic-audit/mechanic-audit.service'
+import { MechanicAuditJobStore } from './mechanic-audit/mechanic-audit-job-store'
+import { validateAndResolveExportFilePath as validateAndResolveMechanicAuditFilePath } from './mechanic-audit/mechanic-audit-export-files'
+import type { MechanicAuditRequest } from './mechanic-audit/mechanic-audit.types'
+>>>>>>> Stashed changes
 
 dotenv.config()
 
@@ -71,6 +78,9 @@ type PlayerAnalysisApiError = {
 
 const isPlayerAnalysisPath = (pathValue: string): boolean =>
   pathValue.startsWith('/api/player-analysis/')
+
+const isMechanicAuditPath = (pathValue: string): boolean =>
+  pathValue.startsWith('/api/mechanic-audits/')
 
 const sendPlayerAnalysisError = (
   res: Response,
@@ -476,6 +486,7 @@ app.get('/api/player-analysis/exports/:exportId/:filename', (req: Request, res: 
 })
 
 // ---------------------------------------------------------------------------
+<<<<<<< Updated upstream
 // Roster Review endpoints (officer workflow)
 // ---------------------------------------------------------------------------
 
@@ -532,18 +543,152 @@ app.get('/api/roster-review/evidence/:jobId', (req: Request, res: Response) => {
       error: 'Evidence job not found.',
       code: 'ROSTER_JOB_NOT_FOUND',
       hint: 'The job may have expired. Build the evidence again.',
+=======
+// Mechanic Audit Export endpoints
+// ---------------------------------------------------------------------------
+
+app.post('/api/mechanic-audits/preview', async (req: Request, res: Response) => {
+  let selectedSite: string | undefined
+  try {
+    const baseConfig = getWclConfig()
+    const resolvedContext = resolveWclRequestContext(baseConfig, toBodyContext(req))
+    selectedSite = resolvedContext.site
+    const request = req.body as MechanicAuditRequest
+    const preview = await previewMechanicAudit(resolvedContext.config, request)
+    res.status(200).json(preview)
+  } catch (error) {
+    if (error instanceof Error && error.message === MISSING_GUILD_ID_ERROR_MESSAGE) {
+      sendPlayerAnalysisError(res, 400, {
+        error: MISSING_GUILD_ID_ERROR_MESSAGE,
+        code: 'MISSING_GUILD_ID',
+      })
+      return
+    }
+    if (isLikelyWclError(error)) {
+      const classified = classifyWclError(error, { site: selectedSite })
+      console.error('[mechanic-audit] /api/mechanic-audits/preview failed:', error)
+      sendPlayerAnalysisError(res, 400, {
+        error: classified.message,
+        code: classified.code,
+        hint: classified.hint,
+      })
+      return
+    }
+    const message = asErrorMessage(error, 'Unknown error during mechanic audit preview.')
+    sendPlayerAnalysisError(res, 400, {
+      error: message,
+      code: 'MECHANIC_AUDIT_PREVIEW_FAILED',
+      hint: 'Check scope, encounter, mechanics, and Phase 1 boundary configuration.',
+    })
+  }
+})
+
+app.post('/api/mechanic-audits/export', (req: Request, res: Response) => {
+  let selectedSite: string | undefined
+  try {
+    const baseConfig = getWclConfig()
+    const resolvedContext = resolveWclRequestContext(baseConfig, toBodyContext(req))
+    selectedSite = resolvedContext.site
+    const request = req.body as MechanicAuditRequest
+    const jobStart = startMechanicAuditExport(resolvedContext.config, request)
+    res.status(202).json(jobStart)
+  } catch (error) {
+    if (error instanceof Error && error.message === MISSING_GUILD_ID_ERROR_MESSAGE) {
+      sendPlayerAnalysisError(res, 400, {
+        error: MISSING_GUILD_ID_ERROR_MESSAGE,
+        code: 'MISSING_GUILD_ID',
+      })
+      return
+    }
+    if (isLikelyWclError(error)) {
+      const classified = classifyWclError(error, { site: selectedSite })
+      console.error('[mechanic-audit] /api/mechanic-audits/export failed:', error)
+      sendPlayerAnalysisError(res, 400, {
+        error: classified.message,
+        code: classified.code,
+        hint: classified.hint,
+      })
+      return
+    }
+    const message = asErrorMessage(error, 'Unknown error starting mechanic audit export.')
+    sendPlayerAnalysisError(res, 400, {
+      error: message,
+      code: 'MECHANIC_AUDIT_EXPORT_START_FAILED',
+      hint: 'Check scope, encounter, mechanics, and Phase 1 boundary configuration.',
+    })
+  }
+})
+
+app.get('/api/mechanic-audits/:auditId/status', (req: Request, res: Response) => {
+  const auditId = resolveReportCodeParam(req.params.auditId)
+  const job = MechanicAuditJobStore.get(auditId)
+  if (!job) {
+    sendPlayerAnalysisError(res, 404, {
+      error: 'Mechanic audit not found.',
+      code: 'MECHANIC_AUDIT_NOT_FOUND',
+      hint: 'The audit may have expired or the auditId is invalid.',
+>>>>>>> Stashed changes
     })
     return
   }
   res.status(200).json(job)
 })
 
+<<<<<<< Updated upstream
+=======
+app.get('/api/mechanic-audits/:auditId/:filename', (req: Request, res: Response) => {
+  const auditId = resolveReportCodeParam(req.params.auditId)
+  const filename = resolveReportCodeParam(req.params.filename)
+
+  const resolvedPath = validateAndResolveMechanicAuditFilePath(auditId, filename)
+  if (!resolvedPath) {
+    sendPlayerAnalysisError(res, 400, {
+      error: 'Invalid audit ID or filename.',
+      code: 'INVALID_MECHANIC_AUDIT_FILE_PATH',
+      details: { auditId, filename },
+    })
+    return
+  }
+
+  if (!fs.existsSync(resolvedPath)) {
+    sendPlayerAnalysisError(res, 404, {
+      error: 'File not found.',
+      code: 'MECHANIC_AUDIT_FILE_NOT_FOUND',
+      details: { auditId, filename },
+    })
+    return
+  }
+
+  const ext = path.extname(filename).toLowerCase()
+  const contentTypes: Record<string, string> = {
+    '.csv': 'text/csv',
+    '.json': 'application/json',
+    '.md': 'text/markdown',
+    '.zip': 'application/zip',
+  }
+  const contentType = contentTypes[ext] ?? 'application/octet-stream'
+  res.attachment(filename)
+  res.setHeader('Content-Type', contentType)
+  res.sendFile(resolvedPath, (err) => {
+    if (err && !res.headersSent) {
+      const sendFileError = err as NodeJS.ErrnoException & { statusCode?: number }
+      const statusCode = typeof sendFileError.statusCode === 'number' ? sendFileError.statusCode : 404
+      sendPlayerAnalysisError(res, statusCode, {
+        error: 'File not found.',
+        code: 'MECHANIC_AUDIT_FILE_NOT_FOUND',
+        details: { auditId, filename },
+      })
+    }
+  })
+})
+
+>>>>>>> Stashed changes
 app.get('/auth/callback', (_req: Request, res: Response) => {
   res.status(200).send('WCL callback endpoint is configured for local development.')
 })
 
 app.use((err: unknown, req: Request, res: Response, next: NextFunction) => {
-  if (!isPlayerAnalysisPath(req.path)) {
+  if (!isPlayerAnalysisPath(req.path) && !isMechanicAuditPath(req.path)) {
     next(err)
     return
   }

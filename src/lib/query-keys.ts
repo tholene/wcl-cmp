@@ -30,8 +30,14 @@ export const playerAnalysisQueryKeys = {
   exportStatus: (exportId: string) => [...playerAnalysisQueryKeys.all, 'status', exportId] as const,
 }
 
+<<<<<<< Updated upstream
 export const rosterReviewQueryKeys = {
   all: ['rosterReview'] as const,
   raidReports: (context: AppSettingsRequestContext) => [...rosterReviewQueryKeys.all, 'raidReports', context] as const,
   evidenceJob: (jobId: string) => [...rosterReviewQueryKeys.all, 'evidenceJob', jobId] as const,
+=======
+export const mechanicAuditQueryKeys = {
+  all: ['mechanicAudit'] as const,
+  exportStatus: (auditId: string) => [...mechanicAuditQueryKeys.all, 'status', auditId] as const,
+>>>>>>> Stashed changes
 }
